@@ -408,7 +408,9 @@ function buildAdaptiveWordCandidates(params: {
       exercises,
       lifecycleState: wordProgress?.lifecycle_state ?? queueCandidate?.lifecycle_state ?? null,
       masteryScore: wordProgress?.mastery_score ?? queueCandidate?.mastery_score ?? null,
+      consecutiveCorrect: Number(wordProgress?.consecutive_correct ?? 0),
       consecutiveIncorrect: Number(wordProgress?.consecutive_incorrect ?? 0),
+      currentDifficultyBand: wordProgress?.current_difficulty_band ?? null,
       nextReviewAt: wordProgress?.next_review_at ?? queueCandidate?.scheduled_for ?? null,
       lastSeenAt: wordProgress?.last_seen_at ?? null,
       lastModality: wordProgress?.last_modality ?? queueCandidate?.last_modality ?? null,
@@ -450,6 +452,13 @@ function attachAdaptiveSelectionMeta<TExercise extends SupportedVocabExercise>(p
           preferredModality: summary.preferredModality,
           selectionScore: summary.score,
           selectionRule: summary.selectionRule,
+          adaptiveDifficultyBand: summary.adaptiveDifficultyBand,
+          adaptiveDifficultyReason: summary.adaptiveDifficultyReason,
+          sessionDifficultyBias: summary.sessionDifficultyBias,
+          recentAccuracy: summary.recentAccuracy,
+          averageResponseTimeMs: summary.averageResponseTimeMs,
+          strongestModality: summary.strongestModality,
+          weakestModality: summary.weakestModality,
         },
       };
     });

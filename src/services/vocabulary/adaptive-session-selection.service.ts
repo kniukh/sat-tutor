@@ -4,8 +4,16 @@ import {
   getExerciseTargetWordId,
   type SupportedVocabExercise,
 } from "@/types/vocab-exercises";
+import {
+  applyDifficultyToPreferredModality,
+  buildAdaptiveDifficultyProfile,
+  evaluateAdaptiveDifficulty,
+  type AdaptiveDifficultyProfile,
+  type SessionDifficultyBias,
+} from "@/services/vocabulary/adaptive-difficulty.service";
 import type {
   ExerciseAttemptRow,
+  VocabDifficultyBand,
   VocabModality,
   WordLifecycleState,
 } from "@/types/vocab-tracking";
@@ -28,7 +36,9 @@ export type AdaptiveWordCandidate = {
   exercises: SupportedVocabExercise[];
   lifecycleState: WordLifecycleState | null;
   masteryScore: number | null;
+  consecutiveCorrect: number;
   consecutiveIncorrect: number;
+  currentDifficultyBand: VocabDifficultyBand | null;
   nextReviewAt: string | null;
   lastSeenAt: string | null;
   lastModality: VocabModality | null;
@@ -53,10 +63,18 @@ export type AdaptiveSelectionWordSummary = {
   selectionRule: string;
   reason: string;
   score: number;
+  adaptiveDifficultyBand: VocabDifficultyBand;
+  adaptiveDifficultyReason: string;
+  sessionDifficultyBias: SessionDifficultyBias;
+  recentAccuracy: number | null;
+  averageResponseTimeMs: number | null;
+  strongestModality: VocabModality | null;
+  weakestModality: VocabModality | null;
   queueBucket: ReviewQueuePriorityBucket | null;
   queueReason: string | null;
   lifecycleState: WordLifecycleState | null;
   masteryScore: number | null;
+  consecutiveCorrect: number;
   consecutiveIncorrect: number;
   recentIncorrectCount: number;
   lastModality: VocabModality | null;
@@ -72,6 +90,8 @@ export type AdaptiveSessionSelectionSummary = {
   targetMix: Record<AdaptiveSelectionBucket, number>;
   countsByBucket: Partial<Record<AdaptiveSelectionBucket, number>>;
   countsByModality: Partial<Record<VocabModality, number>>;
+  countsByDifficulty: Partial<Record<VocabDifficultyBand, number>>;
+  difficultyProfile: AdaptiveDifficultyProfile;
   selectedWords: AdaptiveSelectionWordSummary[];
 };
 
@@ -179,7 +199,10 @@ function inferAdaptiveBucket(candidate: AdaptiveWordCandidate, now: Date): Adapt
   return "retention_check";
 }
 
-function getPreferredModality(candidate: AdaptiveWordCandidate, bucket: AdaptiveSelectionBucket) {
+function getBasePreferredModality(
+  candidate: AdaptiveWordCandidate,
+  bucket: AdaptiveSelectionBucket
+) {
   if (candidate.recommendedModality) {
     return candidate.recommendedModality;
   }
@@ -312,10 +335,20 @@ function scoreWordCandidate(params: {
   candidate: AdaptiveWordCandidate;
   bucket: AdaptiveSelectionBucket;
   preferredModality: VocabModality;
+  adaptiveDifficultyBand: VocabDifficultyBand;
+  sessionDifficultyBias: SessionDifficultyBias;
   seed: string;
   now: Date;
 }) {
-  const { candidate, bucket, preferredModality, seed, now } = params;
+  const {
+    candidate,
+    bucket,
+    preferredModality,
+    adaptiveDifficultyBand,
+    sessionDifficultyBias,
+    seed,
+    now,
+  } = params;
   const recentIncorrectCount = countRecentIncorrectAttempts(candidate.recentAttempts, now);
   let score = 0;
   const recentLessonEncounter = isRecentLessonEncounter(candidate, now);
@@ -343,6 +376,10 @@ function scoreWordCandidate(params: {
   if (candidate.lessonFirstExposure) score += 3;
   if (recentLessonEncounter) score += 5;
   if (bucket === "newer_words" && candidate.sourceContextSnippet) score += 2;
+  if (adaptiveDifficultyBand === "easy" && bucket !== "retention_check") score += 2;
+  if (adaptiveDifficultyBand === "hard" && bucket === "retention_check") score += 3;
+  if (adaptiveDifficultyBand === "hard" && sessionDifficultyBias === "stretch") score += 2;
+  if (adaptiveDifficultyBand === "easy" && sessionDifficultyBias === "supportive") score += 2;
 
   if (preferredModality !== candidate.lastModality && candidate.lastModality) {
     score += 2;
@@ -380,11 +417,14 @@ export function selectAdaptiveSessionExercises(params: {
 
   const selectedWordIds: string[] = [];
   const selectedWords = new Set<string>();
+  const difficultyProfile = buildAdaptiveDifficultyProfile(params.candidates);
   const summary: AdaptiveSessionSelectionSummary = {
     targetSize: params.targetSize,
     targetMix,
     countsByBucket: {},
     countsByModality: {},
+    countsByDifficulty: {},
+    difficultyProfile,
     selectedWords: [],
   };
 
@@ -398,14 +438,30 @@ export function selectAdaptiveSessionExercises(params: {
   for (const bucket of bucketOrder) {
     const bucketCandidates = (availableByBucket.get(bucket) ?? [])
       .map((candidate) => {
-        const preferredModality = getPreferredModality(candidate, bucket);
+        const basePreferredModality = getBasePreferredModality(candidate, bucket);
+        const difficultyDecision = evaluateAdaptiveDifficulty({
+          candidate,
+          selectionBucket: bucket,
+          mode: params.mode,
+          profile: difficultyProfile,
+        });
+        const preferredModality = applyDifficultyToPreferredModality({
+          basePreferredModality,
+          difficultyBand: difficultyDecision.difficultyBand,
+          profileBias: difficultyProfile.bias,
+          candidate,
+          selectionBucket: bucket,
+        });
         return {
           candidate,
           preferredModality,
+          difficultyDecision,
           score: scoreWordCandidate({
             candidate,
             bucket,
             preferredModality,
+            adaptiveDifficultyBand: difficultyDecision.difficultyBand,
+            sessionDifficultyBias: difficultyProfile.bias,
             seed: params.seed,
             now,
           }),
@@ -448,6 +504,7 @@ export function selectAdaptiveSessionExercises(params: {
       selectedWords.add(entry.candidate.wordId);
       addSummaryCount(summary.countsByBucket, bucket);
       addSummaryCount(summary.countsByModality, entry.preferredModality);
+      addSummaryCount(summary.countsByDifficulty, entry.difficultyDecision.difficultyBand);
       summary.selectedWords.push({
         wordId: entry.candidate.wordId,
         word: entry.candidate.word,
@@ -456,10 +513,18 @@ export function selectAdaptiveSessionExercises(params: {
         selectionRule,
         reason,
         score: entry.score,
+        adaptiveDifficultyBand: entry.difficultyDecision.difficultyBand,
+        adaptiveDifficultyReason: entry.difficultyDecision.reason,
+        sessionDifficultyBias: difficultyProfile.bias,
+        recentAccuracy: entry.difficultyDecision.recentAccuracy,
+        averageResponseTimeMs: entry.difficultyDecision.averageResponseTimeMs,
+        strongestModality: entry.difficultyDecision.strongestModality,
+        weakestModality: entry.difficultyDecision.weakestModality,
         queueBucket: entry.candidate.queueBucket,
         queueReason: entry.candidate.queueReason,
         lifecycleState: entry.candidate.lifecycleState,
         masteryScore: entry.candidate.masteryScore,
+        consecutiveCorrect: entry.candidate.consecutiveCorrect,
         consecutiveIncorrect: entry.candidate.consecutiveIncorrect,
         recentIncorrectCount,
         lastModality: entry.candidate.lastModality,
@@ -477,15 +542,31 @@ export function selectAdaptiveSessionExercises(params: {
       .filter((candidate) => !selectedWords.has(candidate.wordId))
       .map((candidate) => {
         const bucket = inferAdaptiveBucket(candidate, now);
-        const preferredModality = getPreferredModality(candidate, bucket);
+        const basePreferredModality = getBasePreferredModality(candidate, bucket);
+        const difficultyDecision = evaluateAdaptiveDifficulty({
+          candidate,
+          selectionBucket: bucket,
+          mode: params.mode,
+          profile: difficultyProfile,
+        });
+        const preferredModality = applyDifficultyToPreferredModality({
+          basePreferredModality,
+          difficultyBand: difficultyDecision.difficultyBand,
+          profileBias: difficultyProfile.bias,
+          candidate,
+          selectionBucket: bucket,
+        });
         return {
           candidate,
           bucket,
           preferredModality,
+          difficultyDecision,
           score: scoreWordCandidate({
             candidate,
             bucket,
             preferredModality,
+            adaptiveDifficultyBand: difficultyDecision.difficultyBand,
+            sessionDifficultyBias: difficultyProfile.bias,
             seed: `${params.seed}:fallback`,
             now,
           }),
@@ -514,6 +595,7 @@ export function selectAdaptiveSessionExercises(params: {
       selectedWords.add(entry.candidate.wordId);
       addSummaryCount(summary.countsByBucket, entry.bucket);
       addSummaryCount(summary.countsByModality, entry.preferredModality);
+      addSummaryCount(summary.countsByDifficulty, entry.difficultyDecision.difficultyBand);
       summary.selectedWords.push({
         wordId: entry.candidate.wordId,
         word: entry.candidate.word,
@@ -522,10 +604,18 @@ export function selectAdaptiveSessionExercises(params: {
         selectionRule,
         reason,
         score: entry.score,
+        adaptiveDifficultyBand: entry.difficultyDecision.difficultyBand,
+        adaptiveDifficultyReason: entry.difficultyDecision.reason,
+        sessionDifficultyBias: difficultyProfile.bias,
+        recentAccuracy: entry.difficultyDecision.recentAccuracy,
+        averageResponseTimeMs: entry.difficultyDecision.averageResponseTimeMs,
+        strongestModality: entry.difficultyDecision.strongestModality,
+        weakestModality: entry.difficultyDecision.weakestModality,
         queueBucket: entry.candidate.queueBucket,
         queueReason: entry.candidate.queueReason,
         lifecycleState: entry.candidate.lifecycleState,
         masteryScore: entry.candidate.masteryScore,
+        consecutiveCorrect: entry.candidate.consecutiveCorrect,
         consecutiveIncorrect: entry.candidate.consecutiveIncorrect,
         recentIncorrectCount,
         lastModality: entry.candidate.lastModality,

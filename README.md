@@ -44,8 +44,11 @@ The project currently has four major student surfaces:
   - `collocation`
 - Session builder and drill session builder
 - Controlled mixed sequencing with rule-based modality progression
+- Rule-based adaptive difficulty with `easy`, `medium`, and `hard` session lanes
 - Source-aware session shaping for lesson-derived words
 - Normalized attempt logging and local debug telemetry
+- End-of-session results with weak-word and recovery summaries
+- Vocabulary Analytics v1 on student progress and dashboard surfaces
 
 ## Tech Stack
 - Next.js 16
@@ -149,5 +152,6 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 - Review queue generation is rule-based for now.
 - Lesson-derived vocabulary now carries source lesson/context metadata into Vocabulary Studio sessions.
 - Audio-backed vocab practice now includes `listen_match` and `spelling_from_audio`.
-- Adaptive difficulty is not implemented yet.
+- Adaptive difficulty v1 is implemented as a transparent rule-based layer in the session pipeline.
+- Vocabulary Analytics v1 is implemented for exercise totals, accuracy breakdowns, weak words, lifecycle distribution, and recent vocab sessions.
 - Books mode is chapter-aware in the UI, but still linear in progression.

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { StudentVocabularyAnalytics } from "@/services/analytics/vocabulary-analytics.service";
 
 type SkillItem = {
   id: string;
@@ -51,6 +52,7 @@ type Props = {
     level?: number;
     streak_days?: number;
   } | null;
+  vocabularyAnalytics?: StudentVocabularyAnalytics | null;
   accessCode: string;
 };
 
@@ -60,6 +62,7 @@ export default function StudentDashboardOverview({
   recentLessons,
   currentBooks,
   gamification,
+  vocabularyAnalytics,
   accessCode,
 }: Props) {
   const featuredBook = currentBooks[0] ?? null;
@@ -299,6 +302,107 @@ export default function StudentDashboardOverview({
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-slate-500">
               No book progress yet.
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xl font-semibold">Vocabulary Studio</div>
+            <Link
+              href={`/s/${accessCode}/vocabulary`}
+              className="text-sm font-medium text-slate-600 underline"
+            >
+              Open Studio
+            </Link>
+          </div>
+
+          {vocabularyAnalytics ? (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
+                    Exercises
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+                    {vocabularyAnalytics.summary.totalExercisesCompleted}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
+                    Accuracy
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+                    {Math.round(vocabularyAnalytics.summary.overallAccuracy * 100)}%
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
+                    Weak Words
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+                    {vocabularyAnalytics.summary.weakWordCount}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
+                    Sessions / 7d
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+                    {vocabularyAnalytics.summary.recentSessionCount7d}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-slate-900">
+                  Recent weak words
+                </div>
+                {vocabularyAnalytics.recentWeakWords.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-500">
+                    No weak vocabulary cluster yet.
+                  </div>
+                ) : (
+                  vocabularyAnalytics.recentWeakWords.slice(0, 4).map((item) => (
+                    <div
+                      key={`${item.wordId ?? item.word}`}
+                      className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3"
+                    >
+                      <div>
+                        <div className="font-medium text-slate-900">{item.word}</div>
+                        <div className="text-sm text-slate-500">
+                          {item.lifecycleState.replace(/_/g, " ")}
+                        </div>
+                      </div>
+                      <div className="text-sm font-semibold text-slate-700">
+                        {Math.round(item.masteryScore * 100)}%
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href={`/s/${accessCode}/vocabulary?mode=review_weak_words`}
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Review Weak Words
+                </Link>
+                <Link
+                  href={`/s/${accessCode}/progress`}
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+                >
+                  Open Analytics
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-slate-500">
+              No vocabulary analytics yet.
             </div>
           )}
         </div>

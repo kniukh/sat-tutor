@@ -18,6 +18,12 @@ const ADAPTIVE_BUCKET_LABELS = {
   retention_check: "Retention",
 } as const;
 
+const DIFFICULTY_LABELS = {
+  easy: "Easy",
+  medium: "Medium",
+  hard: "Hard",
+} as const;
+
 export default function VocabularySessionDevSummary({
   session,
   adaptiveSelection,
@@ -63,6 +69,24 @@ export default function VocabularySessionDevSummary({
         ))}
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-3">
+        {Object.entries(DIFFICULTY_LABELS).map(([band, label]) => (
+          <div
+            key={band}
+            className="rounded-[18px] border border-slate-200 bg-white px-4 py-3"
+          >
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              {label} Lane
+            </div>
+            <div className="mt-2 text-lg font-semibold text-slate-950">
+              {session.metadata.counts_by_difficulty[
+                band as keyof typeof session.metadata.counts_by_difficulty
+              ] ?? 0}
+            </div>
+          </div>
+        ))}
+      </div>
+
       <div className="space-y-2 border-t border-slate-200 pt-4">
         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
           Session Sequence
@@ -80,6 +104,11 @@ export default function VocabularySessionDevSummary({
                 <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
                   {item.exercise_type}
                 </span>
+                {item.adaptive_difficulty_band ? (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                    {item.adaptive_difficulty_band}
+                  </span>
+                ) : null}
                 <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
                   {item.triggered_by}
                 </span>
@@ -88,6 +117,11 @@ export default function VocabularySessionDevSummary({
             <div className="mt-2 text-sm leading-6 text-slate-600">
               {item.selection_reason ?? "No selection reason recorded."}
             </div>
+            {item.adaptive_difficulty_reason ? (
+              <div className="mt-2 text-xs leading-5 text-slate-500">
+                {item.adaptive_difficulty_reason}
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
@@ -131,6 +165,18 @@ export default function VocabularySessionDevSummary({
             ))}
           </div>
 
+          <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Difficulty Bias
+            </div>
+            <div className="mt-2 text-lg font-semibold capitalize text-slate-950">
+              {adaptiveSelection.difficultyProfile.bias}
+            </div>
+            <div className="mt-2 text-sm leading-6 text-slate-600">
+              {adaptiveSelection.difficultyProfile.reason}
+            </div>
+          </div>
+
           <div className="space-y-2">
             {adaptiveSelection.selectedWords.slice(0, 6).map((item) => (
               <div
@@ -149,9 +195,15 @@ export default function VocabularySessionDevSummary({
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
                       {item.selectionRule}
                     </span>
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                      {item.adaptiveDifficultyBand}
+                    </span>
                   </div>
                 </div>
                 <div className="mt-2 text-sm leading-6 text-slate-600">{item.reason}</div>
+                <div className="mt-2 text-xs leading-5 text-slate-500">
+                  {item.adaptiveDifficultyReason}
+                </div>
               </div>
             ))}
           </div>

@@ -201,8 +201,10 @@ Supported exercise types:
 
 Current vocab session shaping also includes:
 - adaptive word selection from `word_progress`, `review_queue`, and recent `exercise_attempts`
+- adaptive difficulty profiling from accuracy, streaks, mastery, modality history, and response time
 - lesson-aware source metadata carried from captured lesson vocabulary into exercise `reviewMeta`
 - controlled modality progression, including audio-backed exercises when audio is ready
+- end-of-session results and reusable analytics surfaces built from normalized attempt/session metadata
 
 ## Service Architecture By Domain
 
@@ -237,11 +239,13 @@ Current responsibilities:
 - skill tracking
 - skill dashboards
 - Mistake Brain orchestration
+- vocabulary analytics aggregation for student-facing progress surfaces and future teacher/admin reuse
 
 Important files:
 - [question-attempts.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/question-attempts.service.ts)
 - [mistake-brain.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/mistake-brain.service.ts)
 - [skill-tracking.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/skill-tracking.service.ts)
+- [vocabulary-analytics.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/vocabulary-analytics.service.ts)
 
 ### `services/ai`
 Current responsibilities:
@@ -261,6 +265,7 @@ Current responsibilities:
 - normalize exercises
 - build sessions
 - choose adaptive word slices and modality paths
+- choose adaptive difficulty paths
 - persist exercise attempts
 - update `word_progress`
 - generate and fetch `review_queue`
@@ -268,6 +273,7 @@ Current responsibilities:
 
 Important files:
 - [vocabulary-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/vocabulary-page.service.ts)
+- [adaptive-difficulty.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/adaptive-difficulty.service.ts)
 - [exercise-attempts.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/exercise-attempts.service.ts)
 - [exercise-progress.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/exercise-progress.service.ts)
 - [review-policy.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/review-policy.service.ts)
@@ -304,9 +310,11 @@ or
 - lesson reset button
 - regenerate audio button
 - exercise telemetry debug panels
+- adaptive selection / adaptive difficulty debug summaries in Vocabulary Studio dev surfaces
 
 ## Architectural Priorities Going Forward
 - Keep docs in sync with the implemented vocab architecture.
 - Continue moving shaping logic out of UI into services.
 - Keep adaptive logic rule-based and inspectable before introducing more AI-driven routing.
 - Preserve a single reusable exercise shell as new vocab types are added.
+- Keep analytics reusable across student, admin, and future teacher surfaces instead of page-local summaries.

@@ -23,6 +23,9 @@ function inferModality(exercise: SupportedVocabExercise): ExerciseAttemptRow["mo
 function inferDifficultyBand(
   exercise: SupportedVocabExercise
 ): ExerciseAttemptRow["difficulty_band"] {
+  const adaptiveBand = exercise.reviewMeta?.adaptiveDifficultyBand ?? null;
+  if (adaptiveBand) return adaptiveBand;
+
   const explicitBand = getExerciseDifficultyBand(exercise);
   if (explicitBand) return explicitBand;
 

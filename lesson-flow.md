@@ -146,6 +146,35 @@ Current bridge behavior:
   - `context_meaning`
   - `fill_blank`
 - when audio is ready, they may also enter audio-backed modalities like `listen_match` and `spelling_from_audio`
+- adaptive difficulty can keep those first lesson-linked exposures on a more supportive path before the session grows more demanding
+
+## Current Vocabulary Studio Follow-Through
+Vocabulary Studio now closes the loop after a student finishes a vocab session:
+- per-exercise attempts are persisted
+- `word_progress` is updated
+- `review_queue` is regenerated
+- an end-of-session results summary highlights:
+  - correct / incorrect totals
+  - weak words from the session
+  - strengthened words
+  - recovery, new-lesson, and retention-check words when available
+
+## Current Vocabulary Analytics Layer
+Vocabulary work is now measurable outside the session itself.
+
+Current analytics surfaces use:
+- `exercise_attempts`
+- `word_progress`
+
+Current summaries include:
+- total vocab exercises completed
+- accuracy by exercise type
+- accuracy by modality
+- recent weak words
+- mastery distribution by lifecycle state
+- recent vocab session counts
+- most frequently missed words
+- recently improved words
 
 That makes the lesson flow and vocabulary flow connected, but still separate products.
 

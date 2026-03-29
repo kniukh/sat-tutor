@@ -1,4 +1,5 @@
 import { getStudentDashboard } from '@/services/progress/progress.service';
+import VocabularyAnalyticsPanel from '@/components/student/VocabularyAnalyticsPanel';
 
 export default async function StudentProgressPage({
   params,
@@ -117,6 +118,19 @@ export default async function StudentProgressPage({
             ))}
           </div>
         )}
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-2xl font-semibold text-slate-900">
+            Vocabulary analytics
+          </h2>
+          <p className="mt-2 text-slate-600">
+            Track how Vocabulary Studio is performing across exercise types, weak words, and recent recovery.
+          </p>
+        </div>
+
+        <VocabularyAnalyticsPanel analytics={data.vocabularyAnalytics} />
       </section>
     </div>
   );

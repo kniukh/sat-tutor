@@ -7,6 +7,7 @@ import {
   ExercisePlayer,
   type ExerciseResult,
 } from './exercise-player';
+import VocabularySessionResults from './VocabularySessionResults';
 import type { VocabExerciseSession } from '@/services/vocabulary/session-builder';
 import { persistExerciseAttempt } from '@/services/vocabulary/exercise-attempt-client.service';
 import type { ExerciseAttemptRow } from '@/types/vocab-tracking';
@@ -48,14 +49,17 @@ function getModeCopy(mode: VocabExerciseSession['mode']) {
 export default function VocabSessionPlayer({
   session,
   studentId,
+  accessCode,
 }: {
   session: VocabExerciseSession;
   studentId: string;
+  accessCode: string;
 }) {
   const router = useRouter();
   const [done, setDone] = useState(false);
   const [isSaving, startTransition] = useTransition();
   const [savedAttempts, setSavedAttempts] = useState<ExerciseAttemptRow[]>([]);
+  const [completedResults, setCompletedResults] = useState<ExerciseResult[]>([]);
   const [persistLog, setPersistLog] = useState<PersistDebugItem[]>([]);
   const modeCopy = getModeCopy(session.mode);
   const failedSaves = persistLog.filter((item) => item.status === 'failed').length;
@@ -120,48 +124,20 @@ export default function VocabSessionPlayer({
     });
   }
 
-  function handleComplete() {
+  function handleComplete(results: ExerciseResult[]) {
+    setCompletedResults(results);
     setDone(true);
     router.refresh();
   }
 
   if (done) {
     return (
-      <div className="space-y-4 rounded-[32px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-emerald-50/70 p-6 shadow-sm sm:p-7">
-        <div className="space-y-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Session Complete
-          </div>
-          <h2 className="text-2xl font-semibold text-slate-950">Vocabulary session finished</h2>
-          <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            Your review attempts have been captured and the session summary has been refreshed.
-          </p>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-[24px] border border-slate-200 bg-white/90 p-4 shadow-sm">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Mode
-            </div>
-            <div className="mt-2 text-lg font-semibold text-slate-950">
-              {session.mode.replace(/_/g, ' ')}
-            </div>
-          </div>
-          <div className="rounded-[24px] border border-slate-200 bg-white/90 p-4 shadow-sm">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Exercises
-            </div>
-            <div className="mt-2 text-lg font-semibold text-slate-950">
-              {session.metadata.actual_size}
-            </div>
-          </div>
-          <div className="rounded-[24px] border border-slate-200 bg-white/90 p-4 shadow-sm">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Saved Attempts
-            </div>
-            <div className="mt-2 text-lg font-semibold text-slate-950">{savedAttempts.length}</div>
-          </div>
-        </div>
+      <div className="space-y-4">
+        <VocabularySessionResults
+          session={session}
+          results={completedResults}
+          accessCode={accessCode}
+        />
 
         {process.env.NODE_ENV !== 'production' ? (
           <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/70 p-4 text-sm text-slate-700">

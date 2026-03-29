@@ -2,7 +2,11 @@ import type {
   SupportedVocabExerciseType,
   VocabExerciseQueueBucket,
 } from "@/types/vocab-exercises";
-import type { WordLifecycleState } from "@/types/vocab-tracking";
+import type {
+  VocabDifficultyBand,
+  WordLifecycleState,
+} from "@/types/vocab-tracking";
+import type { SessionDifficultyBias } from "@/services/vocabulary/adaptive-difficulty.service";
 
 type SessionBuilderMode =
   | "default_review"
@@ -236,6 +240,65 @@ export const SESSION_PROGRESSION_RULES: Record<
       "meaning_match",
     ],
   },
+};
+
+export const SESSION_TYPE_ORDER_BY_ADAPTIVE_DIFFICULTY: Record<
+  VocabDifficultyBand,
+  SupportedVocabExerciseType[]
+> = {
+  easy: [
+    "meaning_match",
+    "listen_match",
+    "fill_blank",
+    "context_meaning",
+    "synonym",
+    "collocation",
+    "spelling_from_audio",
+  ],
+  medium: [
+    "fill_blank",
+    "listen_match",
+    "synonym",
+    "context_meaning",
+    "meaning_match",
+    "collocation",
+    "spelling_from_audio",
+  ],
+  hard: [
+    "context_meaning",
+    "collocation",
+    "spelling_from_audio",
+    "synonym",
+    "fill_blank",
+    "listen_match",
+    "meaning_match",
+  ],
+};
+
+export const SESSION_DEFAULT_DIFFICULTY_BY_TYPE: Record<
+  SupportedVocabExerciseType,
+  number
+> = {
+  meaning_match: 1,
+  translation_match: 1,
+  listen_match: 1,
+  spelling_from_audio: 3,
+  fill_blank: 2,
+  context_meaning: 3,
+  synonym: 2,
+  collocation: 3,
+};
+
+export const SESSION_DIFFICULTY_TARGET_BY_BAND: Record<VocabDifficultyBand, number> = {
+  easy: 1.2,
+  medium: 2.1,
+  hard: 2.9,
+};
+
+export const SESSION_DIFFICULTY_BIAS_SHIFT: Record<SessionDifficultyBias, number> = {
+  supportive: -0.35,
+  balanced: 0,
+  stretch: 0.35,
 };
 
 export function resolveSessionProgressionRule(params: {

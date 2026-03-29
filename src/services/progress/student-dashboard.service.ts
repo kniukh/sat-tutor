@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getStudentVocabularyAnalytics } from "@/services/analytics/vocabulary-analytics.service";
 
 export async function getStudentDashboardData(studentId: string) {
   const supabase = await createServerSupabaseClient();
@@ -71,6 +72,8 @@ export async function getStudentDashboardData(studentId: string) {
   if (bookProgressResult.error) throw new Error(bookProgressResult.error.message);
   if (gamificationResult.error) throw new Error(gamificationResult.error.message);
 
+  const vocabularyAnalytics = await getStudentVocabularyAnalytics(studentId);
+
   const normalizedRecentLessons = (lessonAttemptsResult.data ?? []).map((item: any) => {
     const lessonsValue = item.lessons;
     let lessonData = null;
@@ -93,5 +96,6 @@ export async function getStudentDashboardData(studentId: string) {
     recentLessons: normalizedRecentLessons,
     currentBooks: bookProgressResult.data ?? [],
     gamification: gamificationResult.data ?? null,
+    vocabularyAnalytics,
   };
 }

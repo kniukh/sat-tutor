@@ -1,4 +1,8 @@
-import type { VocabModality, WordLifecycleState } from "@/types/vocab-tracking";
+import type {
+  VocabDifficultyBand,
+  VocabModality,
+  WordLifecycleState,
+} from "@/types/vocab-tracking";
 
 export type SupportedVocabExerciseType =
   | "meaning_match"
@@ -72,6 +76,13 @@ export type VocabExerciseReviewMeta = {
   selectionReason?: string | null;
   preferredModality?: VocabModality | null;
   selectionScore?: number | null;
+  adaptiveDifficultyBand?: VocabDifficultyBand | null;
+  adaptiveDifficultyReason?: string | null;
+  sessionDifficultyBias?: "supportive" | "balanced" | "stretch";
+  recentAccuracy?: number | null;
+  averageResponseTimeMs?: number | null;
+  strongestModality?: VocabModality | null;
+  weakestModality?: VocabModality | null;
 };
 
 export type VocabExerciseMetadata = Record<string, unknown>;

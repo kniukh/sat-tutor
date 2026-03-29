@@ -10,6 +10,10 @@ import {
 } from "@/types/vocab-exercises";
 import type { VocabModality, WordLifecycleState } from "@/types/vocab-tracking";
 import {
+  SESSION_DEFAULT_DIFFICULTY_BY_TYPE,
+  SESSION_DIFFICULTY_BIAS_SHIFT,
+  SESSION_DIFFICULTY_TARGET_BY_BAND,
+  SESSION_TYPE_ORDER_BY_ADAPTIVE_DIFFICULTY,
   resolveSessionProgressionRule,
   SESSION_BUCKET_PRIORITY_ORDER_BY_MODE,
   SESSION_BUCKET_TARGET_RATIOS_BY_MODE,
@@ -35,6 +39,7 @@ export type VocabExerciseSession = {
     actual_size: number;
     counts_by_type: Partial<Record<SupportedVocabExerciseType, number>>;
     counts_by_bucket: Partial<Record<VocabExerciseQueueBucket, number>>;
+    counts_by_difficulty: Partial<Record<"easy" | "medium" | "hard", number>>;
     counts_by_rule: Record<string, number>;
     unique_target_words: number;
     repeated_target_words: number;
@@ -53,6 +58,9 @@ export type VocabExerciseSession = {
       source_lesson_id: string | null;
       source_lesson_title: string | null;
       source_context_snippet: string | null;
+      adaptive_difficulty_band: "easy" | "medium" | "hard" | null;
+      adaptive_difficulty_reason: string | null;
+      session_difficulty_bias: "supportive" | "balanced" | "stretch" | null;
       triggered_by: string;
     }>;
   };
@@ -89,12 +97,17 @@ function defaultTargetSize(mode: VocabSessionMode, poolSize: number) {
   return Math.min(desired, poolSize);
 }
 
-function desiredDifficultyForIndex(index: number, total: number) {
+function desiredDifficultyForIndex(
+  index: number,
+  total: number,
+  bias: "supportive" | "balanced" | "stretch"
+) {
   if (total <= 1) return 2;
   const progress = index / Math.max(total - 1, 1);
-  if (progress < 0.3) return 1.5;
-  if (progress < 0.7) return 2.5;
-  return 3;
+  const shift = SESSION_DIFFICULTY_BIAS_SHIFT[bias];
+  if (progress < 0.3) return 1.5 + shift;
+  if (progress < 0.7) return 2.5 + shift;
+  return 3 + shift;
 }
 
 function getNumericDifficulty(exercise: SupportedVocabExercise) {
@@ -106,7 +119,7 @@ function getNumericDifficulty(exercise: SupportedVocabExercise) {
   if (difficultyBand === "easy") return 1;
   if (difficultyBand === "medium") return 2;
   if (difficultyBand === "hard") return 3;
-  return 2;
+  return SESSION_DEFAULT_DIFFICULTY_BY_TYPE[exercise.type] ?? 2;
 }
 
 function countByType(items: SupportedVocabExercise[]) {
@@ -124,6 +137,18 @@ function countByBucket(items: SupportedVocabExercise[]) {
   return items.reduce<Partial<Record<VocabExerciseQueueBucket, number>>>((acc, item) => {
     const bucket = getQueueBucket(item);
     acc[bucket] = (acc[bucket] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
+function countByDifficulty(items: SupportedVocabExercise[]) {
+  return items.reduce<Partial<Record<"easy" | "medium" | "hard", number>>>((acc, item) => {
+    const band = item.reviewMeta?.adaptiveDifficultyBand ?? getExerciseDifficultyBand(item);
+    if (!band) {
+      return acc;
+    }
+
+    acc[band] = (acc[band] ?? 0) + 1;
     return acc;
   }, {});
 }
@@ -196,6 +221,22 @@ function getSelectionReason(exercise: SupportedVocabExercise) {
   return exercise.reviewMeta?.selectionReason ?? null;
 }
 
+function getAdaptiveDifficultyBand(exercise: SupportedVocabExercise) {
+  return (
+    exercise.reviewMeta?.adaptiveDifficultyBand ??
+    getExerciseDifficultyBand(exercise) ??
+    "medium"
+  );
+}
+
+function getAdaptiveDifficultyReason(exercise: SupportedVocabExercise) {
+  return exercise.reviewMeta?.adaptiveDifficultyReason ?? null;
+}
+
+function getSessionDifficultyBias(exercise: SupportedVocabExercise) {
+  return exercise.reviewMeta?.sessionDifficultyBias ?? "balanced";
+}
+
 type WordExerciseEntry = {
   wordId: string;
   word: string;
@@ -261,10 +302,17 @@ function chooseExerciseForWordEntry(params: {
   const scoredChoices = entry.exercises
     .map((candidate) => {
       let score = 0;
+      const adaptiveDifficultyBand = getAdaptiveDifficultyBand(candidate);
+      const sessionDifficultyBias = getSessionDifficultyBias(candidate);
+      const difficultyTypeOrder =
+        SESSION_TYPE_ORDER_BY_ADAPTIVE_DIFFICULTY[adaptiveDifficultyBand];
 
       score += Math.max(0, 10 - preferredOrder.indexOf(candidate.type) * 2);
+      score += Math.max(0, 10 - difficultyTypeOrder.indexOf(candidate.type) * 2);
 
-      const desiredDifficulty = desiredDifficultyForIndex(index, total);
+      const desiredDifficulty =
+        desiredDifficultyForIndex(index, total, sessionDifficultyBias) * 0.45 +
+        SESSION_DIFFICULTY_TARGET_BY_BAND[adaptiveDifficultyBand] * 0.55;
       const candidateDifficulty = getNumericDifficulty(candidate);
       score -= Math.abs(candidateDifficulty - desiredDifficulty) * 2;
 
@@ -288,6 +336,14 @@ function chooseExerciseForWordEntry(params: {
           (preferredModality === "context" && candidateModality === "mixed") ||
           (preferredModality === "text" && candidateModality === "mixed"))
       ) {
+        score += 4;
+      }
+
+      if (adaptiveDifficultyBand === "easy" && candidate.type === "meaning_match") {
+        score += 4;
+      }
+
+      if (adaptiveDifficultyBand === "hard" && candidate.type === "context_meaning") {
         score += 4;
       }
 
@@ -330,7 +386,12 @@ function chooseExerciseForWordEntry(params: {
         candidate,
         score,
         rule: progression.rule,
-        triggeredBy: candidate.type === desiredType ? "modality_progression" : progression.rule,
+        triggeredBy:
+          candidate.type === desiredType
+            ? "modality_progression"
+            : difficultyTypeOrder[0] === candidate.type
+              ? "adaptive_difficulty"
+              : progression.rule,
       };
     })
     .sort((left, right) => right.score - left.score);
@@ -354,6 +415,7 @@ function scoreWordEntry(params: {
 
   const candidate = bestChoice.candidate;
   let score = bestChoice.score;
+  const sessionDifficultyBias = getSessionDifficultyBias(candidate);
 
   const candidateBucket = getQueueBucket(candidate);
   const bucketPriorityOrder = SESSION_BUCKET_PRIORITY_ORDER_BY_MODE[mode];
@@ -399,6 +461,14 @@ function scoreWordEntry(params: {
 
   if (mode === "learn_new_words" && index === total - 1 && candidate.type === "context_meaning") {
     score += 4;
+  }
+
+  if (sessionDifficultyBias === "supportive" && candidateBucket !== "scheduled") {
+    score += 2;
+  }
+
+  if (sessionDifficultyBias === "stretch" && candidateBucket === "scheduled") {
+    score += 2;
   }
 
   score += (candidate.reviewMeta?.queuePriorityScore ?? 0) * 4;
@@ -469,6 +539,9 @@ export function buildVocabExerciseSession({
       source_lesson_id: next.candidate.reviewMeta?.sourceLessonId ?? null,
       source_lesson_title: next.candidate.reviewMeta?.sourceLessonTitle ?? null,
       source_context_snippet: next.candidate.reviewMeta?.sourceContextSnippet ?? null,
+      adaptive_difficulty_band: next.candidate.reviewMeta?.adaptiveDifficultyBand ?? null,
+      adaptive_difficulty_reason: getAdaptiveDifficultyReason(next.candidate),
+      session_difficulty_bias: next.candidate.reviewMeta?.sessionDifficultyBias ?? null,
       triggered_by: next.triggeredBy,
     });
 
@@ -481,6 +554,7 @@ export function buildVocabExerciseSession({
 
   const countsByType = countByType(chosen);
   const countsByBucket = countByBucket(chosen);
+  const countsByDifficulty = countByDifficulty(chosen);
   const targetWordIds = chosen.map((item) => readTargetWordId(item));
   const uniqueTargetWords = new Set(targetWordIds).size;
 
@@ -495,6 +569,7 @@ export function buildVocabExerciseSession({
       actual_size: chosen.length,
       counts_by_type: countsByType,
       counts_by_bucket: countsByBucket,
+      counts_by_difficulty: countsByDifficulty,
       counts_by_rule: countByRule(sequenceDebug),
       unique_target_words: uniqueTargetWords,
       repeated_target_words: chosen.length - uniqueTargetWords,

@@ -406,7 +406,11 @@ export default async function StudentVocabularyPage({
             />
           </div>
 
-          <VocabSessionPlayer session={session} studentId={student.id} />
+          <VocabSessionPlayer
+            session={session}
+            studentId={student.id}
+            accessCode={student.accessCode}
+          />
         </section>
       ) : null}
 

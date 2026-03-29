@@ -248,6 +248,7 @@ Important fields:
 Current use:
 - one row per completed vocab exercise attempt
 - receives data from `/api/vocabulary/exercise-attempt`
+- now also serves as the base telemetry source for Vocabulary Analytics v1
 
 ### `word_progress`
 Per-student word lifecycle and review state.
@@ -284,6 +285,10 @@ Current lifecycle states:
 - `review`
 - `mastered`
 - `weak_again`
+
+Current role in adaptation:
+- stores the rolling difficulty band used by adaptive difficulty v1
+- anchors weak-word and mastery-distribution analytics
 
 ### `review_queue`
 Rule-based review scheduling queue.
@@ -332,6 +337,23 @@ Per-student skill performance summary.
 ### `student_gamification`
 XP, level, streak, achievements.
 
+## Vocabulary Analytics v1
+
+Current analytics surfaces are built from existing vocab tables rather than a separate warehouse table.
+
+Main sources:
+- `exercise_attempts`
+  - total vocab exercises completed
+  - accuracy by exercise type
+  - accuracy by modality
+  - recent session counts
+  - most frequently missed words
+  - 7-day improvement summaries
+- `word_progress`
+  - recent weak words
+  - mastery distribution by lifecycle state
+  - current difficulty band / weak streak context
+
 ## Current Main Flows
 
 ### Book content flow
@@ -359,6 +381,13 @@ XP, level, streak, achievements.
 -> `word_progress`
 -> `review_queue`
 
+### Vocabulary analytics flow
+`exercise_attempts`
+plus
+`word_progress`
+-> `services/analytics/vocabulary-analytics.service.ts`
+-> dashboard / progress surfaces
+
 ### Lesson-to-vocabulary bridge
 `lesson_passages`
 -> inline capture / lesson vocabulary submit
@@ -384,6 +413,7 @@ Current note:
 - Lesson vocabulary remains tied to the originating lesson through stored lesson/context fields instead of a separate session-source table.
 - `exercise_attempts` feed `word_progress`.
 - `word_progress` feeds `review_queue`.
+- `exercise_attempts` and `word_progress` also feed Vocabulary Analytics v1.
 - Mistake Brain writes post-lesson AI analysis into `mistake_analysis`.
 
 ## Recent Migrations

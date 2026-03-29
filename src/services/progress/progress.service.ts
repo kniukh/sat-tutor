@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { buildStudentAnalytics } from '@/services/analytics/analytics.service';
+import { getStudentVocabularyAnalytics } from '@/services/analytics/vocabulary-analytics.service';
 import { buildStudentRecommendations } from '@/services/recommendations/recommendations.service';
 import { getNextReadingLessonForStudent } from '@/services/reading/reading.service';
 import { getStudentBookProgress } from '@/services/reading/book-progress.service';
@@ -47,6 +48,7 @@ export async function getStudentDashboard(studentCode: string) {
   const nextReadingLesson = await getNextReadingLessonForStudent(student.id);
   const bookProgress = await getStudentBookProgress(student.id);
   const gamification = await getOrCreateStudentGamification(student.id);
+  const vocabularyAnalytics = await getStudentVocabularyAnalytics(student.id);
 
   const recommendations = buildStudentRecommendations({
     nextReadingLesson,
@@ -62,6 +64,7 @@ export async function getStudentDashboard(studentCode: string) {
       averageAccuracy: analytics.averageAccuracy,
     },
     analytics,
+    vocabularyAnalytics,
     recommendations,
     bookProgress,
     gamification,

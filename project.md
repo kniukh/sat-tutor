@@ -60,6 +60,9 @@ Current foundations:
 - review queue
 - word progress lifecycle
 - exercise attempt logging
+- adaptive difficulty v1
+- end-of-session results
+- vocabulary analytics summaries
 - lesson-to-vocabulary bridge through captured lesson words and source-aware session shaping
 - audio-backed modalities:
   - `listen_match`
@@ -125,14 +128,17 @@ Implemented today:
 - `review_queue` generation
 - queue bucket prioritization
 - bucket-aware session building
+- rule-based adaptive difficulty using mastery, streaks, modality history, and response time
 - lesson-connected source metadata and beginner-friendly lesson word progression
 - audio modalities inside the same reusable exercise player
+- end-of-session results loop for Vocabulary Studio
+- Vocabulary Analytics v1 for dashboard and progress surfaces
 - Mistake Brain classification
 
 Not implemented yet:
-- true adaptive difficulty routing
 - dynamic modality switching driven by long-term modeling
 - adaptive next-lesson routing inside Books
+- richer teacher/admin-facing vocabulary analytics surfaces
 
 ## Current Risks / Constraints
 - Vocab scheduling is intentionally simple and explainable for now.
@@ -143,5 +149,6 @@ Not implemented yet:
 ## Current Working Direction
 - Stabilize the reusable vocab exercise system.
 - Grow review scheduling from transparent rules to smarter policies.
+- Grow vocabulary analytics from practical summaries into teacher/admin insight surfaces.
 - Keep Books polished and chapter-aware without sacrificing linearity.
 - Keep telemetry rich enough to support future personalization without rewriting the current foundations.
