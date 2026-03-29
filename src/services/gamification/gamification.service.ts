@@ -16,7 +16,7 @@ function diffDays(a: string, b: string) {
 }
 
 export async function getOrCreateStudentGamification(studentId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: existing, error: existingError } = await supabase
     .from('student_gamification')
@@ -55,7 +55,7 @@ export async function awardStudentActivity(params: {
   studentId: string;
   xpToAdd: number;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const current = await getOrCreateStudentGamification(params.studentId);
 
   const today = toDateOnly(new Date());

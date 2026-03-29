@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     answersJson = [],
   } = body;
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from('lesson_attempts')

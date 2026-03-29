@@ -17,7 +17,7 @@ function getNextReviewDate(daysToAdd: number) {
 }
 
 export async function updateWordProgress(input: UpdateWordProgressInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const uniqueWords = Array.from(
     new Set(

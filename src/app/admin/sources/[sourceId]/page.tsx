@@ -16,7 +16,7 @@ export default async function AdminSourceDetailPage({
   await requireAdmin();
 
   const { sourceId } = await params;
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: source, error: sourceError } = await supabase
     .from('source_documents')

@@ -6,7 +6,7 @@ export async function POST(request: Request) {
 
   const { title, author = '', sourceType = 'book', rawText } = body;
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from('source_documents')
@@ -35,7 +35,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Missing id parameter' }, { status: 400 });
   }
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   // Delete related records first
   await supabase.from('generated_passages').delete().eq('source_document_id', id);

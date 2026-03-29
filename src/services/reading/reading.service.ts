@@ -1,7 +1,7 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function getLessonSequenceByCurrentLessonId(currentLessonId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: currentGeneratedPassage, error: currentError } = await supabase
     .from('generated_passages')
@@ -69,7 +69,7 @@ export async function getLessonSequenceByCurrentLessonId(currentLessonId: string
 }
 
 export async function getNextReadingLessonForStudent(studentId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: attempts, error: attemptsError } = await supabase
     .from('lesson_attempts')

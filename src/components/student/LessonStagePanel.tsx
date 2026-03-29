@@ -1,141 +1,257 @@
-'use client';
+"use client";
 
-import { useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
-import VocabularyReviewCards from '@/components/student/VocabularyReviewCards';
+import { useEffect, useRef, useState } from "react";
+import LessonSplitLayout from "./LessonSplitLayout";
+import PassageVocabularyCapture from "./PassageVocabularyCapture";
+import VocabularyReviewCards from "./VocabularyReviewCards";
+import LessonPlayer from "./LessonPlayer";
+import InteractivePassageReader from "./InteractivePassageReader";
+
+type Question = {
+  id: string;
+  question_text: string;
+  option_a: string;
+  option_b: string;
+  option_c: string;
+  option_d: string;
+  correct_option?: string;
+  explanation?: string | null;
+  question_type: string;
+};
 
 type VocabItem = {
   id: string;
   item_text: string;
-  item_type: 'word' | 'phrase';
-  english_explanation: string | null;
-  translated_explanation: string | null;
-  translation_language: string;
-  example_text: string | null;
-  is_understood?: boolean;
+  english_explanation?: string | null;
+  translated_explanation?: string | null;
+  example_text?: string | null;
+  context_sentence?: string | null;
+  audio_url?: string | null;
+};
+
+type Props = {
+  studentId: string;
+  lessonId: string;
+  passageId?: string;
+  passageText: string;
+  state: {
+    stage: "first_read" | "vocab_review" | "second_read" | "questions" | "completed";
+  };
+  questions: Question[];
+  vocabItems: VocabItem[];
 };
 
 export default function LessonStagePanel({
   studentId,
   lessonId,
   passageId,
-  stage,
+  passageText,
+  state,
+  questions,
   vocabItems,
-}: {
-  studentId: string;
-  lessonId: string;
-  passageId: string;
-  stage: 'first_read' | 'vocab_review' | 'second_read' | 'questions' | 'completed';
-  vocabItems: VocabItem[];
-}) {
-  const router = useRouter();
-  const [message, setMessage] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+}: Props) {
+  const [stage, setStage] = useState(state.stage);
+  const [capturedItems, setCapturedItems] = useState<string[]>([]);
+  const [localVocabItems, setLocalVocabItems] = useState<VocabItem[]>(vocabItems ?? []);
+  const readingStageStartedAtRef = useRef<number | null>(null);
 
-  function submitVocabulary() {
-    setMessage(null);
+  useEffect(() => {
+    if (stage === "first_read" || stage === "second_read") {
+      readingStageStartedAtRef.current = Date.now();
+      return;
+    }
 
-    startTransition(async () => {
-      const response = await fetch('/api/lesson/submit-vocabulary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, lessonId, passageId }),
+    readingStageStartedAtRef.current = null;
+  }, [stage]);
+
+  function countWords(text: string) {
+    return text
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean).length;
+  }
+
+  async function saveReadingMetricsIfNeeded() {
+    if (stage !== "first_read" && stage !== "second_read") {
+      return;
+    }
+
+    const startedAt = readingStageStartedAtRef.current;
+    if (!startedAt) {
+      return;
+    }
+
+    const readingDurationSec = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+    const wordsCount = countWords(passageText);
+    const wordsPerMinute =
+      readingDurationSec > 0 ? Number(((wordsCount / readingDurationSec) * 60).toFixed(2)) : 0;
+
+    try {
+      await fetch("/api/reading/metrics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId,
+          lessonId,
+          readingDurationSec,
+          wordsCount,
+          wordsPerMinute,
+        }),
       });
+    } catch (error) {
+      console.error("save reading metrics error", error);
+    }
+  }
 
-      const json = await response.json().catch(() => null);
+  async function goToQuestions() {
+    await saveReadingMetricsIfNeeded();
 
-      if (!response.ok) {
-        setMessage(json?.error ?? 'Submit vocabulary failed');
-        return;
-      }
+    await fetch("/api/lesson/mark-second-read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ studentId, lessonId }),
+    });
 
-      router.refresh();
+    setStage("questions");
+  }
+
+  function handleCaptured(itemText: string) {
+    setCapturedItems((prev) => {
+      if (prev.some((x) => x.toLowerCase() === itemText.toLowerCase())) return prev;
+      return [...prev, itemText];
     });
   }
 
-  function advance(action: 'start_second_read' | 'done_second_read' | 'mark_completed') {
-    setMessage(null);
+  function handleRemoveCaptured(itemText: string) {
+    setCapturedItems((prev) => prev.filter((x) => x !== itemText));
+  }
 
-    startTransition(async () => {
-      const response = await fetch('/api/lesson/advance-stage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, lessonId, action }),
-      });
+  function handleVocabularySubmitted(items: VocabItem[]) {
+    void saveReadingMetricsIfNeeded();
+    setLocalVocabItems(items);
+    setStage("vocab_review");
+  }
 
-      const json = await response.json().catch(() => null);
+  if (stage === "completed") {
+    return <div className="text-xl font-semibold">Lesson completed</div>;
+  }
 
-      if (!response.ok) {
-        setMessage(json?.error ?? 'Stage advance failed');
-        return;
+  if (stage === "questions") {
+    return (
+      <LessonSplitLayout
+        top={
+          <InteractivePassageReader
+            studentId={studentId}
+            lessonId={lessonId}
+            passageId={passageId}
+            passageText={passageText}
+            knownWords={localVocabItems}
+          />
+        }
+        bottom={
+          <LessonPlayer
+            studentId={studentId}
+            lessonId={lessonId}
+            questions={questions}
+            onFinished={() => setStage("completed")}
+          />
+        }
+      />
+    );
+  }
+
+  if (stage === "vocab_review") {
+    return (
+      <LessonSplitLayout
+        top={
+          <InteractivePassageReader
+            studentId={studentId}
+            lessonId={lessonId}
+            passageId={passageId}
+            passageText={passageText}
+            knownWords={localVocabItems}
+          />
+        }
+        bottom={
+          <VocabularyReviewCards
+            items={localVocabItems}
+            onDone={() => setStage("second_read")}
+          />
+        }
+      />
+    );
+  }
+
+  if (stage === "second_read") {
+    return (
+      <LessonSplitLayout
+        top={
+          <InteractivePassageReader
+            studentId={studentId}
+            lessonId={lessonId}
+            passageId={passageId}
+            passageText={passageText}
+            knownWords={localVocabItems}
+          />
+        }
+        bottom={
+          <div className="space-y-4">
+            <div className="text-lg font-semibold">Read the passage again</div>
+            <button
+              onClick={goToQuestions}
+              className="px-4 py-2 rounded-lg bg-black text-white"
+            >
+              Start Quiz
+            </button>
+          </div>
+        }
+      />
+    );
+  }
+
+  return (
+    <LessonSplitLayout
+      top={
+        <InteractivePassageReader
+          studentId={studentId}
+          lessonId={lessonId}
+          passageId={passageId}
+          passageText={passageText}
+          knownWords={localVocabItems}
+          onCaptured={handleCaptured}
+        />
       }
+      bottom={
+        <div className="space-y-4">
+          <PassageVocabularyCapture
+            studentId={studentId}
+            lessonId={lessonId}
+            passageId={passageId}
+            presetItems={capturedItems}
+            onItemsChange={setCapturedItems}
+            onSubmitted={handleVocabularySubmitted}
+          />
 
-      router.refresh();
-    });
-  }
-
-  if (stage === 'first_read') {
-    return (
-      <div className="space-y-3">
-        <p className="text-slate-600">
-          First read: collect unknown words and phrases, then submit vocabulary.
-        </p>
-        <button
-          type="button"
-          onClick={submitVocabulary}
-          disabled={isPending}
-          className="rounded-xl bg-slate-900 px-5 py-3 text-white disabled:opacity-50"
-        >
-          {isPending ? 'Submitting...' : 'Submit Vocabulary'}
-        </button>
-        {message ? <p className="text-sm text-red-600">{message}</p> : null}
-      </div>
-    );
-  }
-
-  if (stage === 'vocab_review') {
-    return (
-      <div className="space-y-4">
-        <div className="font-medium text-slate-900">Vocabulary support</div>
-
-        <VocabularyReviewCards items={vocabItems} />
-
-        <button
-          type="button"
-          onClick={() => advance('start_second_read')}
-          disabled={isPending}
-          className="rounded-xl bg-slate-900 px-5 py-3 text-white disabled:opacity-50"
-        >
-          {isPending ? 'Starting...' : 'Start Second Read'}
-        </button>
-
-        {message ? <p className="text-sm text-red-600">{message}</p> : null}
-      </div>
-    );
-  }
-
-  if (stage === 'second_read') {
-    return (
-      <div className="space-y-3">
-        <p className="text-slate-600">
-          Read the passage again with the vocabulary support in mind.
-        </p>
-        <button
-          type="button"
-          onClick={() => advance('done_second_read')}
-          disabled={isPending}
-          className="rounded-xl bg-slate-900 px-5 py-3 text-white disabled:opacity-50"
-        >
-          {isPending ? 'Saving...' : 'Done Second Read'}
-        </button>
-        {message ? <p className="text-sm text-red-600">{message}</p> : null}
-      </div>
-    );
-  }
-
-  if (stage === 'completed') {
-    return <p className="text-slate-600">Lesson completed.</p>;
-  }
-
-  return null;
+          {capturedItems.length > 0 ? (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-slate-700">
+                Captured from text this session
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {capturedItems.map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => handleRemoveCaptured(item)}
+                    className="px-3 py-1 rounded-full bg-blue-100 text-blue-900 text-sm"
+                  >
+                    {item} ×
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      }
+    />
+  );
 }

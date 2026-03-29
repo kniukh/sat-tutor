@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { sourceId } = body;
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: source, error: sourceError } = await supabase
     .from('source_documents')

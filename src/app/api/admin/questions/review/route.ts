@@ -5,7 +5,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { questionId, reviewStatus } = body;
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from('question_bank')

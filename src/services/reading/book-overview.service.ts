@@ -1,7 +1,7 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function getBookOverviewForStudent(studentCode: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: student, error: studentError } = await supabase
     .from('students')

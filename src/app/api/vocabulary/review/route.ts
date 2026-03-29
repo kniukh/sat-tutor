@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { awardStudentActivity } from '@/services/gamification/gamification.service';
-
-function getNextReviewDate(daysToAdd: number) {
-  const date = new Date();
-  date.setDate(date.getDate() + daysToAdd);
-  return date.toISOString().slice(0, 10);
-}
+import { evaluateReviewPolicy } from '@/services/vocabulary/review-policy.service';
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -19,7 +14,7 @@ export async function POST(request: Request) {
     result: 'correct' | 'wrong';
   } = body;
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: existing, error: existingError } = await supabase
     .from('word_progress')
@@ -36,36 +31,43 @@ export async function POST(request: Request) {
     Number(existing.times_correct ?? 0) + (result === 'correct' ? 1 : 0);
   const timesWrong =
     Number(existing.times_wrong ?? 0) + (result === 'wrong' ? 1 : 0);
+  const consecutiveCorrect =
+    result === 'correct' ? Number(existing.consecutive_correct ?? 0) + 1 : 0;
+  const consecutiveIncorrect =
+    result === 'wrong' ? Number(existing.consecutive_incorrect ?? 0) + 1 : 0;
 
-  let status = existing.status ?? 'learning';
-  let nextReviewDate = getNextReviewDate(1);
-
-  if (result === 'correct') {
-    if (timesCorrect >= 5) {
-      status = 'mastered';
-      nextReviewDate = getNextReviewDate(14);
-    } else if (timesCorrect >= 2) {
-      status = 'review';
-      nextReviewDate = getNextReviewDate(3);
-    } else {
-      status = 'learning';
-      nextReviewDate = getNextReviewDate(1);
-    }
-  }
-
-  if (result === 'wrong') {
-    status = 'learning';
-    nextReviewDate = getNextReviewDate(1);
-  }
+  const reviewDecision = evaluateReviewPolicy({
+    isCorrect: result === 'correct',
+    totalAttempts: timesSeen,
+    correctAttempts: timesCorrect,
+    wrongAttempts: timesWrong,
+    consecutiveCorrect,
+    consecutiveIncorrect,
+    previousLifecycleState: existing.lifecycle_state ?? null,
+    previousMasteryScore: Number(existing.mastery_score ?? 0),
+    currentDifficultyBand: existing.current_difficulty_band ?? null,
+    attemptDifficultyBand: existing.current_difficulty_band ?? null,
+    lastModality: existing.last_modality ?? null,
+    attemptModality: existing.last_modality ?? null,
+  });
 
   const { data, error } = await supabase
     .from('word_progress')
     .update({
-      status,
+      status: reviewDecision.status,
+      lifecycle_state: reviewDecision.lifecycleState,
+      current_difficulty_band: reviewDecision.nextDifficultyBand,
+      mastery_score: reviewDecision.masteryScore,
+      total_attempts: timesSeen,
+      correct_attempts: timesCorrect,
       times_seen: timesSeen,
       times_correct: timesCorrect,
       times_wrong: timesWrong,
-      next_review_date: nextReviewDate,
+      last_seen_at: new Date().toISOString(),
+      next_review_date: reviewDecision.nextReviewDate,
+      next_review_at: reviewDecision.nextReviewAt,
+      consecutive_correct: consecutiveCorrect,
+      consecutive_incorrect: consecutiveIncorrect,
       updated_at: new Date().toISOString(),
     })
     .eq('id', wordProgressId)

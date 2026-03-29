@@ -6,7 +6,7 @@ import { getStudentBookProgress } from '@/services/reading/book-progress.service
 import { getOrCreateStudentGamification } from '@/services/gamification/gamification.service';
 
 export async function getStudentDashboard(studentCode: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: student, error: studentError } = await supabase
     .from('students')

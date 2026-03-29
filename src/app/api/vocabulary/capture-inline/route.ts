@@ -1,113 +1,71 @@
-import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
-function normalizeItem(text: string) {
-  return text.trim().toLowerCase();
-}
+function buildContextSnippet(fullText: string, itemText: string) {
+  const lowerText = fullText.toLowerCase();
+  const lowerItem = itemText.toLowerCase();
+  const index = lowerText.indexOf(lowerItem);
 
-function getItemType(text: string): 'word' | 'phrase' {
-  return text.trim().includes(' ') ? 'phrase' : 'word';
-}
+  if (index === -1) return null;
 
-function getNextReviewDate(daysToAdd: number) {
-  const date = new Date();
-  date.setDate(date.getDate() + daysToAdd);
-  return date.toISOString().slice(0, 10);
+  const start = Math.max(0, index - 80);
+  const end = Math.min(fullText.length, index + itemText.length + 80);
+
+  return fullText.slice(start, end).trim();
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  try {
+    const body = await request.json();
+    const { studentId, lessonId, passageId, itemText, itemType } = body;
 
-  const {
-    studentId,
-    lessonId,
-    passageId,
-    itemText,
-    contextText,
-  }: {
-    studentId: string;
-    lessonId: string;
-    passageId: string;
-    itemText: string;
-    contextText?: string;
-  } = body;
+    if (!studentId || !lessonId || !itemText || !itemType) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
 
-  const normalized = normalizeItem(itemText);
+    const supabase = await createClient();
 
-  if (!studentId || !lessonId || !passageId || !normalized) {
-    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
-  }
+    let contextText: string | null = null;
 
-  const itemType = getItemType(normalized);
-  const supabase = createServerSupabaseClient();
+    if (passageId) {
+      const { data: passage } = await supabase
+        .from("lesson_passages")
+        .select("passage_text")
+        .eq("id", passageId)
+        .maybeSingle();
 
-  const { error: captureError } = await supabase
-    .from('vocabulary_capture_events')
-    .insert({
-      student_id: studentId,
-      lesson_id: lessonId,
-      passage_id: passageId,
-      item_text: normalized,
-      item_type: itemType,
-      context_text: contextText ?? null,
-    });
+      contextText = passage?.passage_text
+        ? buildContextSnippet(passage.passage_text, itemText)
+        : null;
+    }
 
-  if (captureError) {
-    return NextResponse.json({ error: captureError.message }, { status: 500 });
-  }
-
-  const { data: existing, error: existingError } = await supabase
-    .from('word_progress')
-    .select('*')
-    .eq('student_id', studentId)
-    .eq('word', normalized)
-    .eq('item_type', itemType)
-    .maybeSingle();
-
-  if (existingError) {
-    return NextResponse.json({ error: existingError.message }, { status: 500 });
-  }
-
-  if (!existing) {
-    const { error: insertError } = await supabase
-      .from('word_progress')
+    const { data, error } = await supabase
+      .from("vocabulary_capture_events")
       .insert({
         student_id: studentId,
-        word: normalized,
+        lesson_id: lessonId,
+        passage_id: passageId ?? null,
+        item_text: itemText,
         item_type: itemType,
-        status: 'learning',
-        times_seen: 1,
-        times_correct: 0,
-        times_wrong: 1,
-        next_review_date: getNextReviewDate(1),
-        source_lesson_id: lessonId,
-        metadata: {},
-      });
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
-    }
-  } else {
-    const { error: updateError } = await supabase
-      .from('word_progress')
-      .update({
-        status: 'learning',
-        times_seen: Number(existing.times_seen ?? 0) + 1,
-        times_wrong: Number(existing.times_wrong ?? 0) + 1,
-        next_review_date: getNextReviewDate(1),
-        source_lesson_id: lessonId,
-        updated_at: new Date().toISOString(),
+        context_text: contextText,
       })
-      .eq('id', existing.id);
+      .select()
+      .single();
 
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (error) {
+      console.error("capture-inline error", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
-  }
 
-  return NextResponse.json({
-    success: true,
-    itemType,
-    itemText: normalized,
-  });
+    return NextResponse.json({ ok: true, data });
+  } catch (error) {
+    console.error("capture-inline route error", error);
+    return NextResponse.json(
+      { error: "Failed to capture inline vocabulary" },
+      { status: 500 }
+    );
+  }
 }

@@ -1,44 +1,24 @@
-import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { NextResponse } from "next/server";
+import { saveQuestionProgress } from "@/services/lesson-state/lesson-state.service";
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  try {
+    const body = await request.json();
 
-  const {
-    studentId,
-    lessonId,
-    answers,
-    currentQuestionIndex,
-  }: {
-    studentId: string;
-    lessonId: string;
-    answers: Record<string, 'A' | 'B' | 'C' | 'D'>;
-    currentQuestionIndex: number;
-  } = body;
+    const result = await saveQuestionProgress({
+      studentId: body.studentId,
+      lessonId: body.lessonId,
+      questionId: body.questionId,
+      selectedOption: body.selectedOption,
+      skill: body.skill,
+    });
 
-  if (!studentId || !lessonId) {
-    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+    return NextResponse.json({ ok: true, result });
+  } catch (error) {
+    console.error("POST /api/lesson/save-question-progress error", error);
+    return NextResponse.json(
+      { error: "Failed to save question progress" },
+      { status: 500 }
+    );
   }
-
-  const supabase = createServerSupabaseClient();
-
-  const { data, error } = await supabase
-    .from('student_lesson_state')
-    .update({
-      question_answers_json: answers ?? {},
-      current_question_index: Number.isFinite(currentQuestionIndex)
-        ? currentQuestionIndex
-        : 0,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('student_id', studentId)
-    .eq('lesson_id', lessonId)
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ data });
 }

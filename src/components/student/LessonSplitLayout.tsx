@@ -1,71 +1,60 @@
-'use client';
+"use client";
 
-import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { ReactNode, useState } from "react";
 
-export default function LessonSplitLayout({
-  top,
-  bottom,
-}: {
+type Props = {
   top: ReactNode;
   bottom: ReactNode;
-}) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [topHeightPercent, setTopHeightPercent] = useState(62);
-  const [isDragging, setIsDragging] = useState(false);
+};
 
-  useEffect(() => {
-    function onMouseMove(e: MouseEvent) {
-      if (!isDragging || !containerRef.current) return;
+export default function LessonSplitLayout({ top, bottom }: Props) {
+  const [topHeight, setTopHeight] = useState(58);
+  const [dragging, setDragging] = useState(false);
 
-      const rect = containerRef.current.getBoundingClientRect();
-      const offsetY = e.clientY - rect.top;
-      const percent = (offsetY / rect.height) * 100;
+  function startDrag() {
+    setDragging(true);
+  }
 
-      const clamped = Math.max(30, Math.min(80, percent));
-      setTopHeightPercent(clamped);
-    }
+  function stopDrag() {
+    setDragging(false);
+  }
 
-    function onMouseUp() {
-      setIsDragging(false);
-    }
+  function onMove(e: React.MouseEvent<HTMLDivElement>) {
+    if (!dragging) return;
 
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const percent = (y / rect.height) * 100;
 
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [isDragging]);
+    if (percent < 25 || percent > 75) return;
+    setTopHeight(percent);
+  }
 
   return (
     <div
-      ref={containerRef}
-      className="flex h-[calc(100vh-120px)] flex-col"
+      className="h-[calc(100vh-120px)] w-full flex flex-col border rounded-xl overflow-hidden bg-white"
+      onMouseMove={onMove}
+      onMouseUp={stopDrag}
+      onMouseLeave={stopDrag}
     >
-      <section
-        className="min-h-0 overflow-y-auto rounded-2xl border bg-white p-6"
-        style={{ height: `${topHeightPercent}%` }}
+      <div
+        className="overflow-auto p-4"
+        style={{ height: `${topHeight}%` }}
       >
         {top}
-      </section>
-
-      <div
-        role="separator"
-        aria-orientation="horizontal"
-        onMouseDown={() => setIsDragging(true)}
-        className="group flex h-4 shrink-0 cursor-row-resize items-center justify-center"
-      >
-        <div className="h-1 w-20 rounded-full bg-slate-300 transition group-hover:bg-slate-400" />
       </div>
 
-      <section
-        className="min-h-0 overflow-y-auto rounded-2xl border bg-white p-6"
-        style={{ height: `${100 - topHeightPercent}%` }}
+      <div
+        className="h-2 cursor-row-resize bg-gray-200 hover:bg-gray-300"
+        onMouseDown={startDrag}
+      />
+
+      <div
+        className="overflow-auto p-4 border-t bg-gray-50"
+        style={{ height: `${100 - topHeight}%` }}
       >
         {bottom}
-      </section>
+      </div>
     </div>
   );
 }

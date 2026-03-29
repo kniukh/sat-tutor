@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     displayOrder = 1,
   } = body;
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from('lesson_passages')

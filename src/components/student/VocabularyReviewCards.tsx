@@ -1,182 +1,94 @@
-'use client';
+"use client";
 
-import { useMemo, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useMemo, useState } from "react";
 
 type VocabItem = {
   id: string;
   item_text: string;
-  item_type: 'word' | 'phrase';
-  english_explanation: string | null;
-  translated_explanation: string | null;
-  translation_language: string;
-  example_text: string | null;
-  is_understood?: boolean;
+  english_explanation?: string | null;
+  translated_explanation?: string | null;
+  example_text?: string | null;
+  context_sentence?: string | null;
+  audio_url?: string | null;
 };
 
-export default function VocabularyReviewCards({
-  items,
-}: {
+type Props = {
   items: VocabItem[];
-}) {
-  const router = useRouter();
-  const [tab, setTab] = useState<'all' | 'word' | 'phrase'>('all');
-  const [message, setMessage] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  onDone?: () => void;
+};
 
-  const filteredItems = useMemo(() => {
-    if (tab === 'all') return items;
-    return items.filter((item) => item.item_type === tab);
-  }, [items, tab]);
+export default function VocabularyReviewCards({ items, onDone }: Props) {
+  const [index, setIndex] = useState(0);
 
-  async function copyText(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setMessage('Copied');
-    } catch {
-      setMessage('Copy failed');
-    }
+  const item = useMemo(() => items[index], [items, index]);
+
+  if (!items.length) {
+    return (
+      <div className="space-y-3">
+        <div className="text-lg font-semibold">Vocabulary review</div>
+        <div>No vocabulary cards yet.</div>
+        <button
+          onClick={onDone}
+          className="px-4 py-2 rounded-lg bg-black text-white"
+        >
+          Continue
+        </button>
+      </div>
+    );
   }
 
-  function markUnderstood(vocabularyItemId: string, isUnderstood: boolean) {
-    setMessage(null);
-
-    startTransition(async () => {
-      const response = await fetch('/api/vocabulary/mark-understood', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vocabularyItemId, isUnderstood }),
-      });
-
-      const json = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        setMessage(json?.error ?? 'Update failed');
-        return;
-      }
-
-      setMessage(isUnderstood ? 'Marked as understood' : 'Marked as not understood');
-      router.refresh();
-    });
+  function next() {
+    if (index >= items.length - 1) {
+      onDone?.();
+      return;
+    }
+    setIndex((prev) => prev + 1);
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setTab('all')}
-          className={`rounded-xl px-4 py-2 ${
-            tab === 'all'
-              ? 'bg-slate-900 text-white'
-              : 'border border-slate-300 bg-white text-slate-900'
-          }`}
-        >
-          All
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setTab('word')}
-          className={`rounded-xl px-4 py-2 ${
-            tab === 'word'
-              ? 'bg-slate-900 text-white'
-              : 'border border-slate-300 bg-white text-slate-900'
-          }`}
-        >
-          Words
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setTab('phrase')}
-          className={`rounded-xl px-4 py-2 ${
-            tab === 'phrase'
-              ? 'bg-slate-900 text-white'
-              : 'border border-slate-300 bg-white text-slate-900'
-          }`}
-        >
-          Phrases
-        </button>
+    <div className="max-w-2xl space-y-4">
+      <div className="text-sm text-gray-500">
+        Card {index + 1} of {items.length}
       </div>
 
-      {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+      <div className="border rounded-2xl p-5 bg-white space-y-3">
+        <div className="text-2xl font-bold">{item.item_text}</div>
 
-      {filteredItems.length === 0 ? (
-        <p className="text-slate-600">No vocabulary items in this tab.</p>
-      ) : (
-        <div className="space-y-3">
-          {filteredItems.map((item) => (
-            <div
-              key={item.id}
-              className="rounded-xl border border-slate-200 p-4"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-900">
-                    {item.item_text}
-                  </div>
-                  <div className="text-sm text-slate-500">
-                    {item.item_type} · {item.translation_language}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => copyText(item.item_text)}
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900"
-                  >
-                    Copy
-                  </button>
-
-                  {item.is_understood ? (
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      onClick={() => markUnderstood(item.id, false)}
-                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 disabled:opacity-50"
-                    >
-                      Not Understood
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      onClick={() => markUnderstood(item.id, true)}
-                      className="rounded-xl bg-slate-900 px-3 py-2 text-white disabled:opacity-50"
-                    >
-                      Understood
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-3 space-y-2">
-                <div className="text-sm text-slate-700">
-                  <span className="font-medium">English meaning:</span>{' '}
-                  {item.english_explanation || '-'}
-                </div>
-
-                <div className="text-sm text-slate-700">
-                  <span className="font-medium">Translation:</span>{' '}
-                  {item.translated_explanation || '-'}
-                </div>
-
-                {item.example_text ? (
-                  <div className="text-sm text-slate-600">
-                    <span className="font-medium">Example:</span> {item.example_text}
-                  </div>
-                ) : null}
-
-                <div className="text-sm text-slate-500">
-                  Status: {item.is_understood ? 'understood' : 'review needed'}
-                </div>
-              </div>
-            </div>
-          ))}
+        <div>
+          <div className="text-sm text-gray-500">Meaning</div>
+          <div>{item.english_explanation || "-"}</div>
         </div>
-      )}
+
+        <div>
+          <div className="text-sm text-gray-500">Translation</div>
+          <div>{item.translated_explanation || "-"}</div>
+        </div>
+
+        <div>
+          <div className="text-sm text-gray-500">Example</div>
+          <div>{item.example_text || "-"}</div>
+        </div>
+
+        <div>
+          <div className="text-sm text-gray-500">Meaning in context</div>
+          <div>{item.context_sentence || "-"}</div>
+        </div>
+
+        {item.audio_url ? (
+          <div className="pt-2">
+            <audio controls src={item.audio_url} className="w-full" />
+          </div>
+        ) : (
+          <div className="text-sm text-amber-600">Audio not ready yet</div>
+        )}
+      </div>
+
+      <button
+        onClick={next}
+        className="px-4 py-2 rounded-lg bg-black text-white"
+      >
+        {index >= items.length - 1 ? "Continue" : "Next"}
+      </button>
     </div>
   );
 }

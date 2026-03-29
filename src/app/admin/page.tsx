@@ -7,7 +7,7 @@ import { AdminStatsGrid } from '@/components/admin/AdminStatsGrid';
 export default async function AdminPage() {
   await requireAdmin();
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();;
 
   const [
     studentsResult,
@@ -93,6 +93,26 @@ export default async function AdminPage() {
           <div className="font-semibold text-slate-900">AI Pipeline</div>
           <div className="mt-2 text-sm text-slate-600">
             Analyze passages, create lessons, and generate questions.
+          </div>
+        </Link>
+
+        <Link
+          href="/admin/vocabulary"
+          className="rounded-2xl border bg-white p-5 hover:bg-slate-50"
+        >
+          <div className="font-semibold text-slate-900">Weekly Vocabulary</div>
+          <div className="mt-2 text-sm text-slate-600">
+            Manage weekly vocabulary drills and progress.
+          </div>
+        </Link>
+
+        <Link
+          href="/admin/skills"
+          className="rounded-2xl border bg-white p-5 hover:bg-slate-50"
+        >
+          <div className="font-semibold text-slate-900">Skill Tracking</div>
+          <div className="mt-2 text-sm text-slate-600">
+            Monitor student skill development and analytics.
           </div>
         </Link>
       </div>

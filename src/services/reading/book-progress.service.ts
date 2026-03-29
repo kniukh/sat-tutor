@@ -4,7 +4,7 @@ export async function updateStudentBookProgress(params: {
   studentId: string;
   lessonId: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: generatedPassage, error: generatedError } = await supabase
     .from('generated_passages')
@@ -114,7 +114,7 @@ export async function updateStudentBookProgress(params: {
 }
 
 export async function getStudentBookProgress(studentId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from('student_book_progress')

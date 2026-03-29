@@ -8,7 +8,7 @@ import { SourcesTable } from '@/components/admin/SourcesTable';
 export default async function AdminSourcesPage() {
   await requireAdmin();
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: sources, error } = await supabase
     .from('source_documents')

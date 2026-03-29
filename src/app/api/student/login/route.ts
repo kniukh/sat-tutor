@@ -10,7 +10,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Код доступа обязателен' }, { status: 400 });
     }
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
     const { data: student, error } = await supabase
       .from('students')
       .select('id,full_name,access_code,is_active')
@@ -27,3 +27,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Ошибка сервера при проверке кода' }, { status: 500 });
   }
 }
+

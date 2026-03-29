@@ -40,12 +40,16 @@ export default function PrepareVocabularyDrillsButton({
         type="button"
         onClick={onPrepare}
         disabled={isPending}
-        className="rounded-xl bg-slate-900 px-5 py-3 text-white disabled:opacity-50"
+        className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
       >
         {isPending ? 'Preparing...' : 'Prepare Vocabulary Drills'}
       </button>
 
-      {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+      {message ? (
+        <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 }

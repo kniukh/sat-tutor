@@ -1,46 +1,146 @@
-SAT AI Tutor — Full Technical Specification
-1. Product Vision
-SAT AI Tutor is an AI-powered platform designed to prepare students for the SAT Reading section
-through full-book reading methodology. Instead of isolated passages, students read complete books
-split into structured passages. The system integrates vocabulary learning, comprehension testing, and
-writing development into one continuous learning loop.
-2. Architecture
-Frontend: - Next.js 15 (App Router) - TypeScript - TailwindCSS Backend: - Supabase (PostgreSQL +
-Auth) - API Routes (Next.js) AI Layer: - OpenAI GPT-5 - Services: Analyzer, Generator, Vocabulary AI,
-Structure Detector Core Modules: - Lesson Engine - Vocabulary System - PDF Processing Pipeline 
-Admin Panel - Analytics Engine
-3. Database Overview
-Key Tables: - students - lessons - generated_passages - source_documents 
-source_document_pages - source_document_structure - source_document_clean_text 
-vocabulary_items - student_lesson_state Relationships: - source_document → pages → clean_text →
-passages → lessons
-4. Lesson Flow
-Stages: 1. First Read — student reads and collects unknown words 2. Vocabulary Review — AI
-explains words (translation + meaning) 3. Second Read — deeper comprehension 4. Questions —
-SAT-style + vocabulary questions 5. Completion — scoring and analytics UI: - Split screen (passage +
-workspace) - Draggable divider - HUD with progress tracking
-5. Lesson Player
-Features: - One-question-at-a-time interface - Keyboard navigation (1–4, arrows, enter) - Autosave
-answers - Resume session - Progress tracking - Submit → scoring + analytics Data: - answers JSON 
-weak skills detection - vocabulary tracking
-6. AI System
-AI is used in multiple layers: - Passage Analyzer (difficulty, role, vocab density) - Question Generator 
-Vocabulary explanation generator - PDF structure detection Analyzer V2 outputs: - difficulty 
-text_mode - vocab_density - phrase_density - recommended questions - vocab targets
-7. PDF Pipeline
-Steps: 1. Upload PDF 2. Extract pages 3. Detect structure (chapters, body) 4. Clean text 5. Split into
-chapters 6. Chunk into passages 7. Analyze passages Challenges: - noisy extraction - headers/footers- chapter detection
-8. Features
-Done: - Lesson system - Vocabulary flow - Admin panel - Passage generation - AI explanations In
-Progress: - PDF pipeline - Analyzer V2 - Vocabulary expansion Planned: - Review mode 
-Achievements - Adaptive difficulty - Audio system - Parent dashboard
-9. Current Problems- PDF text extraction quality - Weak chapter detection - Lack of preprocessing before AI - No hybrid
-rule+AI system yet - Limited vocabulary intelligence
-10. Roadmap
-Phase 1: - Improve PDF cleaning - Fix structure detection Phase 2: - Analyzer V2 rollout 
-Vocabulary-heavy question generation Phase 3: - Review system - Audio integration Phase 4: 
-Adaptive learning engine - Full analytics dashboard Phase 5: - Scaling content library
-11. Future Vision
-The system evolves into a fully adaptive SAT preparation platform where: - Content is auto-generated
-from books - AI adapts difficulty per student - Vocabulary becomes personalized - Writing improves with
-continuous feedback Goal: Replace traditional SAT prep with AI-driven learning system.
+# SAT Tutor
+
+SAT Tutor is a Next.js + Supabase learning app focused on SAT Reading, guided book progress, lesson analytics, and vocabulary review.
+
+The project currently has four major student surfaces:
+- Reading lessons at `/s/[code]/lesson/[lessonId]`
+- Books library and chapter-grouped book detail at `/s/[code]/book`
+- Vocabulary Studio at `/s/[code]/vocabulary`
+- Student dashboard at `/s/[code]`
+
+## Current Product Shape
+
+### Reading lessons
+- Stage-based lesson flow: `first_read -> vocab_review -> second_read -> questions -> completed`
+- Inline vocabulary capture inside the passage
+- Vocabulary cards with audio and explanations
+- Question-by-question SAT practice
+- Reading analytics and per-question timing
+- AI Tutor text explanation from the passage
+- Mistake Brain analysis after lesson completion
+
+### Books
+- Kindle-style library page
+- Featured current book
+- Progress-first cards
+- Single-book detail page with lessons grouped by chapter
+- Reading order remains linear inside books
+
+### Vocabulary Studio
+- Queue-backed vocabulary review
+- Three student modes:
+  - `learn_new_words`
+  - `review_weak_words`
+  - `mixed_practice`
+- Reusable vocab exercise shell
+- Supported exercise types:
+  - `meaning_match`
+  - `fill_blank`
+  - `context_meaning`
+  - `synonym`
+  - `collocation`
+- Session builder and drill session builder
+- Normalized attempt logging and local debug telemetry
+
+## Tech Stack
+- Next.js 16
+- React 19
+- TypeScript
+- Supabase
+- OpenAI
+- Tailwind CSS 4
+
+## Local Setup
+
+### 1. Install
+```bash
+npm install
+```
+
+### 2. Required environment variables
+Create `.env.local` with:
+```env
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+```
+
+Environment validation lives in [env.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/lib/env.ts).
+
+### 3. Run
+```bash
+npm run dev
+```
+
+### 4. Build check
+```bash
+npm run build
+```
+
+## Common Commands
+- `npm run dev`
+- `npm run build`
+- `npm run lint`
+
+## Current Architecture Rules
+- Keep `page.tsx` files thin.
+- Put business logic in `src/services`.
+- Keep API routes thin and orchestration-only.
+- Reuse existing Supabase client helpers:
+  - [server.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/lib/supabase/server.ts)
+  - [client.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/lib/supabase/client.ts)
+- Do not break linear book order.
+- Prefer explicit typed mapping between DB rows and UI payloads.
+
+## Important Student Routes
+- `/s/[code]` — dashboard
+- `/s/[code]/book` — books library
+- `/s/[code]/book/[sourceDocumentId]` — single book detail
+- `/s/[code]/lesson/[lessonId]` — reading lesson flow
+- `/s/[code]/vocabulary` — vocabulary studio
+- `/s/[code]/progress` — student progress page
+
+## Important Dev / Test Routes
+- `/test`
+- `/test/exercise-gallery`
+
+The exercise gallery is useful for quickly previewing all vocab exercise types with `single`, `sequence`, and `loop first item` modes.
+
+## Important Service Areas
+- `src/services/reading`
+  - books page
+  - book detail
+  - book progress
+  - reading metrics
+- `src/services/lesson-state`
+  - stage progression
+  - lesson completion
+- `src/services/analytics`
+  - skill tracking
+  - question timing
+  - Mistake Brain
+- `src/services/vocabulary`
+  - adapters
+  - session building
+  - exercise attempts
+  - word progress
+  - review queue
+  - vocabulary page aggregation
+- `src/services/ai`
+  - tutor
+  - passage analysis
+  - vocabulary generation
+  - mistake analysis
+
+## Documentation Map
+- [architecture.md](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/architecture.md)
+- [db.md](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/db.md)
+- [project.md](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/project.md)
+- [lesson-flow.md](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/lesson-flow.md)
+
+## Current State Notes
+- Reading analytics, question timing, Mistake Brain, and vocab telemetry are implemented.
+- Vocab attempt persistence and word progress updates are live.
+- Review queue generation is rule-based for now.
+- Adaptive difficulty is not implemented yet.
+- Books mode is chapter-aware in the UI, but still linear in progression.

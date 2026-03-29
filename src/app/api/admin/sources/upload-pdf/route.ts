@@ -42,7 +42,7 @@ export async function POST(request: Request) {
 
     await fs.writeFile(fullPath, buffer);
 
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
 
     const { data: sourceDocument, error: sourceError } = await supabase
       .from('source_documents')

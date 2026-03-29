@@ -1,454 +1,420 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from "react";
 
-type VocabItem = {
+type KnownWord = {
   id: string;
   item_text: string;
-  item_type: 'word' | 'phrase';
-  english_explanation: string | null;
-  translated_explanation: string | null;
-  translation_language: string;
-  example_text: string | null;
+  english_explanation?: string | null;
+  translated_explanation?: string | null;
+  context_sentence?: string | null;
   audio_url?: string | null;
-  audio_status?: 'pending' | 'ready' | 'failed';
 };
 
-type Segment = {
+type Props = {
+  studentId: string;
+  lessonId: string;
+  passageId?: string;
+  passageText: string;
+  knownWords?: KnownWord[];
+  onCaptured?: (itemText: string) => void;
+};
+
+type HoverCardState = {
+  x: number;
+  y: number;
+  item: KnownWord;
+  pinned?: boolean;
+} | null;
+
+type TutorPopupState = {
+  x: number;
+  y: number;
   text: string;
-  vocabItem: VocabItem | null;
-};
-
-type PreviewData = {
-  item_text: string;
-  item_type: 'word' | 'phrase';
-  plain_english_meaning: string;
-  translation: string;
-  context_meaning: string;
-};
-
-function escapeRegExp(text: string) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+  explanation: string | null;
+  loading: boolean;
+  error: string | null;
+} | null;
 
 function normalizeWord(word: string) {
   return word
     .toLowerCase()
-    .replace(/^[^a-zA-Zа-яА-ЯăîâșțĂÎÂȘȚ]+|[^a-zA-Zа-яА-ЯăîâșțĂÎÂȘȚ]+$/g, '');
+    .replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, "")
+    .trim();
 }
 
-function splitTextWithPhrases(text: string, phraseItems: VocabItem[]): Segment[] {
-  if (phraseItems.length === 0) {
-    return [{ text, vocabItem: null }];
+function getWordCandidates(word: string) {
+  const normalized = normalizeWord(word);
+  if (!normalized) return [];
+
+  const candidates = new Set<string>();
+  candidates.add(normalized);
+
+  if (normalized.endsWith("s") && normalized.length > 3) {
+    candidates.add(normalized.slice(0, -1));
   }
 
-  const sorted = [...phraseItems].sort((a, b) => b.item_text.length - a.item_text.length);
-
-  const matches: Array<{ start: number; end: number; vocabItem: VocabItem }> = [];
-
-  for (const item of sorted) {
-    const pattern = new RegExp(escapeRegExp(item.item_text), 'gi');
-    let match: RegExpExecArray | null;
-
-    while ((match = pattern.exec(text)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-
-      const overlaps = matches.some(
-        (existing) => !(end <= existing.start || start >= existing.end),
-      );
-
-      if (!overlaps) {
-        matches.push({ start, end, vocabItem: item });
-      }
-    }
+  if (normalized.endsWith("es") && normalized.length > 4) {
+    candidates.add(normalized.slice(0, -2));
   }
 
-  matches.sort((a, b) => a.start - b.start);
-
-  if (matches.length === 0) {
-    return [{ text, vocabItem: null }];
+  if (normalized.endsWith("ed") && normalized.length > 4) {
+    candidates.add(normalized.slice(0, -2));
   }
 
-  const segments: Segment[] = [];
-  let cursor = 0;
-
-  for (const match of matches) {
-    if (cursor < match.start) {
-      segments.push({ text: text.slice(cursor, match.start), vocabItem: null });
-    }
-
-    segments.push({
-      text: text.slice(match.start, match.end),
-      vocabItem: match.vocabItem,
-    });
-
-    cursor = match.end;
+  if (normalized.endsWith("ing") && normalized.length > 5) {
+    candidates.add(normalized.slice(0, -3));
   }
 
-  if (cursor < text.length) {
-    segments.push({ text: text.slice(cursor), vocabItem: null });
-  }
-
-  return segments;
+  return Array.from(candidates);
 }
 
 export default function InteractivePassageReader({
-  title,
-  text,
-  vocabItems,
   studentId,
   lessonId,
   passageId,
-}: {
-  title?: string | null;
-  text: string;
-  vocabItems: VocabItem[];
-  studentId: string;
-  lessonId: string;
-  passageId: string;
-}) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  passageText,
+  knownWords = [],
+  onCaptured,
+}: Props) {
+  const [selection, setSelection] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [popup, setPopup] = useState<{ x: number; y: number } | null>(null);
+  const [hoverCard, setHoverCard] = useState<HoverCardState>(null);
+  const [tutorPopup, setTutorPopup] = useState<TutorPopupState>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const [selectedItem, setSelectedItem] = useState<VocabItem | null>(null);
-  const [selectionText, setSelectionText] = useState('');
-  const [selectionPosition, setSelectionPosition] = useState<{ x: number; y: number } | null>(null);
-  const [inlineMessage, setInlineMessage] = useState<string | null>(null);
-  const [preview, setPreview] = useState<PreviewData | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [audioLoadingId, setAudioLoadingId] = useState<string | null>(null);
-
-  const { phraseItems, wordMap, existingItems } = useMemo(() => {
-    const phrases = vocabItems.filter((item) => item.item_type === 'phrase');
-    const words = new Map<string, VocabItem>();
-    const existing = new Set<string>();
-
-    for (const item of vocabItems) {
-      existing.add(item.item_text.toLowerCase());
-
-      if (item.item_type === 'word') {
-        words.set(item.item_text.toLowerCase(), item);
-      }
+  const knownWordsMap = useMemo(() => {
+    const map = new Map<string, KnownWord>();
+    for (const item of knownWords) {
+      const key = normalizeWord(item.item_text.trim());
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, item);
     }
+    return map;
+  }, [knownWords]);
 
-    return {
-      phraseItems: phrases,
-      wordMap: words,
-      existingItems: existing,
-    };
-  }, [vocabItems]);
+  function handleMouseUp() {
+    const sel = window.getSelection();
+    const text = sel?.toString()?.trim() ?? "";
 
-  useEffect(() => {
-    function handleSelection() {
-      const selection = window.getSelection();
-      const raw = selection?.toString().trim() ?? '';
-
-      if (!raw || !containerRef.current || !selection || selection.rangeCount === 0) {
-        setSelectionText('');
-        setSelectionPosition(null);
-        setPreview(null);
-        return;
-      }
-
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      const containerRect = containerRef.current.getBoundingClientRect();
-
-      const normalized = raw.toLowerCase().trim();
-
-      if (existingItems.has(normalized)) {
-        setSelectionText('');
-        setSelectionPosition(null);
-        setPreview(null);
-        return;
-      }
-
-      setSelectionText(raw);
-      setSelectionPosition({
-        x: rect.left - containerRect.left,
-        y: rect.top - containerRect.top - 40,
-      });
-      setPreview(null);
-    }
-
-    document.addEventListener('mouseup', handleSelection);
-    return () => document.removeEventListener('mouseup', handleSelection);
-  }, [existingItems]);
-
-  async function loadPreview() {
-    if (!selectionText) return;
-
-    setPreviewLoading(true);
-    setInlineMessage(null);
-
-    const response = await fetch('/api/vocabulary/preview-inline', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        studentId,
-        lessonId,
-        passageId,
-        itemText: selectionText,
-      }),
-    });
-
-    const json = await response.json().catch(() => null);
-
-    if (!response.ok) {
-      setInlineMessage(json?.error ?? 'Preview failed');
-      setPreviewLoading(false);
+    if (!text) {
+      setSelection("");
+      setPopup(null);
+      setTutorPopup(null);
       return;
     }
 
-    setPreview(json?.data ?? null);
-    setPreviewLoading(false);
-  }
+    const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
+    const rect = range?.getBoundingClientRect();
 
-  async function addInlineSelection() {
-    if (!selectionText) return;
+    setSelection(text);
 
-    const response = await fetch('/api/vocabulary/capture-inline', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        studentId,
-        lessonId,
-        passageId,
-        itemText: selectionText,
-        contextText: text.slice(0, 300),
-      }),
-    });
-
-    const json = await response.json().catch(() => null);
-
-    if (!response.ok) {
-      setInlineMessage(json?.error ?? 'Save failed');
-      return;
+    if (rect) {
+      setPopup({
+        x: rect.left + window.scrollX,
+        y: rect.top + window.scrollY - 40,
+      });
     }
-
-    setInlineMessage(`Added: ${json?.itemText ?? selectionText}`);
-    setSelectionText('');
-    setSelectionPosition(null);
-    setPreview(null);
   }
 
-  async function playAudio(item: VocabItem) {
-    if (item.item_type !== 'word') return;
+  async function addSelectedToVocabulary() {
+    const itemText = selection.trim();
+    if (!itemText) return;
 
-    setAudioLoadingId(item.id);
+    setSaving(true);
 
-    let audioUrl = item.audio_url ?? null;
-
-    if (!audioUrl || item.audio_status !== 'ready') {
-      const response = await fetch('/api/vocabulary/generate-audio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vocabularyItemId: item.id }),
+    try {
+      await fetch("/api/vocabulary/capture-inline", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          studentId,
+          lessonId,
+          passageId,
+          itemText,
+          itemType: itemText.includes(" ") ? "phrase" : "word",
+        }),
       });
 
-      const json = await response.json().catch(() => null);
+      onCaptured?.(itemText);
+      setSelection("");
+      setPopup(null);
+      window.getSelection()?.removeAllRanges();
+    } catch (error) {
+      console.error("capture-inline error", error);
+      alert("Failed to save selected vocabulary");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function explainSelection() {
+    const itemText = selection.trim();
+    if (!itemText || !popup) return;
+
+    setTutorPopup({
+      x: popup.x,
+      y: popup.y + 52,
+      text: itemText,
+      explanation: null,
+      loading: true,
+      error: null,
+    });
+
+    try {
+      const response = await fetch("/api/ai/tutor", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          studentId,
+          lessonId,
+          selectedText: itemText,
+          passageText,
+        }),
+      });
+
+      const payload = await response.json();
 
       if (!response.ok) {
-        setInlineMessage(json?.error ?? 'Audio failed');
-        setAudioLoadingId(null);
-        return;
+        throw new Error(payload?.error ?? "Failed to explain selected text");
       }
 
-      audioUrl = json?.data?.audioUrl ?? null;
+      setTutorPopup((prev) =>
+        prev
+          ? {
+              ...prev,
+              explanation: payload.data.explanation,
+              loading: false,
+              error: null,
+            }
+          : prev
+      );
+    } catch (error: any) {
+      setTutorPopup((prev) =>
+        prev
+          ? {
+              ...prev,
+              explanation: null,
+              loading: false,
+              error: error?.message ?? "AI explanation is unavailable right now.",
+            }
+          : prev
+      );
     }
-
-    if (audioUrl) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-
-      audioRef.current = new Audio(audioUrl);
-      audioRef.current.play().catch(() => {});
-    }
-
-    setAudioLoadingId(null);
   }
 
-  const paragraphs = text.split('\n').filter(Boolean);
+  function openCard(
+    event: React.MouseEvent<HTMLSpanElement>,
+    item: KnownWord,
+    pinned = false
+  ) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setHoverCard({
+      x: rect.left + window.scrollX,
+      y: rect.bottom + window.scrollY + 8,
+      item,
+      pinned,
+    });
+  }
 
-  return (
-    <div ref={containerRef} className="relative space-y-4">
-      {title ? <h3 className="text-lg font-medium text-slate-900">{title}</h3> : null}
+  function maybeCloseCard() {
+    if (hoverCard?.pinned) return;
+    setHoverCard(null);
+  }
 
-      {selectionText && selectionPosition ? (
-        <div
-          className="absolute z-20"
-          style={{
-            left: selectionPosition.x,
-            top: Math.max(selectionPosition.y, 0),
+  function tokenize(text: string) {
+    return text.split(/(\s+)/g);
+  }
+
+  function playAudio(url?: string | null) {
+    if (!url) return;
+    if (audioRef.current) {
+      audioRef.current.src = url;
+      audioRef.current.play().catch((e) => console.error("playAudio error", e));
+    }
+  }
+
+  const renderedTokens = useMemo(() => {
+    const tokens = tokenize(passageText);
+
+    return tokens.map((token, index) => {
+      const normalized = normalizeWord(token);
+
+      if (!normalized) {
+        return <span key={`${token}-${index}`}>{token}</span>;
+      }
+
+      const candidates = getWordCandidates(token);
+
+      let known = null;
+      for (const candidate of candidates) {
+        const found = knownWordsMap.get(candidate);
+        if (found) {
+          known = found;
+          break;
+        }
+      }
+
+      if (!known) {
+        return <span key={`${token}-${index}`}>{token}</span>;
+      }
+
+      return (
+        <span
+          key={`${token}-${index}`}
+          className="underline decoration-blue-500 decoration-2 cursor-pointer"
+          onMouseEnter={(e) => openCard(e, known, false)}
+          onMouseLeave={maybeCloseCard}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            openCard(e, known, true);
           }}
         >
-          <button
-            type="button"
-            onClick={loadPreview}
-            className="rounded-xl bg-slate-900 px-3 py-2 text-sm text-white shadow-lg"
-          >
-            {previewLoading ? 'Loading...' : 'Preview'}
-          </button>
-        </div>
-      ) : null}
+          {token}
+        </span>
+      );
+    });
+  }, [passageText, knownWordsMap, hoverCard?.pinned]);
 
-      {inlineMessage ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-          {inlineMessage}
-        </div>
-      ) : null}
+  return (
+    <div className="relative space-y-3">
+      <audio ref={audioRef} hidden />
 
-      {preview ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="font-semibold text-slate-900">{preview.item_text}</div>
-          <div className="mt-2 text-sm text-slate-700">
-            English meaning: {preview.plain_english_meaning}
-          </div>
-          <div className="mt-1 text-sm text-slate-700">
-            Translation: {preview.translation}
-          </div>
-          <div className="mt-1 text-sm text-slate-600">
-            Context meaning: {preview.context_meaning}
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={addInlineSelection}
-              className="rounded-xl bg-slate-900 px-4 py-2 text-white"
-            >
-              Save to vocabulary
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setPreview(null);
-                setSelectionText('');
-                setSelectionPosition(null);
-              }}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-slate-900"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="space-y-4">
-        {paragraphs.map((paragraph, paragraphIndex) => {
-          const phraseSegments = splitTextWithPhrases(paragraph, phraseItems);
-
-          return (
-            <p
-              key={`${paragraphIndex}-${paragraph.slice(0, 20)}`}
-              className="whitespace-pre-wrap leading-7 text-slate-700"
-            >
-              {phraseSegments.map((segment, segmentIndex) => {
-                if (segment.vocabItem) {
-                  return (
-                    <button
-                      key={`${paragraphIndex}-phrase-${segmentIndex}`}
-                      type="button"
-                      onClick={() => setSelectedItem(segment.vocabItem)}
-                      className="rounded px-0.5 underline decoration-dotted underline-offset-4 hover:bg-blue-50"
-                    >
-                      {segment.text}
-                    </button>
-                  );
-                }
-
-                const parts = segment.text.split(/(\s+)/);
-
-                return parts.map((part, partIndex) => {
-                  if (/^\s+$/.test(part)) {
-                    return (
-                      <span key={`${paragraphIndex}-${segmentIndex}-${partIndex}`}>
-                        {part}
-                      </span>
-                    );
-                  }
-
-                  const normalized = normalizeWord(part);
-                  const vocabItem = normalized ? wordMap.get(normalized) : null;
-
-                  if (!vocabItem) {
-                    return (
-                      <span key={`${paragraphIndex}-${segmentIndex}-${partIndex}`}>
-                        {part}
-                      </span>
-                    );
-                  }
-
-                  return (
-                    <button
-                      key={`${paragraphIndex}-${segmentIndex}-${partIndex}`}
-                      type="button"
-                      onClick={() => setSelectedItem(vocabItem)}
-                      className="rounded px-0.5 underline decoration-dotted underline-offset-4 hover:bg-blue-50"
-                    >
-                      {part}
-                    </button>
-                  );
-                });
-              })}
-            </p>
-          );
-        })}
+      <div
+        className="whitespace-pre-wrap leading-7 text-[17px] text-slate-900 select-text"
+        onMouseUp={handleMouseUp}
+      >
+        {renderedTokens}
       </div>
 
-      {selectedItem ? (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+      {popup && selection ? (
+        <div className="fixed z-50" style={{ left: popup.x, top: popup.y }}>
+          <div className="flex items-center gap-2 rounded-xl bg-white/95 p-2 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+            <button
+              type="button"
+              onClick={addSelectedToVocabulary}
+              disabled={saving}
+              className="px-3 py-2 rounded-lg bg-black text-white text-sm disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Add to Vocabulary"}
+            </button>
+            <button
+              type="button"
+              onClick={explainSelection}
+              className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-900"
+            >
+              Explain
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {tutorPopup ? (
+        <div
+          className="fixed z-50 w-96 rounded-2xl border bg-white p-4 shadow-xl"
+          style={{ left: tutorPopup.x, top: tutorPopup.y }}
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="font-semibold text-slate-900">
-                {selectedItem.item_text}
+              <div className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                AI Tutor
               </div>
-              <div className="text-sm text-slate-500">
-                {selectedItem.item_type} · {selectedItem.translation_language}
+              <div className="mt-1 text-sm font-semibold text-slate-900">
+                {tutorPopup.text}
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setTutorPopup(null)}
+              className="rounded-lg border px-2 py-1 text-sm text-slate-600"
+            >
+              Close
+            </button>
+          </div>
 
-            <div className="flex gap-2">
-              {selectedItem.item_type === 'word' ? (
-                <button
-                  type="button"
-                  onClick={() => playAudio(selectedItem)}
-                  className="rounded border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700"
-                >
-                  {audioLoadingId === selectedItem.id ? '...' : '🔊'}
-                </button>
-              ) : null}
+          <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+            {tutorPopup.loading ? "Thinking..." : null}
+            {!tutorPopup.loading && tutorPopup.explanation ? tutorPopup.explanation : null}
+            {!tutorPopup.loading && tutorPopup.error ? tutorPopup.error : null}
+          </div>
+        </div>
+      ) : null}
 
+      {hoverCard ? (
+        <div
+          className="fixed z-50 w-80 rounded-xl border bg-white shadow-xl p-4 space-y-3"
+          style={{ left: hoverCard.x, top: hoverCard.y }}
+          onMouseEnter={() => {
+            if (hoverCard) setHoverCard({ ...hoverCard });
+          }}
+          onMouseLeave={() => {
+            if (!hoverCard?.pinned) setHoverCard(null);
+          }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-lg font-semibold">{hoverCard.item.item_text}</div>
+
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setSelectedItem(null)}
-                className="rounded border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700"
+                onClick={() => playAudio(hoverCard.item.audio_url)}
+                disabled={!hoverCard.item.audio_url}
+                className="text-xl disabled:opacity-40"
+                title="Play audio"
               >
-                Close
+                🔊
               </button>
+
+              {hoverCard.pinned ? (
+                <button
+                  type="button"
+                  onClick={() => setHoverCard(null)}
+                  className="text-sm px-2 py-1 rounded border"
+                >
+                  Close
+                </button>
+              ) : null}
             </div>
           </div>
 
-          <div className="mt-3 space-y-2 text-sm">
-            <div className="text-slate-700">
-              <span className="font-medium">English meaning:</span>{' '}
-              {selectedItem.english_explanation || '-'}
-            </div>
-
-            <div className="text-slate-700">
-              <span className="font-medium">Translation:</span>{' '}
-              {selectedItem.translated_explanation || '-'}
-            </div>
-
-            {selectedItem.example_text ? (
-              <div className="text-slate-600">
-                <span className="font-medium">Example:</span>{' '}
-                {selectedItem.example_text}
+          {hoverCard.item.english_explanation ? (
+            <div>
+              <div className="text-xs text-slate-500">Meaning</div>
+              <div className="text-sm text-slate-800">
+                {hoverCard.item.english_explanation}
               </div>
-            ) : null}
+            </div>
+          ) : null}
+
+          {hoverCard.item.translated_explanation ? (
+            <div>
+              <div className="text-xs text-slate-500">Translation</div>
+              <div className="text-sm text-slate-800">
+                {hoverCard.item.translated_explanation}
+              </div>
+            </div>
+          ) : null}
+
+          <div>
+            <div className="text-xs text-slate-500">Meaning in context</div>
+            <div className="text-sm text-slate-800">
+              {hoverCard.item.context_sentence || "Context not available yet."}
+            </div>
+          </div>
+
+          {hoverCard.item.audio_url ? (
+            <div className="text-xs text-green-600">Audio ready</div>
+          ) : (
+            <div className="text-xs text-amber-600">Audio not ready yet</div>
+          )}
+
+          <div className="text-xs text-slate-400">
+            Hover to preview • Right-click to pin
           </div>
         </div>
       ) : null}

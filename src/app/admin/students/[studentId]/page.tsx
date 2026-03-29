@@ -14,7 +14,7 @@ export default async function AdminStudentDetailPage({
   await requireAdmin();
 
   const { studentId } = await params;
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: student, error: studentError } = await supabase
     .from('students')

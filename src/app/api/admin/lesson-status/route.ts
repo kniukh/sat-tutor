@@ -7,7 +7,7 @@ export async function POST(request:Request){
 
   const {lessonId,status} = body
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   const {error} = await supabase
     .from('lessons')

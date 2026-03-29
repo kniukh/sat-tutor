@@ -1,110 +1,140 @@
-'use client';
+"use client";
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState } from "react";
 
-type CaptureItem = {
-  itemText: string;
-  itemType: 'word' | 'phrase';
-  contextText?: string;
+type VocabItem = {
+  id: string;
+  item_text: string;
+  english_explanation?: string | null;
+  translated_explanation?: string | null;
+  example_text?: string | null;
+  audio_url?: string | null;
+};
+
+type Props = {
+  studentId: string;
+  lessonId: string;
+  passageId?: string;
+  presetItems?: string[];
+  onItemsChange?: (items: string[]) => void;
+  onSubmitted?: (items: VocabItem[]) => void;
 };
 
 export default function PassageVocabularyCapture({
   studentId,
   lessonId,
   passageId,
-  passageText,
-}: {
-  studentId: string;
-  lessonId: string;
-  passageId: string;
-  passageText: string;
-}) {
-  const [rawInput, setRawInput] = useState('');
-  const [itemType, setItemType] = useState<'word' | 'phrase'>('word');
-  const [message, setMessage] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  presetItems = [],
+  onItemsChange,
+  onSubmitted,
+}: Props) {
+  const [items, setItems] = useState<string[]>(presetItems);
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  function parseItems(input: string): CaptureItem[] {
-    return input
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((itemText) => ({
-        itemText,
-        itemType,
-        contextText: passageText.slice(0, 300),
-      }));
+  useEffect(() => {
+    setItems(presetItems);
+  }, [presetItems]);
+
+  function sync(next: string[]) {
+    setItems(next);
+    onItemsChange?.(next);
   }
 
-  function onSave() {
-    setMessage(null);
+  function addItem() {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (items.some((x) => x.toLowerCase() === trimmed.toLowerCase())) return;
+    sync([...items, trimmed]);
+    setValue("");
+  }
 
-    startTransition(async () => {
-      const items = parseItems(rawInput);
+  function removeItem(item: string) {
+    sync(items.filter((x) => x !== item));
+  }
 
-      if (items.length === 0) {
-        setMessage('Nothing to save');
-        return;
+  async function submitVocabulary() {
+    setSaving(true);
+
+    try {
+      for (const item of items) {
+        await fetch("/api/vocabulary/capture-inline", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId,
+            lessonId,
+            passageId,
+            itemText: item,
+            itemType: item.includes(" ") ? "phrase" : "word",
+          }),
+        });
       }
 
-      const response = await fetch('/api/vocabulary/capture', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId,
-          lessonId,
-          passageId,
-          items,
-        }),
+      const generatedResponse = await fetch("/api/vocabulary/generate-from-captures", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId, lessonId }),
       });
 
-      const json = await response.json().catch(() => null);
+      const generatedJson = await generatedResponse.json();
 
-      if (!response.ok) {
-        setMessage(json?.error ?? 'Save failed');
-        return;
-      }
+      await fetch("/api/lesson/submit-vocabulary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId, lessonId }),
+      });
 
-      setRawInput('');
-      setMessage('Saved to vocabulary');
-    });
+      onSubmitted?.(generatedJson.items ?? []);
+    } catch (error) {
+      console.error("submitVocabulary error", error);
+      alert("Failed to submit vocabulary");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <div className="mt-4 rounded-xl border bg-white p-4">
-      <div className="mb-2 font-medium text-slate-900">
-        Unknown words / phrases
-      </div>
+    <div className="space-y-4">
+      <div className="text-lg font-semibold">Unknown words and phrases</div>
 
-      <select
-        value={itemType}
-        onChange={(e) => setItemType(e.target.value as 'word' | 'phrase')}
-        className="mb-3 rounded-xl border px-3 py-2 text-slate-900"
-      >
-        <option value="word">word</option>
-        <option value="phrase">phrase</option>
-      </select>
-
-      <textarea
-        value={rawInput}
-        onChange={(e) => setRawInput(e.target.value)}
-        placeholder="One item per line"
-        rows={4}
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
-      />
-
-      <div className="mt-3 flex items-center gap-3">
+      <div className="flex gap-2">
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") addItem();
+          }}
+          className="flex-1 border rounded-lg px-3 py-2"
+          placeholder="Type a word or phrase"
+        />
         <button
-          type="button"
-          onClick={onSave}
-          disabled={isPending}
-          className="rounded-xl bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
+          onClick={addItem}
+          className="px-4 py-2 rounded-lg bg-black text-white"
         >
-          {isPending ? 'Saving...' : 'Save vocabulary'}
+          Add
         </button>
-
-        {message ? <span className="text-sm text-slate-600">{message}</span> : null}
       </div>
+
+      <div className="flex flex-wrap gap-2">
+        {items.map((item) => (
+          <button
+            key={item}
+            onClick={() => removeItem(item)}
+            className="px-3 py-1 rounded-full bg-blue-100 text-blue-900"
+          >
+            {item} ×
+          </button>
+        ))}
+      </div>
+
+      <button
+        onClick={submitVocabulary}
+        disabled={saving}
+        className="px-4 py-2 rounded-lg bg-green-600 text-white disabled:opacity-50"
+      >
+        {saving ? "Submitting..." : "Submit Vocabulary"}
+      </button>
     </div>
   );
 }

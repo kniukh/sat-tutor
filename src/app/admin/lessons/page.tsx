@@ -7,7 +7,7 @@ import { AdminShell } from '@/components/admin/AdminShell';
 export default async function AdminLessonsPage() {
   await requireAdmin();
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: lessons, error } = await supabase
     .from('lessons')

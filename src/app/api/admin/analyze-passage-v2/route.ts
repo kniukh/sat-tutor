@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     generatedPassageId: string;
   };
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: passage, error: passageError } = await supabase
     .from('generated_passages')

@@ -20,7 +20,7 @@ export default async function AdminLessonDetailPage({
   await requireAdmin();
 
   const { lessonId } = await params;
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: lesson, error: lessonError } = await supabase
     .from('lessons')
