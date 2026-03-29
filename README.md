@@ -12,9 +12,11 @@ The project currently has four major student surfaces:
 
 ### Reading lessons
 - Stage-based lesson flow: `first_read -> vocab_review -> second_read -> questions -> completed`
-- Inline vocabulary capture inside the passage
+- Mobile-first reading layout with no split view during reading
+- Long-press vocabulary capture inside the passage
 - Vocabulary cards with audio and explanations
-- Question-by-question SAT practice
+- Second-read audio replay on saved words
+- Question-by-question SAT practice with passage recall
 - Reading analytics and per-question timing
 - AI Tutor text explanation from the passage
 - Mistake Brain analysis after lesson completion
@@ -36,8 +38,12 @@ The project currently has four major student surfaces:
 - Reusable vocab exercise shell
 - Supported exercise types:
   - `meaning_match`
+  - `translation_match`
+  - `pair_match`
   - `listen_match`
   - `spelling_from_audio`
+  - `sentence_builder`
+  - `error_detection`
   - `fill_blank`
   - `context_meaning`
   - `synonym`
@@ -151,7 +157,9 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 - Vocab attempt persistence and word progress updates are live.
 - Review queue generation is rule-based for now.
 - Lesson-derived vocabulary now carries source lesson/context metadata into Vocabulary Studio sessions.
+- Reading lessons can now capture vocabulary from passage, question text, and answer text with source-aware metadata.
 - Audio-backed vocab practice now includes `listen_match` and `spelling_from_audio`.
+- Matching and SAT-style language drills now include `pair_match`, `sentence_builder`, and `error_detection`.
 - Adaptive difficulty v1 is implemented as a transparent rule-based layer in the session pipeline.
 - Vocabulary Analytics v1 is implemented for exercise totals, accuracy breakdowns, weak words, lifecycle distribution, and recent vocab sessions.
 - Books mode is chapter-aware in the UI, but still linear in progression.

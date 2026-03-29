@@ -73,51 +73,10 @@ export default function VocabularyAudioPrefetch({
     });
   }, [lessonId, pendingCount, router, studentId]);
 
-  if (!lessonId) {
-    return (
-      <div className="rounded-[24px] border border-slate-200 bg-white p-4">
-        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-          Listen Match
-        </div>
-        <div className="mt-2 text-sm leading-6 text-slate-600">
-          {readyCount > 0
-            ? `${readyCount} audio-ready words are already available for listen-based exercises.`
-            : "No audio-ready words are available yet."}
-        </div>
-      </div>
-    );
-  }
+  void lessonName;
+  void readyCount;
+  void status;
+  void message;
 
-  return (
-    <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Audio Preparation
-          </div>
-          <div className="mt-2 text-sm font-semibold text-slate-950">
-            {lessonName ?? "Recent lesson"} is being prepared for listen-based review
-          </div>
-        </div>
-        <div
-          className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${
-            status === "error"
-              ? "border border-rose-200 bg-rose-50 text-rose-700"
-              : status === "ready"
-                ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                : status === "preparing"
-                  ? "border border-blue-200 bg-blue-50 text-blue-700"
-                  : "border border-slate-200 bg-slate-50 text-slate-600"
-          }`}
-        >
-          {status}
-        </div>
-      </div>
-
-      <div className="mt-3 text-sm leading-6 text-slate-600">
-        {message ??
-          `${pendingCount} items still need audio before they can reliably appear as listen-match exercises.`}
-      </div>
-    </div>
-  );
+  return null;
 }

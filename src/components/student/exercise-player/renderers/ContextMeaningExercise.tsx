@@ -75,6 +75,7 @@ export default function ContextMeaningExercise({
             </div>
           </div>
         }
+        footer={<>Use nearby clues first, then choose the meaning that best fits this exact context.</>}
       />
 
       <ExerciseOptionList

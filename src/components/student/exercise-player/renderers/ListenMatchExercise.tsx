@@ -23,7 +23,7 @@ export default function ListenMatchExercise({
         }
         footer={
           exercise.explanation ? (
-            <>Audio-based recognition with word-bank matching.</>
+            <>Audio-based recognition with word-bank matching and immediate feedback.</>
           ) : (
             <>Listen first, then choose from the options.</>
           )

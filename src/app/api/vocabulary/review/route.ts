@@ -26,11 +26,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Word not found' }, { status: 404 });
   }
 
-  const timesSeen = Number(existing.times_seen ?? 0) + 1;
+  const timesSeen = Number(existing.times_seen ?? existing.total_attempts ?? 0) + 1;
   const timesCorrect =
-    Number(existing.times_correct ?? 0) + (result === 'correct' ? 1 : 0);
+    Number(existing.times_correct ?? existing.correct_attempts ?? 0) + (result === 'correct' ? 1 : 0);
   const timesWrong =
     Number(existing.times_wrong ?? 0) + (result === 'wrong' ? 1 : 0);
+  const sessionsSeenCount =
+    Number(existing.sessions_seen_count ?? existing.total_attempts ?? existing.times_seen ?? 0) + 1;
+  const sessionsCorrectCount =
+    Number(existing.sessions_correct_count ?? existing.correct_attempts ?? existing.times_correct ?? 0) +
+    (result === 'correct' ? 1 : 0);
   const consecutiveCorrect =
     result === 'correct' ? Number(existing.consecutive_correct ?? 0) + 1 : 0;
   const consecutiveIncorrect =
@@ -38,8 +43,8 @@ export async function POST(request: Request) {
 
   const reviewDecision = evaluateReviewPolicy({
     isCorrect: result === 'correct',
-    totalAttempts: timesSeen,
-    correctAttempts: timesCorrect,
+    totalAttempts: sessionsSeenCount,
+    correctAttempts: sessionsCorrectCount,
     wrongAttempts: timesWrong,
     consecutiveCorrect,
     consecutiveIncorrect,
@@ -49,6 +54,7 @@ export async function POST(request: Request) {
     attemptDifficultyBand: existing.current_difficulty_band ?? null,
     lastModality: existing.last_modality ?? null,
     attemptModality: existing.last_modality ?? null,
+    currentSessionIndex: null,
   });
 
   const { data, error } = await supabase
@@ -58,14 +64,19 @@ export async function POST(request: Request) {
       lifecycle_state: reviewDecision.lifecycleState,
       current_difficulty_band: reviewDecision.nextDifficultyBand,
       mastery_score: reviewDecision.masteryScore,
-      total_attempts: timesSeen,
-      correct_attempts: timesCorrect,
+      sessions_seen_count: sessionsSeenCount,
+      sessions_correct_count: sessionsCorrectCount,
+      total_attempts: sessionsSeenCount,
+      correct_attempts: sessionsCorrectCount,
       times_seen: timesSeen,
       times_correct: timesCorrect,
       times_wrong: timesWrong,
       last_seen_at: new Date().toISOString(),
       next_review_date: reviewDecision.nextReviewDate,
+      next_review_session_gap: reviewDecision.nextReviewSessionGap,
+      next_review_session_index: reviewDecision.nextReviewSessionIndex,
       next_review_at: reviewDecision.nextReviewAt,
+      minimum_time_gap_for_retention_check: reviewDecision.minimumTimeGapForRetentionCheck,
       consecutive_correct: consecutiveCorrect,
       consecutive_incorrect: consecutiveIncorrect,
       updated_at: new Date().toISOString(),

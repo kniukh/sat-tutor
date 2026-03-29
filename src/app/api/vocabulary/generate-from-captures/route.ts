@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateVocabularyCards } from "@/services/ai/generate-vocabulary-cards";
 import { generateVocabularyAudioBulk } from "@/services/ai/generate-vocabulary-audio-bulk";
+import { prepareVocabularyDistractors } from "@/services/vocabulary/distractor-quality.service";
 
 export async function POST(request: Request) {
   try {
@@ -94,10 +95,33 @@ export async function POST(request: Request) {
         console.error("generateVocabularyCards aiError", aiError);
       }
 
+      const meaningPool = [
+        ...(generated ?? []).map((item) => item.english_explanation).filter(Boolean),
+      ];
+
       for (const item of itemsToGenerate) {
         const aiCard = generated?.find(
           (x) => x.item_text.toLowerCase() === item.item_text.toLowerCase()
         );
+        const englishExplanation =
+          aiCard?.english_explanation ?? `Meaning of "${item.item_text}"`;
+        const exampleText =
+          aiCard?.example_text ?? `Example with "${item.item_text}".`;
+        const contextSentence =
+          item.context_text ??
+          `Context with "${item.item_text}" was not captured yet.`;
+        const distractors = await prepareVocabularyDistractors({
+          itemText: item.item_text,
+          itemType: item.item_type as "word" | "phrase",
+          correctAnswer: englishExplanation,
+          contextSentence,
+          exampleText,
+          fallbackPool: meaningPool.filter(
+            (candidate) =>
+              candidate &&
+              candidate.trim().toLowerCase() !== englishExplanation.trim().toLowerCase()
+          ),
+        });
 
         const { error: insertError } = await supabase
           .from("vocabulary_item_details")
@@ -106,16 +130,13 @@ export async function POST(request: Request) {
             lesson_id: lessonId,
             item_text: item.item_text,
             item_type: item.item_type,
-            english_explanation:
-              aiCard?.english_explanation ?? `Meaning of "${item.item_text}"`,
+            english_explanation: englishExplanation,
             translated_explanation:
               aiCard?.translated_explanation ?? `Перевод: ${item.item_text}`,
             translation_language: student.native_language || "ru",
-            example_text:
-              aiCard?.example_text ?? `Example with "${item.item_text}".`,
-            context_sentence:
-              item.context_text ??
-              `Context with "${item.item_text}" was not captured yet.`,
+            example_text: exampleText,
+            context_sentence: contextSentence,
+            distractors,
             audio_status: "pending",
           });
 

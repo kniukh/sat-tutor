@@ -57,19 +57,19 @@ export default async function StudentLessonPage({
     .order("created_at", { ascending: true });
 
   return (
-    <div className="px-6 py-8">
+    <div className="px-3 py-4 sm:px-6 sm:py-8">
       <ReadingProgressTracker studentId={student.id} lessonId={lesson.id} />
 
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="flex items-start justify-between gap-4">
+      <div className="mx-auto max-w-5xl space-y-4 sm:space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-semibold text-slate-900">{lesson.name}</h1>
-            <p className="mt-2 text-slate-600">
-              Lesson type: {lesson.lesson_type} · Stage: {lessonState.stage}
+            <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{lesson.name}</h1>
+            <p className="mt-1 text-sm text-slate-600 sm:mt-2">
+              {lesson.lesson_type} · {lessonState.stage.replace("_", " ")}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <RegenerateAudioButton
               studentId={student.id}
               lessonId={lesson.id}

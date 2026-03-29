@@ -18,6 +18,7 @@ import type {
   WordLifecycleState,
 } from "@/types/vocab-tracking";
 import type { ReviewQueuePriorityBucket } from "@/services/vocabulary/review-queue.service";
+import type { VocabExerciseSourceType } from "@/types/vocab-exercises";
 
 export type AdaptiveVocabularyMode =
   | "learn_new_words"
@@ -50,8 +51,10 @@ export type AdaptiveWordCandidate = {
   isNewWord: boolean;
   sourceLessonId: string | null;
   sourceLessonTitle: string | null;
+  sourcePassageTitle: string | null;
   sourceContextSnippet: string | null;
   sourceCapturedAt: string | null;
+  sourceType: VocabExerciseSourceType | null;
   lessonFirstExposure: boolean;
 };
 
@@ -81,7 +84,9 @@ export type AdaptiveSelectionWordSummary = {
   recommendedModality: VocabModality | null;
   sourceLessonId: string | null;
   sourceLessonTitle: string | null;
+  sourcePassageTitle: string | null;
   sourceContextSnippet: string | null;
+  sourceType: VocabExerciseSourceType | null;
   lessonFirstExposure: boolean;
 };
 
@@ -260,7 +265,10 @@ function makeSelectionReason(params: {
 
   if (bucket === "newer_words") {
     if (candidate.sourceLessonTitle) {
-      return `Included as a fresh lesson word from ${candidate.sourceLessonTitle} so Vocabulary Studio still feels connected to the original reading context.`;
+      const passageNote = candidate.sourcePassageTitle
+        ? `, especially the passage "${candidate.sourcePassageTitle}"`
+        : "";
+      return `Included as a fresh lesson word from ${candidate.sourceLessonTitle}${passageNote} so Vocabulary Studio still feels connected to the original reading context.`;
     }
     return "Included as a newer word so the session introduces fresh vocabulary, then stabilizes it with a simpler modality.";
   }
@@ -373,9 +381,11 @@ function scoreWordCandidate(params: {
   if (candidate.queueBucket === "overdue") score += 5;
   if (candidate.lifecycleState === "mastered") score -= 2;
   if (candidate.sourceLessonId) score += 2;
+  if (candidate.sourceType === "reading_lesson") score += 2;
   if (candidate.lessonFirstExposure) score += 3;
   if (recentLessonEncounter) score += 5;
   if (bucket === "newer_words" && candidate.sourceContextSnippet) score += 2;
+  if (bucket === "newer_words" && candidate.sourcePassageTitle) score += 1;
   if (adaptiveDifficultyBand === "easy" && bucket !== "retention_check") score += 2;
   if (adaptiveDifficultyBand === "hard" && bucket === "retention_check") score += 3;
   if (adaptiveDifficultyBand === "hard" && sessionDifficultyBias === "stretch") score += 2;
@@ -531,7 +541,9 @@ export function selectAdaptiveSessionExercises(params: {
         recommendedModality: entry.candidate.recommendedModality,
         sourceLessonId: entry.candidate.sourceLessonId,
         sourceLessonTitle: entry.candidate.sourceLessonTitle,
+        sourcePassageTitle: entry.candidate.sourcePassageTitle,
         sourceContextSnippet: entry.candidate.sourceContextSnippet,
+        sourceType: entry.candidate.sourceType,
         lessonFirstExposure: entry.candidate.lessonFirstExposure,
       });
     }
@@ -622,7 +634,9 @@ export function selectAdaptiveSessionExercises(params: {
         recommendedModality: entry.candidate.recommendedModality,
         sourceLessonId: entry.candidate.sourceLessonId,
         sourceLessonTitle: entry.candidate.sourceLessonTitle,
+        sourcePassageTitle: entry.candidate.sourcePassageTitle,
         sourceContextSnippet: entry.candidate.sourceContextSnippet,
+        sourceType: entry.candidate.sourceType,
         lessonFirstExposure: entry.candidate.lessonFirstExposure,
       });
     }

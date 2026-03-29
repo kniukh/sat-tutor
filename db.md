@@ -198,6 +198,21 @@ Source:
 ### `vocabulary_capture_events`
 Raw log of words and phrases captured by the student.
 
+Important fields:
+- `student_id`
+- `lesson_id`
+- `passage_id`
+- `item_text`
+- `item_type`
+- `context_text`
+- `source_type`
+- `created_at`
+
+Current capture sources:
+- `passage`
+- `question`
+- `answer`
+
 ### `vocabulary_item_details`
 Enriched vocabulary cards per student and lesson.
 
@@ -220,6 +235,7 @@ Current role in product flow:
 - stores the lesson-derived vocabulary cards that later feed Vocabulary Studio
 - keeps the original lesson linkage through `lesson_id`
 - keeps sentence-level context through `context_sentence` and `example_text`
+- now also keeps source-aware capture context from reading passage, quiz question text, or answer text
 
 ## Vocab Attempts, Progress, and Scheduling
 

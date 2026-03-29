@@ -5,6 +5,9 @@ type Props = {
   feedback: {
     isCorrect: boolean;
     explanation?: string;
+    selectedAnswer?: string;
+    correctAnswer?: string;
+    answerLabel?: string;
   } | null;
   onCheck: () => void;
   onContinue: () => void;
@@ -19,76 +22,37 @@ export default function ExercisePlayerFooter({
   onContinue,
 }: Props) {
   return (
-    <div className="space-y-4">
-      {submitted && feedback ? (
-        <div
-          aria-live="polite"
-          className={`rounded-[24px] border p-4 transition-all duration-200 sm:p-5 ${
-            feedback.isCorrect
-              ? "border-emerald-200 bg-emerald-50/90 text-slate-900"
-              : "border-amber-200 bg-amber-50/90 text-slate-900"
-          }`}
-        >
-          <div className="flex items-start gap-3">
-            <div
-              className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                feedback.isCorrect ? "bg-emerald-600 text-white" : "bg-amber-500 text-white"
-              }`}
-            >
-              {feedback.isCorrect ? "OK" : "!"}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="font-semibold">
-                {feedback.isCorrect ? "Correct" : "Not quite"}
-              </div>
-              <div className="mt-1 text-sm text-slate-700">
-                {feedback.isCorrect
-                  ? "Nice work. You can move straight to the next one."
-                  : "Take a second to compare your choice with the explanation below."}
-              </div>
-            </div>
-          </div>
-          {feedback.explanation ? (
-            <div className="mt-4 rounded-2xl border border-black/5 bg-white/70 p-4 text-sm leading-6 text-slate-700">
-              {feedback.explanation}
-            </div>
-          ) : null}
+    <div className="sticky bottom-0 z-10 -mx-4 border-t border-slate-200 bg-white/95 px-4 pb-4 pt-3 backdrop-blur sm:-mx-0 sm:rounded-b-[24px] sm:border sm:px-5 sm:pb-5">
+      <div className="flex items-center gap-3">
+        <div aria-live="polite" className="min-h-6 flex-1 text-sm font-medium">
+          {submitted && feedback ? (
+            <span className={feedback.isCorrect ? "text-emerald-600" : "text-rose-600"}>
+              {feedback.isCorrect ? "Correct" : "Incorrect"}
+            </span>
+          ) : (
+            <span className="text-slate-400">{canSubmit ? "Ready" : "Select an answer"}</span>
+          )}
         </div>
-      ) : null}
-
-      <div className="rounded-[24px] border border-slate-200 bg-white/95 p-3 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-slate-500">
-            {submitted
-              ? isLast
-                ? "Review finished. Finish when you are ready."
-              : "Feedback saved. Continue when you are ready."
-              : canSubmit
-                ? "Response ready. Check it when ready."
-                : "Choose or enter an answer to continue."}
-          </div>
-
-          <div className="flex justify-end">
-            {!submitted ? (
-              <button
-                type="button"
-                disabled={!canSubmit}
-                onClick={onCheck}
-                className="min-w-32 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-              >
-                Check
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onContinue}
-                className="min-w-32 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-emerald-500"
-              >
-                {isLast ? "Finish" : "Continue"}
-              </button>
-            )}
-          </div>
-        </div>
+        {!submitted ? (
+          <button
+            type="button"
+            disabled={!canSubmit}
+            onClick={onCheck}
+            className="min-w-32 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition-colors duration-150 hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+          >
+            Check
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onContinue}
+            className={`min-w-32 rounded-2xl px-5 py-3 text-sm font-semibold text-white transition-colors duration-150 ${
+              feedback?.isCorrect ? "bg-emerald-600 hover:bg-emerald-500" : "bg-slate-950 hover:bg-slate-800"
+            }`}
+          >
+            {isLast ? "Finish" : "Continue"}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,9 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
+  getStudentVocabularyAnalytics,
+  type StudentVocabularyAnalytics,
+} from "@/services/analytics/vocabulary-analytics.service";
+import {
   groupExercisesByWord,
   selectAdaptiveSessionExercises,
   type AdaptiveSessionSelectionSummary,
@@ -9,8 +13,11 @@ import {
   adaptClozeDrillsToExercises,
   adaptCollocationDrillsToExercises,
   adaptContextMeaningDrillsToExercises,
+  adaptErrorDetectionDrillsToExercises,
   adaptListenMatchDrillsToExercises,
   adaptMeaningDrillsToExercises,
+  adaptPairMatchDrillsToExercises,
+  adaptSentenceBuilderDrillsToExercises,
   adaptSpellingFromAudioDrillsToExercises,
   adaptSynonymDrillsToExercises,
 } from "@/services/vocabulary/exercise-adapters";
@@ -29,6 +36,7 @@ import {
 } from "@/services/vocabulary/session-builder";
 import {
   getExerciseTargetWordId,
+  type VocabExerciseSourceType,
   type SupportedVocabExercise,
 } from "@/types/vocab-exercises";
 import type { ExerciseAttemptRow } from "@/types/vocab-tracking";
@@ -48,13 +56,25 @@ type DrillItem = {
   distractors: string[];
   contextSentence: string;
   plainMeaning: string;
+  translatedExplanation: string | null;
+  translationLanguage: string | null;
   exampleText: string;
   audioUrl: string | null;
   audioStatus: "ready" | "pending" | "failed" | "missing" | null;
   sourceLessonId: string | null;
   sourceLessonTitle: string | null;
+  sourcePassageTitle: string | null;
   sourceContextSnippet: string | null;
   sourceCapturedAt: string | null;
+  sourceType: VocabExerciseSourceType | null;
+};
+
+type SourceCaptureMeta = {
+  lessonId: string | null;
+  passageId: string | null;
+  passageTitle: string | null;
+  contextSnippet: string | null;
+  capturedAt: string | null;
 };
 
 type QueueBucketCounts = Record<ReviewQueuePriorityBucket, number>;
@@ -77,9 +97,29 @@ export type VocabularyPageMode = Extract<
   "learn_new_words" | "review_weak_words" | "mixed_practice"
 >;
 
+export type VocabularyDashboardData = {
+  totals: {
+    totalWordsLearned: number;
+    wordsInReview: number;
+    weakWords: number;
+    totalTrackedWords: number;
+  };
+  reviewIndicators: {
+    dueNow: number;
+    overdueRetentionChecks: number;
+    weakReinforcement: number;
+  };
+  masteryDistribution: StudentVocabularyAnalytics["masteryDistribution"];
+  streak: {
+    current: number;
+    longest: number;
+  };
+};
+
 export type StudentVocabularyPageData = {
   student: VocabularyPageStudent;
   selectedMode: VocabularyPageMode;
+  dashboard: VocabularyDashboardData;
   summary: {
     totalQueueItems: number;
     dueNowCount: number;
@@ -155,16 +195,42 @@ function pickTopPriorityBucket(bucketCounts: QueueBucketCounts) {
   return null;
 }
 
+function getLifecycleCount(
+  distribution: StudentVocabularyAnalytics["masteryDistribution"],
+  lifecycleState: StudentVocabularyAnalytics["masteryDistribution"][number]["lifecycleState"]
+) {
+  return distribution.find((item) => item.lifecycleState === lifecycleState)?.count ?? 0;
+}
+
 export function normalizeVocabularyPageMode(mode: string | undefined): VocabularyPageMode {
   if (mode === "review_weak_words") return "review_weak_words";
   if (mode === "learn_new_words") return "learn_new_words";
   return "mixed_practice";
 }
 
+function inferSourceType(lessonType: string | null | undefined): VocabExerciseSourceType {
+  const normalized = lessonType?.trim().toLowerCase() ?? "";
+
+  if (!normalized) {
+    return "other";
+  }
+
+  if (normalized.includes("reading")) {
+    return "reading_lesson";
+  }
+
+  if (normalized.includes("generated") || normalized.includes("ai")) {
+    return "generated_lesson";
+  }
+
+  return "other";
+}
+
 function toDrillItem(
   detail: any,
   wordProgressId: string,
-  lessonNameMap?: Map<string, string>
+  lessonMetaMap?: Map<string, { lessonName: string; lessonType: string | null }>,
+  sourceCaptureMap?: Map<string, SourceCaptureMeta>
 ): DrillItem | null {
   if (
     !detail ||
@@ -182,6 +248,12 @@ function toDrillItem(
     itemType === "phrase"
       ? detail.example_text || detail.english_explanation
       : detail.english_explanation;
+  const sourceKey =
+    detail.lesson_id && detail.item_text
+      ? `${detail.lesson_id}:${String(detail.item_text).trim().toLowerCase()}`
+      : null;
+  const sourceCapture = sourceKey ? sourceCaptureMap?.get(sourceKey) ?? null : null;
+  const lessonMeta = detail.lesson_id ? lessonMetaMap?.get(detail.lesson_id) ?? null : null;
 
   return {
     wordProgressId,
@@ -192,6 +264,8 @@ function toDrillItem(
     distractors: detail.distractors,
     contextSentence: detail.context_sentence || "",
     plainMeaning: detail.english_explanation,
+    translatedExplanation: detail.translated_explanation || null,
+    translationLanguage: detail.translation_language || null,
     exampleText: detail.example_text || "",
     audioUrl: detail.audio_url || null,
     audioStatus: (detail.audio_status ?? null) as
@@ -200,13 +274,17 @@ function toDrillItem(
       | "failed"
       | "missing"
       | null,
-    sourceLessonId: detail.lesson_id ?? null,
-    sourceLessonTitle: detail.lesson_id
-      ? lessonNameMap?.get(detail.lesson_id) ?? null
-      : null,
+    sourceLessonId: sourceCapture?.lessonId ?? detail.lesson_id ?? null,
+    sourceLessonTitle: lessonMeta?.lessonName ?? null,
+    sourcePassageTitle: sourceCapture?.passageTitle ?? null,
     sourceContextSnippet:
-      detail.context_sentence || detail.example_text || detail.item_text || null,
-    sourceCapturedAt: detail.created_at ?? null,
+      sourceCapture?.contextSnippet ??
+      detail.context_sentence ??
+      detail.example_text ??
+      detail.item_text ??
+      null,
+    sourceCapturedAt: sourceCapture?.capturedAt ?? detail.created_at ?? null,
+    sourceType: inferSourceType(lessonMeta?.lessonType),
   };
 }
 
@@ -281,6 +359,15 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
   const collocationDrills = drillItems.filter(
     (item) => Boolean(item.exampleText || item.contextSentence)
   );
+  const pairMatchDrills = drillItems.filter(
+    (item) => item.itemType === "word" || Boolean(item.exampleText || item.contextSentence)
+  );
+  const sentenceBuilderDrills = drillItems.filter(
+    (item) => Boolean(item.exampleText || item.contextSentence)
+  );
+  const errorDetectionDrills = drillItems.filter(
+    (item) => Boolean(item.exampleText || item.contextSentence)
+  );
   const listenMatchDrills = drillItems.filter(
     (item) => Boolean(item.audioUrl) && item.audioStatus !== "failed" && item.audioStatus !== "missing"
   );
@@ -293,6 +380,9 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
     contextMeaningDrills,
     synonymDrills,
     collocationDrills,
+    pairMatchDrills,
+    sentenceBuilderDrills,
+    errorDetectionDrills,
     listenMatchDrills,
     spellingFromAudioDrills,
     exercises: [
@@ -304,6 +394,9 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
       ...adaptContextMeaningDrillsToExercises(contextMeaningDrills),
       ...adaptSynonymDrillsToExercises(synonymDrills),
       ...adaptCollocationDrillsToExercises(collocationDrills),
+      ...adaptPairMatchDrillsToExercises(pairMatchDrills),
+      ...adaptSentenceBuilderDrillsToExercises(sentenceBuilderDrills),
+      ...adaptErrorDetectionDrillsToExercises(errorDetectionDrills),
     ],
   };
 }
@@ -422,8 +515,10 @@ function buildAdaptiveWordCandidates(params: {
       isNewWord: params.isNewWord,
       sourceLessonId: firstExercise.reviewMeta?.sourceLessonId ?? null,
       sourceLessonTitle: firstExercise.reviewMeta?.sourceLessonTitle ?? null,
+      sourcePassageTitle: firstExercise.reviewMeta?.sourcePassageTitle ?? null,
       sourceContextSnippet: firstExercise.reviewMeta?.sourceContextSnippet ?? null,
       sourceCapturedAt: firstExercise.reviewMeta?.sourceCapturedAt ?? null,
+      sourceType: firstExercise.reviewMeta?.sourceType ?? null,
       lessonFirstExposure: Boolean(firstExercise.reviewMeta?.lessonFirstExposure),
     } satisfies AdaptiveWordCandidate;
   });
@@ -492,8 +587,14 @@ export async function getStudentVocabularyPageData(
     limit: 150,
   });
 
-  const [activeQueueCandidates, nextQueueCandidates, allVocabDetails, attemptedWordIds] =
-    await Promise.all([
+  const [
+    activeQueueCandidates,
+    nextQueueCandidates,
+    allVocabDetails,
+    attemptedWordIds,
+    vocabularyAnalytics,
+    gamificationResult,
+  ] = await Promise.all([
       listActiveReviewQueueCandidates({
         studentId: studentData.id,
         limit: 150,
@@ -514,6 +615,12 @@ export async function getStudentVocabularyPageData(
         .select("target_word_id")
         .eq("student_id", studentData.id)
         .not("target_word_id", "is", null),
+      getStudentVocabularyAnalytics(studentData.id),
+      supabase
+        .from("student_gamification")
+        .select("*")
+        .eq("student_id", studentData.id)
+        .maybeSingle(),
     ]);
 
   if (allVocabDetails.error) {
@@ -522,6 +629,10 @@ export async function getStudentVocabularyPageData(
 
   if (attemptedWordIds.error) {
     throw attemptedWordIds.error;
+  }
+
+  if (gamificationResult.error) {
+    throw gamificationResult.error;
   }
 
   const now = new Date();
@@ -601,16 +712,82 @@ export async function getStudentVocabularyPageData(
 
   const { data: recentLessons, error: recentLessonsError } = await supabase
     .from("lessons")
-    .select("id, name")
+    .select("id, name, lesson_type")
     .in("id", lessonIdsForLookup.length > 0 ? lessonIdsForLookup : [EMPTY_UUID]);
 
   if (recentLessonsError) {
     throw recentLessonsError;
   }
 
-  const recentLessonNameMap = new Map(
-    (recentLessons ?? []).map((lesson: any) => [lesson.id, lesson.name as string])
+  const recentLessonMetaMap = new Map(
+    (recentLessons ?? []).map((lesson: any) => [
+      lesson.id,
+      {
+        lessonName: lesson.name as string,
+        lessonType: (lesson.lesson_type as string | null) ?? null,
+      },
+    ])
   );
+  const recentLessonNameMap = new Map(
+    Array.from(recentLessonMetaMap.entries()).map(([lessonId, meta]) => [lessonId, meta.lessonName])
+  );
+
+  const lessonIdsForCaptures = Array.from(
+    new Set([
+      ...(queueVocabDetails ?? []).map((detail: any) => detail.lesson_id).filter(Boolean),
+      ...recentNewWordDetails.map((detail: any) => detail.lesson_id).filter(Boolean),
+    ])
+  );
+
+  const { data: sourceCaptureRows, error: sourceCaptureError } = await supabase
+    .from("vocabulary_capture_events")
+    .select("lesson_id, passage_id, item_text, context_text, created_at")
+    .eq("student_id", studentData.id)
+    .in("lesson_id", lessonIdsForCaptures.length > 0 ? lessonIdsForCaptures : [EMPTY_UUID])
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  if (sourceCaptureError) {
+    throw sourceCaptureError;
+  }
+
+  const passageIds = Array.from(
+    new Set((sourceCaptureRows ?? []).map((row: any) => row.passage_id).filter(Boolean))
+  );
+
+  const { data: lessonPassages, error: lessonPassagesError } = await supabase
+    .from("lesson_passages")
+    .select("id, title")
+    .in("id", passageIds.length > 0 ? passageIds : [EMPTY_UUID]);
+
+  if (lessonPassagesError) {
+    throw lessonPassagesError;
+  }
+
+  const lessonPassageTitleMap = new Map(
+    (lessonPassages ?? []).map((passage: any) => [passage.id, (passage.title as string | null) ?? null])
+  );
+  const sourceCaptureMap = new Map<string, SourceCaptureMeta>();
+
+  for (const row of sourceCaptureRows ?? []) {
+    if (!row?.lesson_id || !row?.item_text) {
+      continue;
+    }
+
+    const key = `${row.lesson_id}:${String(row.item_text).trim().toLowerCase()}`;
+
+    if (sourceCaptureMap.has(key)) {
+      continue;
+    }
+
+    sourceCaptureMap.set(key, {
+      lessonId: row.lesson_id ?? null,
+      passageId: row.passage_id ?? null,
+      passageTitle: row.passage_id ? lessonPassageTitleMap.get(row.passage_id) ?? null : null,
+      contextSnippet: row.context_text ?? null,
+      capturedAt: row.created_at ?? null,
+    });
+  }
   const audioPreparation = summarizeAudioPreparation({
     details: audioCandidateDetails,
     lessonNameMap: recentLessonNameMap,
@@ -621,12 +798,12 @@ export async function getStudentVocabularyPageData(
       const detail = queueVocabDetailMap.get(candidate.word_id);
       const wordProgress = wordProgressMap.get(candidate.word_id);
       if (!wordProgress) return null;
-      return toDrillItem(detail, wordProgress.id, recentLessonNameMap);
+      return toDrillItem(detail, wordProgress.id, recentLessonMetaMap, sourceCaptureMap);
     })
     .filter(Boolean) as DrillItem[];
 
   const newWordDrillItems = recentNewWordDetails
-    .map((detail: any) => toDrillItem(detail, `new:${detail.id}`, recentLessonNameMap))
+    .map((detail: any) => toDrillItem(detail, `new:${detail.id}`, recentLessonMetaMap, sourceCaptureMap))
     .filter(Boolean) as DrillItem[];
 
   const queueExercisePool = buildExercisePoolFromDrillItems(queueDrillItems);
@@ -743,15 +920,62 @@ export async function getStudentVocabularyPageData(
   const totalQueueItems = activeQueueCandidates.length;
   const readyDrillsCount = queueDrillItems.length;
   const topPriorityBucket = pickTopPriorityBucket(bucketCounts);
+  const dueNowCount = activeQueueCandidates.filter(
+    (candidate) => new Date(candidate.scheduled_for).getTime() <= now.getTime()
+  ).length;
+  const overdueRetentionChecks = activeQueueCandidates.filter((candidate) => {
+    const metadata =
+      candidate.metadata && typeof candidate.metadata === "object"
+        ? (candidate.metadata as Record<string, unknown>)
+        : null;
+
+    return (
+      new Date(candidate.scheduled_for).getTime() <= now.getTime() &&
+      Boolean(metadata?.due_by_time_gap)
+    );
+  }).length;
+  const weakReinforcementCount = activeQueueCandidates.filter((candidate) => {
+    const bucket = classifyReviewQueueCandidate(candidate, now);
+    return bucket === "recently_failed" || bucket === "weak_again";
+  }).length;
+  const masteryDistribution = vocabularyAnalytics.masteryDistribution;
+  const totalTrackedWords = masteryDistribution.reduce((sum, item) => sum + item.count, 0);
+  const totalWordsLearned =
+    totalTrackedWords - getLifecycleCount(masteryDistribution, "new");
+  const wordsInReview = getLifecycleCount(masteryDistribution, "review");
+  const currentStreak = Number(gamificationResult.data?.streak_days ?? 0);
+  const longestStreakCandidate = Number(
+    (gamificationResult.data as Record<string, unknown> | null)?.longest_streak_days ??
+      currentStreak
+  );
+  const longestStreak = Number.isFinite(longestStreakCandidate)
+    ? Math.max(currentStreak, longestStreakCandidate)
+    : currentStreak;
 
   return {
     student: studentData,
     selectedMode,
+    dashboard: {
+      totals: {
+        totalWordsLearned,
+        wordsInReview,
+        weakWords: vocabularyAnalytics.summary.weakWordCount,
+        totalTrackedWords,
+      },
+      reviewIndicators: {
+        dueNow: dueNowCount,
+        overdueRetentionChecks,
+        weakReinforcement: weakReinforcementCount,
+      },
+      masteryDistribution,
+      streak: {
+        current: currentStreak,
+        longest: longestStreak,
+      },
+    },
     summary: {
       totalQueueItems,
-      dueNowCount: activeQueueCandidates.filter(
-        (candidate) => new Date(candidate.scheduled_for).getTime() <= now.getTime()
-      ).length,
+      dueNowCount,
       readyDrillsCount,
       readyPercent: totalQueueItems > 0 ? Math.round((readyDrillsCount / totalQueueItems) * 100) : 0,
       newWordPoolCount: newWordExercises.length,

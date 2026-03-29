@@ -3,8 +3,11 @@ import type { AdaptiveSessionSelectionSummary } from "@/services/vocabulary/adap
 
 const EXERCISE_TYPE_LABELS = {
   meaning_match: "Meaning",
+  pair_match: "Pairs",
   listen_match: "Listen",
   spelling_from_audio: "Spell",
+  sentence_builder: "Build",
+  error_detection: "Error",
   fill_blank: "Fill Blank",
   context_meaning: "Context",
   synonym: "Synonym",

@@ -5,6 +5,7 @@ import type {
   VocabModality,
   WordProgressRow,
 } from "@/types/vocab-tracking";
+import { getCurrentVocabularySessionIndex } from "@/services/vocabulary/vocab-session.service";
 
 type QueueWordProgress = Pick<
   WordProgressRow,
@@ -14,8 +15,12 @@ type QueueWordProgress = Pick<
   | "word_id"
   | "lifecycle_state"
   | "mastery_score"
+  | "metadata"
   | "consecutive_incorrect"
+  | "next_review_session_index"
+  | "next_review_session_gap"
   | "next_review_at"
+  | "minimum_time_gap_for_retention_check"
   | "last_seen_at"
   | "last_modality"
 >;
@@ -29,6 +34,7 @@ export type GeneratedReviewQueueItem = {
   recommended_modality: VocabModality | null;
   source_attempt_id: string | null;
   status: ReviewQueueRow["status"];
+  metadata: ReviewQueueRow["metadata"];
 };
 
 export type ReviewQueueCandidate = ReviewQueueRow & {
@@ -114,6 +120,7 @@ export function buildReviewQueueItem(params: {
   wordProgress: QueueWordProgress;
   recentAttempts: ExerciseAttemptRow[];
   sourceAttemptId?: string | null;
+  currentSessionIndex?: number | null;
   now?: Date;
 }): GeneratedReviewQueueItem | null {
   const { wordProgress, recentAttempts } = params;
@@ -124,10 +131,20 @@ export function buildReviewQueueItem(params: {
   }
 
   const nextReviewAt = wordProgress.next_review_at ? new Date(wordProgress.next_review_at) : null;
-  const isOverdue = nextReviewAt ? nextReviewAt.getTime() <= now.getTime() : true;
+  const dueByTimeGap = nextReviewAt ? nextReviewAt.getTime() <= now.getTime() : false;
+  const dueBySessionGap =
+    typeof params.currentSessionIndex === "number" &&
+    wordProgress.next_review_session_index !== null &&
+    wordProgress.next_review_session_index !== undefined
+      ? params.currentSessionIndex >= Number(wordProgress.next_review_session_index)
+      : false;
+  const isOverdue = dueByTimeGap || dueBySessionGap;
   const latestIncorrectAttempt = getRecentIncorrectAttempt(recentAttempts, now);
   const latestAttempt = recentAttempts[0] ?? null;
   const masteryScore = Number(wordProgress.mastery_score ?? 0);
+  const sameSessionCreditCapped = Boolean(
+    (wordProgress.metadata ?? {})["same_session_credit_capped"]
+  );
 
   const shouldGenerate =
     Boolean(latestIncorrectAttempt) ||
@@ -151,9 +168,12 @@ export function buildReviewQueueItem(params: {
   } else if (wordProgress.lifecycle_state === "weak_again") {
     basePriority = 0.98;
     reason = "weak_again_recovery";
-  } else if (isOverdue) {
+  } else if (dueBySessionGap) {
+    basePriority = 0.83;
+    reason = "due_by_session_gap";
+  } else if (dueByTimeGap) {
     basePriority = 0.78;
-    reason = "overdue_review";
+    reason = "due_by_time_gap";
   } else if (
     wordProgress.lifecycle_state === "learning" ||
     wordProgress.lifecycle_state === "new"
@@ -209,6 +229,19 @@ export function buildReviewQueueItem(params: {
     }),
     source_attempt_id: params.sourceAttemptId ?? latestIncorrectAttempt?.id ?? latestAttempt?.id ?? null,
     status: scheduledAt.getTime() <= now.getTime() ? "pending" : "scheduled",
+    metadata: {
+      due_by_session_gap: dueBySessionGap,
+      due_by_time_gap: dueByTimeGap,
+      overdue_review: isOverdue,
+      weak_again_retry: wordProgress.lifecycle_state === "weak_again",
+      same_session_credit_capped: sameSessionCreditCapped,
+      next_review_session_gap: wordProgress.next_review_session_gap ?? null,
+      next_review_session_index: wordProgress.next_review_session_index ?? null,
+      current_session_index:
+        typeof params.currentSessionIndex === "number" ? params.currentSessionIndex : null,
+      minimum_time_gap_for_retention_check:
+        wordProgress.minimum_time_gap_for_retention_check ?? null,
+    },
   };
 }
 
@@ -293,6 +326,7 @@ export async function syncReviewQueueForWordProgress(params: {
   studentId: string;
   wordProgressId: string;
   sourceAttemptId?: string | null;
+  currentSessionIndex?: number | null;
   now?: Date;
 }) {
   const supabase = await createServerSupabaseClient();
@@ -300,7 +334,7 @@ export async function syncReviewQueueForWordProgress(params: {
   const { data: wordProgress, error: wordProgressError } = await supabase
     .from("word_progress")
     .select(
-      "id, student_id, word, word_id, lifecycle_state, mastery_score, consecutive_incorrect, next_review_at, last_seen_at, last_modality"
+      "id, student_id, word, word_id, lifecycle_state, mastery_score, metadata, consecutive_incorrect, next_review_session_index, next_review_session_gap, next_review_at, minimum_time_gap_for_retention_check, last_seen_at, last_modality"
     )
     .eq("id", params.wordProgressId)
     .eq("student_id", params.studentId)
@@ -323,6 +357,7 @@ export async function syncReviewQueueForWordProgress(params: {
     wordProgress,
     recentAttempts,
     sourceAttemptId: params.sourceAttemptId,
+    currentSessionIndex: params.currentSessionIndex,
     now: params.now,
   });
 
@@ -360,6 +395,7 @@ export async function syncReviewQueueForWordProgress(params: {
         recommended_modality: generated.recommended_modality,
         source_attempt_id: generated.source_attempt_id,
         status: generated.status,
+        metadata: generated.metadata,
         updated_at: new Date().toISOString(),
       })
       .eq("id", primaryExisting.id)
@@ -405,7 +441,7 @@ export async function generateReviewQueueForStudent(params: {
   const { data: progressRows, error } = await supabase
     .from("word_progress")
     .select(
-      "id, student_id, word, word_id, lifecycle_state, mastery_score, consecutive_incorrect, next_review_at, last_seen_at, last_modality"
+      "id, student_id, word, word_id, lifecycle_state, mastery_score, metadata, consecutive_incorrect, next_review_session_index, next_review_session_gap, next_review_at, minimum_time_gap_for_retention_check, last_seen_at, last_modality"
     )
     .eq("student_id", params.studentId)
     .not("word_id", "is", null)
@@ -429,11 +465,13 @@ export async function generateReviewQueueForStudent(params: {
   });
 
   const results: ReviewQueueRow[] = [];
+  const currentSessionIndex = await getCurrentVocabularySessionIndex(params.studentId);
 
   for (const row of candidateRows.slice(0, params.limit ?? 100)) {
     const queueRow = await syncReviewQueueForWordProgress({
       studentId: params.studentId,
       wordProgressId: row.id,
+      currentSessionIndex,
       now,
     });
 

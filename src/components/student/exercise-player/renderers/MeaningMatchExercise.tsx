@@ -12,17 +12,23 @@ export default function MeaningMatchExercise({
   onSelect,
   submitted,
 }: ExerciseRendererProps<MeaningMatchExerciseData>) {
+  const isTranslation = exercise.type === "translation_match";
+  const displayTerm =
+    isTranslation && "promptTerm" in exercise && exercise.promptTerm
+      ? exercise.promptTerm
+      : getExerciseTargetWord(exercise);
+  const footer = isTranslation
+    ? exercise.direction === "native_to_english"
+      ? `${exercise.sourceLanguageLabel ?? "Native"} to ${exercise.targetLanguageLabel ?? "English"}`
+      : `${exercise.sourceLanguageLabel ?? "English"} to ${exercise.targetLanguageLabel ?? "Native"}`
+    : `${exercise.sourceLanguageLabel ?? "English"} to ${exercise.targetLanguageLabel ?? "Meaning"} matching`;
+
   return (
     <div className="space-y-5">
       <ExercisePromptPanel
         eyebrow={exercise.prompt}
-        title={getExerciseTargetWord(exercise)}
-        footer={
-          <>
-            {exercise.sourceLanguageLabel ?? "Source"} to{" "}
-            {exercise.targetLanguageLabel ?? "target"}
-          </>
-        }
+        title={displayTerm}
+        footer={<>{footer}</>}
       />
 
       <ExerciseOptionList

@@ -17,7 +17,15 @@ function buildContextSnippet(fullText: string, itemText: string) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { studentId, lessonId, passageId, itemText, itemType } = body;
+    const {
+      studentId,
+      lessonId,
+      passageId,
+      itemText,
+      itemType,
+      sourceType,
+      contextText,
+    } = body;
 
     if (!studentId || !lessonId || !itemText || !itemType) {
       return NextResponse.json(
@@ -28,16 +36,16 @@ export async function POST(request: Request) {
 
     const supabase = await createClient();
 
-    let contextText: string | null = null;
+    let resolvedContextText: string | null = contextText?.trim() || null;
 
-    if (passageId) {
+    if (!resolvedContextText && passageId) {
       const { data: passage } = await supabase
         .from("lesson_passages")
         .select("passage_text")
         .eq("id", passageId)
         .maybeSingle();
 
-      contextText = passage?.passage_text
+      resolvedContextText = passage?.passage_text
         ? buildContextSnippet(passage.passage_text, itemText)
         : null;
     }
@@ -50,7 +58,9 @@ export async function POST(request: Request) {
         passage_id: passageId ?? null,
         item_text: itemText,
         item_type: itemType,
-        context_text: contextText,
+        context_text: resolvedContextText,
+        source_type:
+          sourceType === "question" || sourceType === "answer" ? sourceType : "passage",
       })
       .select()
       .single();

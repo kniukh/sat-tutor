@@ -21,11 +21,11 @@ Each lesson should produce five outcomes:
 Student sees the passage and can collect unknown words or phrases.
 
 Current supported actions:
-- add vocabulary manually
-- select text inline in the passage and capture it
+- full-width mobile-first reading screen
+- long-press a passage word to capture it quickly
+- add vocabulary manually if needed
 - see known words underlined for the current student
-- open hover mini-cards for known words
-- pin the mini-card
+- show a compact review-submit block below the passage
 
 Current analytics hooks:
 - reading stage start is tracked client-side
@@ -38,6 +38,10 @@ After `Submit Vocabulary`:
 - audio is generated in bulk when available
 - cards are shown one by one
 - captured lesson words are stored so they can later enter Vocabulary Studio with lesson-aware context
+- capture metadata can now preserve where the word came from:
+  - passage
+  - question
+  - answer
 
 Vocabulary card content may include:
 - word or phrase
@@ -52,7 +56,7 @@ Student rereads the passage with more support.
 
 Current behavior:
 - known words remain visible in the passage
-- student can continue to inspect saved vocabulary
+- double tap a saved word to play audio when available
 - reading metrics are finalized when the reading stage ends
 
 ## Stage 4 — Questions
@@ -63,6 +67,8 @@ Current behavior:
 - submit
 - see correct / incorrect state
 - see explanation
+- open a temporary `See Passage` view and return back to the same question
+- long press words in question text or answer text to capture them into lesson vocabulary
 - continue to next question
 
 Current analytics hooks:
@@ -140,12 +146,18 @@ The separate Vocabulary Studio is not part of the reading lesson stage machine, 
 
 Current bridge behavior:
 - lesson-derived words keep their lesson linkage through `lesson_id`
-- source context comes from captured passage context, `context_sentence`, and `example_text`
+- source context comes from captured passage/question/answer snippets, `context_sentence`, and `example_text`
 - fresh lesson words can later reappear in Vocabulary Studio through a softer first-exposure path:
   - `meaning_match`
+  - `translation_match`
+  - `pair_match`
   - `context_meaning`
   - `fill_blank`
-- when audio is ready, they may also enter audio-backed modalities like `listen_match` and `spelling_from_audio`
+- when the session gets more demanding, they may later enter:
+  - `sentence_builder`
+  - `error_detection`
+  - `listen_match`
+  - `spelling_from_audio`
 - adaptive difficulty can keep those first lesson-linked exposures on a more supportive path before the session grows more demanding
 
 ## Current Vocabulary Studio Follow-Through

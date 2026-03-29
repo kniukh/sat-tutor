@@ -102,6 +102,9 @@ Current composition:
 
 Main UI:
 - [LessonStagePanel.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/LessonStagePanel.tsx)
+  - mobile-first single-column lesson stages
+  - full-screen reading focus during first and second read
+  - passage/question/answer vocabulary capture hooks into shared vocab storage
 
 ### `/s/[code]/vocabulary`
 Vocabulary Studio page.
@@ -146,11 +149,13 @@ Current shape:
   - reading metrics post
   - vocab review cards
 - [LessonPlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/LessonPlayer.tsx)
-  - question flow
+  - one-question-per-screen flow
+  - passage recall overlay during quiz
   - per-question timing post
 - [InteractivePassageReader.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/InteractivePassageReader.tsx)
-  - inline capture
+  - long-press passage capture
   - known-word interactions
+  - double-tap audio replay in second read
   - AI Tutor popup
 
 ### Books surfaces
@@ -170,8 +175,12 @@ Current shape:
 
 Supported exercise types:
 - `meaning_match`
+- `translation_match`
+- `pair_match`
 - `listen_match`
 - `spelling_from_audio`
+- `sentence_builder`
+- `error_detection`
 - `fill_blank`
 - `context_meaning`
 - `synonym`

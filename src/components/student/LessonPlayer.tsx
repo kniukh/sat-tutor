@@ -17,7 +17,9 @@ type Question = {
 type Props = {
   studentId: string;
   lessonId: string;
+  passageId?: string;
   questions: Question[];
+  passageText?: string;
   onFinished?: () => void;
   onProgressChange?: Dispatch<
     SetStateAction<{
@@ -32,7 +34,9 @@ type Props = {
 export default function LessonPlayer({
   studentId,
   lessonId,
+  passageId,
   questions,
+  passageText,
   onFinished,
   onProgressChange,
   initialAnswers,
@@ -45,12 +49,123 @@ export default function LessonPlayer({
       : null
   );
   const [saving, setSaving] = useState(false);
+  const [captureSaving, setCaptureSaving] = useState(false);
+  const [captureToast, setCaptureToast] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(
     questions[initialQuestionIndex]
       ? Boolean(initialAnswers?.[questions[initialQuestionIndex].id])
       : false
   );
+  const [showPassage, setShowPassage] = useState(false);
   const questionStartedAtRef = useRef<number>(Date.now());
+  const longPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function normalizeCaptureWord(word: string) {
+    return word
+      .toLowerCase()
+      .replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, "")
+      .trim();
+  }
+
+  function buildSnippet(fullText: string, itemText: string) {
+    const lowerText = fullText.toLowerCase();
+    const lowerItem = itemText.toLowerCase();
+    const index = lowerText.indexOf(lowerItem);
+
+    if (index === -1) {
+      return fullText.trim().slice(0, 180);
+    }
+
+    const start = Math.max(0, index - 80);
+    const end = Math.min(fullText.length, index + itemText.length + 80);
+    return fullText.slice(start, end).trim();
+  }
+
+  async function captureWordFromLessonContext(
+    rawWord: string,
+    sourceType: "question" | "answer",
+    sourceText: string
+  ) {
+    const itemText = normalizeCaptureWord(rawWord);
+    if (!itemText) {
+      return;
+    }
+
+    setCaptureSaving(true);
+
+    try {
+      await fetch("/api/vocabulary/capture-inline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId,
+          lessonId,
+          passageId,
+          itemText,
+          itemType: "word",
+          sourceType,
+          contextText: buildSnippet(sourceText, rawWord),
+        }),
+      });
+
+      setCaptureToast(itemText);
+      window.setTimeout(() => {
+        setCaptureToast((current) => (current === itemText ? null : current));
+      }, 1600);
+    } catch (error) {
+      console.error("capture word from lesson context error", error);
+    } finally {
+      setCaptureSaving(false);
+    }
+  }
+
+  function clearLongPress() {
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+  }
+
+  function startLongPress(
+    rawWord: string,
+    sourceType: "question" | "answer",
+    sourceText: string
+  ) {
+    clearLongPress();
+    longPressTimeoutRef.current = setTimeout(() => {
+      void captureWordFromLessonContext(rawWord, sourceType, sourceText);
+    }, 420);
+  }
+
+  function renderCaptureableText(
+    text: string,
+    sourceType: "question" | "answer",
+    className?: string
+  ) {
+    return (
+      <span className={className}>
+        {text.split(/(\s+)/g).map((token, index) => {
+          const normalized = normalizeCaptureWord(token);
+
+          if (!normalized) {
+            return <span key={`${sourceType}-${index}`}>{token}</span>;
+          }
+
+          return (
+            <span
+              key={`${sourceType}-${index}-${token}`}
+              onTouchStart={() => startLongPress(token, sourceType, text)}
+              onTouchEnd={clearLongPress}
+              onTouchMove={clearLongPress}
+              onTouchCancel={clearLongPress}
+            >
+              {token}
+            </span>
+          );
+        })}
+      </span>
+    );
+  }
 
   useEffect(() => {
     questionStartedAtRef.current = Date.now();
@@ -60,6 +175,27 @@ export default function LessonPlayer({
 
   if (!question) {
     return <div>No questions.</div>;
+  }
+
+  if (showPassage) {
+    return (
+      <div className="space-y-4 rounded-[28px] border border-slate-200 bg-white px-4 py-5 shadow-sm sm:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-slate-900">Passage</div>
+          <button
+            type="button"
+            onClick={() => setShowPassage(false)}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            Back to Question
+          </button>
+        </div>
+
+        <div className="whitespace-pre-wrap text-[18px] leading-8 text-slate-900 sm:text-[19px] sm:leading-9">
+          {passageText || "Passage unavailable for this question."}
+        </div>
+      </div>
+    );
   }
 
   const options = [
@@ -153,7 +289,7 @@ export default function LessonPlayer({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 rounded-[28px] border border-slate-200 bg-white px-4 py-5 shadow-sm sm:px-6">
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm text-gray-500">
           Question {index + 1} of {questions.length}
@@ -163,7 +299,9 @@ export default function LessonPlayer({
         </div>
       </div>
 
-      <div className="text-lg font-semibold">{question.question_text}</div>
+      <div className="text-xl font-semibold leading-8 text-slate-950">
+        {renderCaptureableText(question.question_text, "question")}
+      </div>
 
       <div className="grid gap-2">
         {options.map((option) => {
@@ -189,20 +327,29 @@ export default function LessonPlayer({
               }`}
             >
               <span className="font-semibold mr-2">{option.key}.</span>
-              {option.text}
+              {renderCaptureableText(option.text, "answer")}
             </button>
           );
         })}
       </div>
 
       {!submitted ? (
-        <button
-          onClick={submitAnswer}
-          disabled={!selected || saving}
-          className="px-4 py-2 rounded-lg bg-black text-white disabled:opacity-50"
-        >
-          {saving ? "Saving..." : "Submit Answer"}
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setShowPassage(true)}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+          >
+            See Passage
+          </button>
+          <button
+            onClick={submitAnswer}
+            disabled={!selected || saving}
+            className="rounded-lg bg-black px-4 py-2 text-white disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Submit Answer"}
+          </button>
+        </div>
       ) : (
         <div className="space-y-4">
           <div
@@ -227,15 +374,30 @@ export default function LessonPlayer({
             ) : null}
           </div>
 
-          <button
-            onClick={next}
-            disabled={saving}
-            className="px-4 py-2 rounded-lg bg-black text-white disabled:opacity-50"
-          >
-            {index >= questions.length - 1 ? "Finish Lesson" : "Next"}
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => setShowPassage(true)}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+            >
+              See Passage
+            </button>
+            <button
+              onClick={next}
+              disabled={saving}
+              className="rounded-lg bg-black px-4 py-2 text-white disabled:opacity-50"
+            >
+              {index >= questions.length - 1 ? "Finish Lesson" : "Next"}
+            </button>
+          </div>
         </div>
       )}
+
+      {captureToast ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {captureSaving ? `Saving "${captureToast}"...` : `Added "${captureToast}" to vocabulary.`}
+        </div>
+      ) : null}
     </div>
   );
 }

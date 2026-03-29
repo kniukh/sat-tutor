@@ -6,7 +6,11 @@ import {
   getExerciseAudioStatus,
   getExerciseAudioUrl,
   getExerciseCorrectAnswer,
+  getExerciseCorrectSequence,
   getExerciseModality,
+  getExercisePairLeftId,
+  getExercisePairRightId,
+  getExercisePairs,
   getExerciseQuestionText,
   getExerciseSentenceText,
   getExerciseTargetWord,
@@ -14,11 +18,13 @@ import {
 } from "@/types/vocab-exercises";
 import ExercisePlayerFooter from "./ExercisePlayerFooter";
 import ExerciseProgressHeader from "./ExerciseProgressHeader";
-import AttemptTelemetryDebug from "./AttemptTelemetryDebug";
 import type { Exercise, ExerciseResult } from "./types";
 import MeaningMatchExercise from "./renderers/MeaningMatchExercise";
+import PairMatchExercise from "./renderers/PairMatchExercise";
 import ListenMatchExercise from "./renderers/ListenMatchExercise";
 import SpellingFromAudioExercise from "./renderers/SpellingFromAudioExercise";
+import SentenceBuilderExercise from "./renderers/SentenceBuilderExercise";
+import ErrorDetectionExercise from "./renderers/ErrorDetectionExercise";
 import FillBlankExercise from "./renderers/FillBlankExercise";
 import ContextMeaningExercise from "./renderers/ContextMeaningExercise";
 import SynonymExercise from "./renderers/SynonymExercise";
@@ -27,20 +33,60 @@ import CollocationExercise from "./renderers/CollocationExercise";
 type Props = {
   exercises: Exercise[];
   title?: string;
+  sessionId?: string;
+  sessionMetadata?: Record<string, unknown>;
+  modeLabel?: string;
+  headerHelperText?: string;
   onExerciseComplete?: (result: ExerciseResult) => void;
   onComplete?: (results: ExerciseResult[]) => void;
 };
 
+function parseSentenceBuilderResponse(value: string) {
+  if (!value.trim()) {
+    return [] as string[];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function parsePairMatchResponse(value: string) {
+  if (!value.trim()) {
+    return [] as string[];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function sortPairMatchKeys(pairKeys: string[]) {
+  return [...pairKeys].sort((left, right) => left.localeCompare(right));
+}
+
 export default function ExercisePlayer({
   exercises,
-  title = "Exercise Set",
+  sessionId,
+  sessionMetadata,
   onExerciseComplete,
   onComplete,
 }: Props) {
   const sessionIdRef = useRef<string>(
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `session-${Date.now()}`
+    sessionId ??
+      (typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `session-${Date.now()}`)
   );
   const [currentIndex, setCurrentIndex] = useState(0);
   const [responseValue, setResponseValue] = useState("");
@@ -49,6 +95,9 @@ export default function ExercisePlayer({
   const [currentFeedback, setCurrentFeedback] = useState<{
     isCorrect: boolean;
     explanation?: string;
+    selectedAnswer?: string;
+    correctAnswer?: string;
+    answerLabel?: string;
   } | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const startedAtRef = useRef<number>(Date.now());
@@ -67,33 +116,79 @@ export default function ExercisePlayer({
 
   if (!currentExercise) {
     return (
-      <div className="space-y-4 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
-        <div className="space-y-1">
-          <div className="text-xl font-semibold text-slate-950">{title}</div>
-          <div className="text-sm text-slate-500">Vocabulary session</div>
-        </div>
-        <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-5 text-slate-600">
+      <div className="rounded-[28px] border border-slate-200 bg-white p-6 text-slate-600 shadow-sm sm:p-7">
           No exercises available yet.
-        </div>
       </div>
     );
   }
 
+  const isTypedResponse = currentExercise.type === "spelling_from_audio";
+  const isPairMatch = currentExercise.type === "pair_match";
+  const isSentenceBuilder = currentExercise.type === "sentence_builder";
+  const selectedPairKeys = isPairMatch ? parsePairMatchResponse(responseValue) : [];
+  const selectedTileIds = isSentenceBuilder
+    ? parseSentenceBuilderResponse(responseValue)
+    : [];
+  const pairCount = isPairMatch ? getExercisePairs(currentExercise).length : 0;
+  const canSubmit = isPairMatch
+    ? pairCount > 0 && selectedPairKeys.length === pairCount
+    : isSentenceBuilder
+      ? selectedTileIds.length > 0
+      : Boolean(responseValue.trim());
+
   function handleCheck() {
-    if (!responseValue.trim()) return;
+    if (!canSubmit) return;
 
     const timeSpentMs = Math.max(1, Date.now() - startedAtRef.current);
     const correctAnswerId = getExerciseCorrectAnswer(currentExercise);
     const questionText = getExerciseQuestionText(currentExercise);
-    const isTypedResponse = currentExercise.type === "spelling_from_audio";
     const selectedOption = isTypedResponse
       ? null
+      : isPairMatch
+        ? null
+      : isSentenceBuilder
+        ? null
       : currentExercise.options.find((option) => option.id === responseValue) ?? null;
     const correctOption = isTypedResponse
       ? null
+      : isPairMatch
+        ? null
+      : isSentenceBuilder
+        ? null
       : currentExercise.options.find((option) => option.id === correctAnswerId) ?? null;
+    const correctPairs = isPairMatch
+      ? getExercisePairs(currentExercise).map((pair) => ({
+          key: `${getExercisePairLeftId(pair)}::${getExercisePairRightId(pair)}`,
+          label: `${pair.left} -> ${pair.right}`,
+        }))
+      : [];
+    const selectedPairLabels = isPairMatch
+      ? selectedPairKeys.map((pairKey) => {
+          const matchingPair = correctPairs.find((pair) => pair.key === pairKey);
+          if (matchingPair) {
+            return matchingPair.label;
+          }
+
+          const [leftId, rightId] = pairKey.split("::");
+          const leftLabel =
+            currentExercise.options.find((option) => option.id === leftId)?.label ?? leftId;
+          const rightLabel =
+            currentExercise.options.find((option) => option.id === rightId)?.label ?? rightId;
+          return `${leftLabel} -> ${rightLabel}`;
+        })
+      : [];
+    const selectedTileLabels = isSentenceBuilder
+      ? selectedTileIds
+          .map((tileId) => currentExercise.options.find((option) => option.id === tileId)?.label)
+          .filter((label): label is string => Boolean(label))
+      : [];
+    const builtSentence = isSentenceBuilder ? selectedTileLabels.join(" ") : null;
     const selectedAnswer = isTypedResponse
       ? responseValue.trim()
+      : isPairMatch
+        ? selectedPairLabels.join(" | ")
+      : isSentenceBuilder
+        ? builtSentence ?? ""
       : selectedOption?.label ?? responseValue;
     const normalizedTypedAnswer = responseValue.trim().toLowerCase();
     const normalizedAcceptableAnswers = getExerciseAcceptableAnswers(currentExercise).map((answer) =>
@@ -101,6 +196,12 @@ export default function ExercisePlayer({
     );
     const isCorrect = isTypedResponse
       ? normalizedAcceptableAnswers.includes(normalizedTypedAnswer)
+      : isPairMatch
+        ? JSON.stringify(sortPairMatchKeys(selectedPairKeys)) ===
+          JSON.stringify(sortPairMatchKeys(correctPairs.map((pair) => pair.key)))
+      : isSentenceBuilder
+        ? JSON.stringify(selectedTileIds) ===
+          JSON.stringify(getExerciseCorrectSequence(currentExercise))
       : getExerciseAcceptableAnswers(currentExercise).includes(responseValue);
     const wordProgressId = currentExercise.reviewMeta?.sourceDrillId ?? null;
     const result: ExerciseResult = {
@@ -111,19 +212,47 @@ export default function ExercisePlayer({
       target_word_id: getExerciseTargetWordId(currentExercise),
       target_word: getExerciseTargetWord(currentExercise),
       selected_answer: selectedAnswer,
-      correct_answer: isTypedResponse ? correctAnswerId : correctOption?.label ?? correctAnswerId,
+      correct_answer:
+        isTypedResponse
+          ? correctAnswerId
+          : isPairMatch
+            ? correctPairs.map((pair) => pair.label).join(" | ")
+            : isSentenceBuilder
+              ? correctAnswerId
+              : correctOption?.label ?? correctAnswerId,
       is_correct: isCorrect,
       attempt_index: currentIndex + 1,
       word_progress_id: wordProgressId,
       metadata: {
-        selected_option_id: isTypedResponse ? null : responseValue,
-        correct_option_id: isTypedResponse ? null : correctAnswerId,
-        response_kind: isTypedResponse ? "typed" : "option",
-        normalized_selected_answer: normalizedTypedAnswer,
+        ...(sessionMetadata ?? {}),
+        selected_option_id:
+          isTypedResponse || isSentenceBuilder || isPairMatch ? null : responseValue,
+        correct_option_id:
+          isTypedResponse || isSentenceBuilder || isPairMatch ? null : correctAnswerId,
+        response_kind: isTypedResponse
+          ? "typed"
+          : isPairMatch
+            ? "pair_match"
+            : isSentenceBuilder
+            ? "tile_builder"
+            : "option",
+        normalized_selected_answer: isSentenceBuilder
+          ? (builtSentence ?? "").trim().toLowerCase()
+          : normalizedTypedAnswer,
+        selected_pairs: isPairMatch ? selectedPairKeys : null,
+        correct_pairs: isPairMatch ? correctPairs.map((pair) => pair.key) : null,
+        selected_pair_labels: isPairMatch ? selectedPairLabels : null,
+        selected_tile_ids: isSentenceBuilder ? selectedTileIds : null,
+        selected_tile_labels: isSentenceBuilder ? selectedTileLabels : null,
+        correct_tile_ids: isSentenceBuilder ? getExerciseCorrectSequence(currentExercise) : null,
         question_text: questionText,
         sentence_text: getExerciseSentenceText(currentExercise) || null,
         prompt: currentExercise.prompt,
         instructions: currentExercise.instructions ?? null,
+        exercise_variant:
+          "variant" in currentExercise && typeof currentExercise.variant === "string"
+            ? currentExercise.variant
+            : null,
         modality: getExerciseModality(currentExercise),
         audio_url: getExerciseAudioUrl(currentExercise),
         audio_status: getExerciseAudioStatus(currentExercise),
@@ -142,6 +271,21 @@ export default function ExercisePlayer({
     setCurrentFeedback({
       isCorrect,
       explanation: currentExercise.explanation,
+      selectedAnswer: selectedAnswer,
+      correctAnswer: isTypedResponse
+        ? correctAnswerId
+        : isPairMatch
+          ? correctPairs.map((pair) => pair.label).join(" | ")
+        : isSentenceBuilder
+          ? correctAnswerId
+          : correctOption?.label ?? correctAnswerId,
+      answerLabel: isTypedResponse
+        ? "Your spelling"
+        : isPairMatch
+          ? "Your matches"
+        : isSentenceBuilder
+          ? "Your sentence"
+          : "Your answer",
     });
     setResults((prev) => [
       ...prev.filter((item) => item.exercise_id !== result.exercise_id),
@@ -167,7 +311,7 @@ export default function ExercisePlayer({
       setResponseValue("");
       setSubmitted(false);
       setCurrentFeedback(null);
-    }, 140);
+    }, 180);
   }
 
   function renderExercise() {
@@ -185,6 +329,33 @@ export default function ExercisePlayer({
       case "spelling_from_audio":
         return (
           <SpellingFromAudioExercise
+            exercise={currentExercise}
+            selectedValue={responseValue}
+            onSelect={setResponseValue}
+            submitted={submitted}
+          />
+        );
+      case "pair_match":
+        return (
+          <PairMatchExercise
+            exercise={currentExercise}
+            selectedValue={responseValue}
+            onSelect={setResponseValue}
+            submitted={submitted}
+          />
+        );
+      case "sentence_builder":
+        return (
+          <SentenceBuilderExercise
+            exercise={currentExercise}
+            selectedValue={responseValue}
+            onSelect={setResponseValue}
+            submitted={submitted}
+          />
+        );
+      case "error_detection":
+        return (
+          <ErrorDetectionExercise
             exercise={currentExercise}
             selectedValue={responseValue}
             onSelect={setResponseValue}
@@ -242,31 +413,24 @@ export default function ExercisePlayer({
   }
 
   return (
-    <div className="space-y-5 rounded-[32px] border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm sm:space-y-6 sm:p-6">
-      <ExerciseProgressHeader currentIndex={currentIndex} total={exercises.length} title={title} />
+    <div className="mx-auto flex min-h-[70vh] w-full max-w-2xl flex-col gap-6 rounded-[28px] bg-white px-4 py-5 sm:px-6 sm:py-6">
+      <ExerciseProgressHeader
+        currentIndex={currentIndex}
+        total={exercises.length}
+      />
 
-      <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1 space-y-2">
-            {currentExercise.instructions ? (
-              <div className="text-sm leading-6 text-slate-600">{currentExercise.instructions}</div>
-            ) : null}
-            {getExerciseQuestionText(currentExercise) ? (
-              <div className="text-lg font-semibold leading-tight text-slate-950 sm:text-xl">
-                {getExerciseQuestionText(currentExercise)}
-              </div>
-            ) : null}
+      <div className="space-y-2">
+        {getExerciseQuestionText(currentExercise) ? (
+          <div className="text-2xl font-semibold leading-tight text-slate-950 sm:text-3xl">
+            {getExerciseQuestionText(currentExercise)}
           </div>
-          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-            {submitted ? "Checked" : "Answer"}
-          </div>
-        </div>
+        ) : null}
       </div>
 
       <div
         key={currentExercise.id}
-        className={`space-y-5 transition-all duration-200 ease-out ${
-          isAdvancing ? "translate-y-1 opacity-0" : "translate-y-0 opacity-100"
+        className={`flex-1 space-y-5 transition-all duration-200 ease-out ${
+          isAdvancing ? "translate-y-1 opacity-0 blur-[1px]" : "translate-y-0 opacity-100 blur-0"
         }`}
       >
         {renderExercise()}
@@ -274,22 +438,11 @@ export default function ExercisePlayer({
 
       <ExercisePlayerFooter
         submitted={submitted}
-        canSubmit={Boolean(responseValue.trim())}
+        canSubmit={canSubmit}
         isLast={currentIndex >= exercises.length - 1}
         feedback={currentFeedback}
         onCheck={handleCheck}
         onContinue={handleContinue}
-      />
-
-      <AttemptTelemetryDebug
-        title="Debug Attempts"
-        summary={[
-          { label: "Session ID", value: sessionIdRef.current },
-          { label: "Collected", value: results.length },
-          { label: "Current Index", value: `${Math.min(currentIndex + 1, exercises.length)}/${exercises.length}` },
-          { label: "Checked", value: submitted ? "yes" : "no" },
-        ]}
-        payload={results}
       />
     </div>
   );

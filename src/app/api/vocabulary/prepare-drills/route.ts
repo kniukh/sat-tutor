@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { generateVocabularyDrillOptions } from '@/services/ai/generate-vocabulary-drill-options';
+import {
+  auditVocabularyDistractors,
+  prepareVocabularyDistractors,
+} from '@/services/vocabulary/distractor-quality.service';
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -24,22 +27,47 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const meaningPool = (items ?? [])
+    .map((item) => item.english_explanation)
+    .filter((value): value is string => Boolean(value));
+
   for (const item of items ?? []) {
-    if (Array.isArray(item.distractors) && item.distractors.length >= 3) {
-      continue;
-    }
+    const audit = auditVocabularyDistractors({
+      correctAnswer: item.english_explanation ?? '',
+      distractors: Array.isArray(item.distractors) ? item.distractors : [],
+      itemType: (item.item_type ?? 'word') as 'word' | 'phrase',
+    });
 
     try {
-      const generated = await generateVocabularyDrillOptions({
+      const distractors = await prepareVocabularyDistractors({
         itemText: item.item_text,
-        itemType: item.item_type,
-        plainEnglishMeaning: item.english_explanation ?? '',
+        itemType: (item.item_type ?? 'word') as 'word' | 'phrase',
+        correctAnswer: item.english_explanation ?? '',
+        contextSentence: item.context_sentence ?? null,
+        exampleText: item.example_text ?? null,
+        existingDistractors: Array.isArray(item.distractors) ? item.distractors : [],
+        fallbackPool: meaningPool.filter(
+          (candidate) =>
+            candidate.trim().toLowerCase() !==
+            String(item.english_explanation ?? '').trim().toLowerCase()
+        ),
       });
+
+      const nextDistractors =
+        distractors.length >= 3 ? distractors : audit.normalizedDistractors;
+
+      if (
+        !audit.needsRefinement &&
+        Array.isArray(item.distractors) &&
+        JSON.stringify(item.distractors) === JSON.stringify(nextDistractors)
+      ) {
+        continue;
+      }
 
       const { error: updateError } = await supabase
         .from('vocabulary_item_details')
         .update({
-          distractors: generated.distractors,
+          distractors: nextDistractors,
         })
         .eq('id', item.id);
 

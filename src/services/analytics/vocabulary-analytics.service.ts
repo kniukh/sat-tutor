@@ -333,8 +333,8 @@ function buildImprovedWords(attempts: AttemptAnalyticsRow[], now: Date) {
     .slice(0, 6);
 }
 
-function buildWeakWords(wordProgressRows: WordProgressAnalyticsRow[]) {
-  return wordProgressRows
+function buildWeakWords(wordProgressRows: WordProgressAnalyticsRow[], limit?: number) {
+  const weakWords = wordProgressRows
     .filter(
       (row) =>
         row.lifecycle_state === "weak_again" ||
@@ -358,8 +358,9 @@ function buildWeakWords(wordProgressRows: WordProgressAnalyticsRow[]) {
       }
 
       return left.masteryScore - right.masteryScore;
-    })
-    .slice(0, 8);
+    });
+
+  return typeof limit === "number" ? weakWords.slice(0, limit) : weakWords;
 }
 
 function buildMasteryDistribution(wordProgressRows: WordProgressAnalyticsRow[]) {
@@ -437,7 +438,8 @@ export async function getStudentVocabularyAnalytics(
   const recentSessionCount30d = recentSessions.filter(
     (session) => new Date(session.lastActivityAt).getTime() >= thirtyDaysAgo
   ).length;
-  const recentWeakWords = buildWeakWords(wordProgressRows);
+  const allWeakWords = buildWeakWords(wordProgressRows);
+  const recentWeakWords = allWeakWords.slice(0, 8);
   const improvedWords7d = buildImprovedWords(attempts, now);
 
   return {
@@ -445,7 +447,7 @@ export async function getStudentVocabularyAnalytics(
       totalExercisesCompleted,
       overallAccuracy,
       averageResponseTimeMs,
-      weakWordCount: recentWeakWords.length,
+      weakWordCount: allWeakWords.length,
       recentSessionCount7d,
       recentSessionCount30d,
       wordsImproved7dCount: improvedWords7d.length,

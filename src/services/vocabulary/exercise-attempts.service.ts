@@ -13,7 +13,12 @@ function inferModality(exercise: SupportedVocabExercise): ExerciseAttemptRow["mo
     return getExerciseModality(exercise);
   }
 
-  if (exercise.type === "context_meaning" || exercise.type === "fill_blank") {
+  if (
+    exercise.type === "pair_match" ||
+    exercise.type === "context_meaning" ||
+    exercise.type === "fill_blank" ||
+    exercise.type === "error_detection"
+  ) {
     return "context";
   }
 
@@ -69,6 +74,10 @@ export async function saveExerciseAttempt(params: {
     metadata: {
       tags: params.exercise.tags ?? [],
       skill: params.exercise.skill ?? null,
+      session_mode:
+        typeof params.result.metadata?.session_mode === "string"
+          ? params.result.metadata.session_mode
+          : null,
       review_meta: params.exercise.reviewMeta ?? {},
       attempt_index: params.result.attempt_index,
       word_progress_id: params.result.word_progress_id,

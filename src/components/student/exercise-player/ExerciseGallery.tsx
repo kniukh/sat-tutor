@@ -12,8 +12,11 @@ import { mockExercises } from "./mock-exercises";
 const TYPE_LABELS: Record<SupportedVocabExerciseType, string> = {
   meaning_match: "Meaning Match",
   translation_match: "Translation Match",
+  pair_match: "Pair Match",
   listen_match: "Listen Match",
   spelling_from_audio: "Spelling From Audio",
+  sentence_builder: "Sentence Builder",
+  error_detection: "Error Detection",
   fill_blank: "Fill Blank",
   context_meaning: "Context Meaning",
   synonym: "Synonym",

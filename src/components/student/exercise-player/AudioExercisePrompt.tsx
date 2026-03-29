@@ -85,63 +85,29 @@ export default function AudioExercisePrompt({
       title={title}
       body={
         <div className="space-y-4">
-          <div className="rounded-[24px] border border-slate-200 bg-slate-950 p-5 text-white shadow-[0_18px_35px_-24px_rgba(15,23,42,0.85)]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
-                  Audio Prompt
-                </div>
-                <div className="mt-2 text-sm leading-6 text-white/75">{description}</div>
-              </div>
-              <button
-                type="button"
-                onClick={handlePlay}
-                disabled={!hasAudio}
-                className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                  hasAudio
-                    ? "bg-white text-slate-950 hover:bg-slate-100"
-                    : "cursor-not-allowed bg-white/10 text-white/45"
-                }`}
-              >
-                {audioState === "loading"
-                  ? "Loading..."
-                  : audioState === "replay"
-                    ? "Replay Audio"
-                    : "Play Audio"}
-              </button>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">
-                {audioState === "error"
-                  ? "Unavailable"
-                  : audioState === "loading"
-                    ? "Loading"
-                    : audioState === "replay"
-                      ? "Replay Ready"
-                      : audioState === "ready"
-                        ? "Ready"
-                        : "Idle"}
-              </span>
-              {audioStatus ? (
-                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/55">
-                  source {audioStatus}
-                </span>
-              ) : null}
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={handlePlay}
+            disabled={!hasAudio}
+            className={`inline-flex min-h-14 w-full items-center justify-center rounded-2xl px-4 py-4 text-base font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 ${
+              hasAudio
+                ? "bg-slate-950 text-white hover:bg-slate-800"
+                : "cursor-not-allowed bg-slate-200 text-slate-500"
+            }`}
+          >
+            {audioState === "loading"
+              ? "Loading..."
+              : audioState === "replay"
+                ? "Replay"
+                : "Play audio"}
+          </button>
 
           {hasAudio ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-              {readyHint}
-            </div>
+            <div className="text-sm text-slate-500">{description || readyHint}</div>
           ) : (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-              <div className="font-semibold">Audio fallback</div>
-              <div className="mt-2">{audioError ?? "Audio is unavailable for this exercise."}</div>
-              <div className="mt-3 rounded-xl border border-amber-200 bg-white px-3 py-3 text-slate-800">
-                {fallbackContent}
-              </div>
+              <div>{audioError ?? "Audio is unavailable for this exercise."}</div>
+              <div className="mt-3 text-slate-700">{fallbackContent}</div>
             </div>
           )}
 
@@ -174,7 +140,7 @@ export default function AudioExercisePrompt({
           />
         </div>
       }
-      footer={footer}
+      footer={hasAudio ? null : footer}
     />
   );
 }

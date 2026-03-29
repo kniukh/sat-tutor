@@ -37,8 +37,11 @@ Stage-based reading flow:
 - `completed`
 
 Key current capabilities:
-- inline vocabulary capture
+- mobile-first reading flow with full-width passage focus
+- long-press vocabulary capture from passage text
+- long-press vocabulary capture from quiz question and answer text
 - vocabulary card review
+- second-read double-tap audio replay on saved words
 - AI Tutor explanation on text selection
 - question explanations
 - reading speed telemetry
@@ -67,6 +70,11 @@ Current foundations:
 - audio-backed modalities:
   - `listen_match`
   - `spelling_from_audio`
+- higher-variety drills:
+  - `translation_match`
+  - `pair_match`
+  - `sentence_builder`
+  - `error_detection`
 
 ## Current Product Decisions
 
@@ -92,9 +100,11 @@ Current foundations:
 ## Current Implemented Highlights
 
 ### Reading runtime
-- inline vocabulary capture from passage text
+- inline long-press vocabulary capture from passage text
+- source-aware vocabulary capture from quiz question and answer text
 - known-word underline and hover interactions
 - vocabulary cards with audio
+- second-read double-tap audio playback on saved words
 - reading metrics API and persistence
 - per-question timing API and persistence
 - AI Tutor popup for selected text

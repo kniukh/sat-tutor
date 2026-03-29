@@ -7,8 +7,11 @@ import type {
 export type SupportedVocabExerciseType =
   | "meaning_match"
   | "translation_match"
+  | "pair_match"
   | "listen_match"
   | "spelling_from_audio"
+  | "sentence_builder"
+  | "error_detection"
   | "fill_blank"
   | "context_meaning"
   | "synonym"
@@ -41,6 +44,10 @@ export type VocabExercisePair = {
   id: string;
   left: string;
   right: string;
+  left_id?: string;
+  leftId?: string;
+  right_id?: string;
+  rightId?: string;
 };
 
 export type VocabExerciseQueueBucket =
@@ -49,6 +56,11 @@ export type VocabExerciseQueueBucket =
   | "overdue"
   | "reinforcement"
   | "scheduled";
+
+export type VocabExerciseSourceType =
+  | "reading_lesson"
+  | "generated_lesson"
+  | "other";
 
 export type VocabExerciseReviewMeta = {
   attemptCount?: number;
@@ -60,6 +72,7 @@ export type VocabExerciseReviewMeta = {
   sourcePassageTitle?: string | null;
   sourceContextSnippet?: string | null;
   sourceCapturedAt?: string | null;
+  sourceType?: VocabExerciseSourceType | null;
   sourceOrigin?: "lesson_capture" | "review_queue" | "new_word_pool" | "unknown";
   lessonFirstExposure?: boolean;
   sourceDrillId?: string | null;
@@ -129,15 +142,34 @@ type AudioBackedExerciseFields = {
 export type MeaningMatchVocabExercise = VocabExerciseBase<"meaning_match"> & {
   sourceLanguageLabel?: string;
   targetLanguageLabel?: string;
+  variant?: "definition_match" | "paraphrase_match";
 };
 
 export type TranslationMatchVocabExercise = VocabExerciseBase<"translation_match"> & {
   sourceLanguageLabel?: string;
   targetLanguageLabel?: string;
+  translationLanguageLabel?: string | null;
+  direction?: "english_to_native" | "native_to_english";
+  promptTerm?: string;
+};
+
+export type PairMatchVocabExercise = VocabExerciseBase<"pair_match"> & {
+  leftColumnLabel?: string;
+  left_column_label?: string;
+  rightColumnLabel?: string;
+  right_column_label?: string;
+  variant?:
+    | "english_native"
+    | "native_english"
+    | "word_definition"
+    | "synonym_pair"
+    | "collocation_pair";
 };
 
 export type FillBlankVocabExercise = VocabExerciseBase<"fill_blank"> & {
   clue?: string;
+  variant?: "single_blank" | "context_clue";
+  contextHint?: string | null;
 };
 
 export type ContextMeaningVocabExercise = VocabExerciseBase<"context_meaning"> & {
@@ -146,12 +178,37 @@ export type ContextMeaningVocabExercise = VocabExerciseBase<"context_meaning"> &
 };
 
 export type SynonymVocabExercise = VocabExerciseBase<"synonym"> & {
-  promptStyle?: "closest_meaning" | "best_synonym";
+  promptStyle?: "closest_meaning" | "best_synonym" | "best_antonym";
+  variant?: "synonym" | "antonym";
 };
 
 export type CollocationVocabExercise = VocabExerciseBase<"collocation"> & {
   stem: string;
   exampleSentence?: string;
+  variant?: "best_fit" | "pair_selection";
+  pairLead?: string;
+};
+
+export type SentenceBuilderVocabExercise = VocabExerciseBase<"sentence_builder"> & {
+  correct_sequence: string[];
+  correctSequence?: string[];
+  tileStyle?: "word_bank" | "phrase_bank";
+  clue?: string | null;
+};
+
+export type ErrorDetectionSentenceSegment = {
+  id: string;
+  text: string;
+};
+
+export type ErrorDetectionVocabExercise = VocabExerciseBase<"error_detection"> & {
+  sentence_segments: ErrorDetectionSentenceSegment[];
+  sentenceSegments?: ErrorDetectionSentenceSegment[];
+  replacement_text?: string | null;
+  replacementText?: string | null;
+  allow_no_error?: boolean;
+  allowNoError?: boolean;
+  variant?: "find_error" | "no_error_possible";
 };
 
 // Future placeholders keep the contract ready without forcing implementation details yet.
@@ -180,8 +237,11 @@ export type SpeedRoundVocabExercise = VocabExerciseBase<"speed_round"> & {
 export type SupportedVocabExercise =
   | MeaningMatchVocabExercise
   | TranslationMatchVocabExercise
+  | PairMatchVocabExercise
   | ListenMatchVocabExercise
   | SpellingFromAudioVocabExercise
+  | SentenceBuilderVocabExercise
+  | ErrorDetectionVocabExercise
   | FillBlankVocabExercise
   | ContextMeaningVocabExercise
   | SynonymVocabExercise
@@ -246,6 +306,42 @@ export function getExerciseModality(exercise: VocabExerciseBase<VocabExerciseTyp
 
 export function getExerciseDifficultyBand(exercise: VocabExerciseBase<VocabExerciseType>) {
   return exercise.difficulty_band ?? null;
+}
+
+export function getExercisePairs(exercise: VocabExerciseBase<VocabExerciseType>) {
+  return exercise.pairs ?? [];
+}
+
+export function getExercisePairLeftId(pair: VocabExercisePair) {
+  return pair.left_id ?? pair.leftId ?? `${pair.id}:left`;
+}
+
+export function getExercisePairRightId(pair: VocabExercisePair) {
+  return pair.right_id ?? pair.rightId ?? `${pair.id}:right`;
+}
+
+export function getExerciseCorrectSequence(exercise: VocabExerciseBase<VocabExerciseType>) {
+  if ("correct_sequence" in exercise || "correctSequence" in exercise) {
+    return (
+      (exercise as SentenceBuilderVocabExercise).correct_sequence ??
+      (exercise as SentenceBuilderVocabExercise).correctSequence ??
+      []
+    );
+  }
+
+  return [];
+}
+
+export function getExerciseSentenceSegments(exercise: VocabExerciseBase<VocabExerciseType>) {
+  if ("sentence_segments" in exercise || "sentenceSegments" in exercise) {
+    return (
+      (exercise as ErrorDetectionVocabExercise).sentence_segments ??
+      (exercise as ErrorDetectionVocabExercise).sentenceSegments ??
+      []
+    );
+  }
+
+  return [];
 }
 
 export function getExerciseAudioUrl(exercise: VocabExerciseBase<VocabExerciseType>) {

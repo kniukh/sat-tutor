@@ -11,13 +11,22 @@ type VocabItem = {
   audio_url?: string | null;
 };
 
+export type CapturedVocabularyItem = {
+  itemText: string;
+  itemType: "word" | "phrase";
+  sourceType: "passage" | "question" | "answer";
+  contextText?: string | null;
+};
+
 type Props = {
   studentId: string;
   lessonId: string;
   passageId?: string;
-  presetItems?: string[];
-  onItemsChange?: (items: string[]) => void;
+  presetItems?: CapturedVocabularyItem[];
+  onItemsChange?: (items: CapturedVocabularyItem[]) => void;
   onSubmitted?: (items: VocabItem[]) => void;
+  compact?: boolean;
+  hideManualInput?: boolean;
 };
 
 export default function PassageVocabularyCapture({
@@ -27,8 +36,10 @@ export default function PassageVocabularyCapture({
   presetItems = [],
   onItemsChange,
   onSubmitted,
+  compact = false,
+  hideManualInput = false,
 }: Props) {
-  const [items, setItems] = useState<string[]>(presetItems);
+  const [items, setItems] = useState<CapturedVocabularyItem[]>(presetItems);
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -36,7 +47,7 @@ export default function PassageVocabularyCapture({
     setItems(presetItems);
   }, [presetItems]);
 
-  function sync(next: string[]) {
+  function sync(next: CapturedVocabularyItem[]) {
     setItems(next);
     onItemsChange?.(next);
   }
@@ -44,13 +55,21 @@ export default function PassageVocabularyCapture({
   function addItem() {
     const trimmed = value.trim();
     if (!trimmed) return;
-    if (items.some((x) => x.toLowerCase() === trimmed.toLowerCase())) return;
-    sync([...items, trimmed]);
+    if (items.some((x) => x.itemText.toLowerCase() === trimmed.toLowerCase())) return;
+    sync([
+      ...items,
+      {
+        itemText: trimmed,
+        itemType: trimmed.includes(" ") ? "phrase" : "word",
+        sourceType: "passage",
+        contextText: null,
+      },
+    ]);
     setValue("");
   }
 
-  function removeItem(item: string) {
-    sync(items.filter((x) => x !== item));
+  function removeItem(itemText: string) {
+    sync(items.filter((x) => x.itemText !== itemText));
   }
 
   async function submitVocabulary() {
@@ -65,8 +84,10 @@ export default function PassageVocabularyCapture({
             studentId,
             lessonId,
             passageId,
-            itemText: item,
-            itemType: item.includes(" ") ? "phrase" : "word",
+            itemText: item.itemText,
+            itemType: item.itemType,
+            sourceType: item.sourceType,
+            contextText: item.contextText ?? null,
           }),
         });
       }
@@ -95,35 +116,39 @@ export default function PassageVocabularyCapture({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="text-lg font-semibold">Unknown words and phrases</div>
-
-      <div className="flex gap-2">
-        <input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") addItem();
-          }}
-          className="flex-1 border rounded-lg px-3 py-2"
-          placeholder="Type a word or phrase"
-        />
-        <button
-          onClick={addItem}
-          className="px-4 py-2 rounded-lg bg-black text-white"
-        >
-          Add
-        </button>
+    <div className={`space-y-4 ${compact ? "" : ""}`}>
+      <div className={compact ? "text-sm font-semibold text-slate-900" : "text-lg font-semibold"}>
+        Unknown words and phrases
       </div>
+
+      {!hideManualInput ? (
+        <div className="flex gap-2">
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") addItem();
+            }}
+            className="flex-1 rounded-lg border px-3 py-2"
+            placeholder="Type a word or phrase"
+          />
+          <button
+            onClick={addItem}
+            className="rounded-lg bg-black px-4 py-2 text-white"
+          >
+            Add
+          </button>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         {items.map((item) => (
           <button
-            key={item}
-            onClick={() => removeItem(item)}
+            key={`${item.sourceType}:${item.itemText}`}
+            onClick={() => removeItem(item.itemText)}
             className="px-3 py-1 rounded-full bg-blue-100 text-blue-900"
           >
-            {item} ×
+            {item.itemText} ×
           </button>
         ))}
       </div>
@@ -131,9 +156,11 @@ export default function PassageVocabularyCapture({
       <button
         onClick={submitVocabulary}
         disabled={saving}
-        className="px-4 py-2 rounded-lg bg-green-600 text-white disabled:opacity-50"
+        className={`rounded-lg text-white disabled:opacity-50 ${
+          compact ? "px-4 py-2 text-sm bg-slate-950" : "px-4 py-2 bg-green-600"
+        }`}
       >
-        {saving ? "Submitting..." : "Submit Vocabulary"}
+        {saving ? "Submitting..." : compact ? "Review Words" : "Submit Vocabulary"}
       </button>
     </div>
   );

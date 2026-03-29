@@ -16,6 +16,13 @@ export type PersistExerciseAttemptResponse = {
             }
           | null;
         reviewQueueRow: unknown | null;
+        sameSessionCreditCapped?: boolean;
+        session?: {
+          session_id: string;
+          sequence_index: number;
+          exercise_count: number;
+          correct_count: number;
+        } | null;
       }
     | null;
   progressError: string | null;

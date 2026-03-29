@@ -6,6 +6,7 @@ import {
   getExerciseTargetWordId as readTargetWordId,
   type SupportedVocabExercise,
   type SupportedVocabExerciseType,
+  type VocabExerciseSourceType,
   type VocabExerciseQueueBucket,
 } from "@/types/vocab-exercises";
 import type { VocabModality, WordLifecycleState } from "@/types/vocab-tracking";
@@ -57,7 +58,9 @@ export type VocabExerciseSession = {
       selection_reason: string | null;
       source_lesson_id: string | null;
       source_lesson_title: string | null;
+      source_passage_title: string | null;
       source_context_snippet: string | null;
+      source_type: VocabExerciseSourceType | null;
       adaptive_difficulty_band: "easy" | "medium" | "hard" | null;
       adaptive_difficulty_reason: string | null;
       session_difficulty_bias: "supportive" | "balanced" | "stretch" | null;
@@ -343,7 +346,18 @@ function chooseExerciseForWordEntry(params: {
         score += 4;
       }
 
-      if (adaptiveDifficultyBand === "hard" && candidate.type === "context_meaning") {
+      if (adaptiveDifficultyBand === "easy" && candidate.type === "pair_match") {
+        score += 5;
+      }
+
+      if (
+        adaptiveDifficultyBand === "hard" &&
+        (
+          candidate.type === "context_meaning" ||
+          candidate.type === "sentence_builder" ||
+          candidate.type === "error_detection"
+        )
+      ) {
         score += 4;
       }
 
@@ -455,11 +469,29 @@ function scoreWordEntry(params: {
     score += 2;
   }
 
-  if (mode !== "learn_new_words" && candidate.type === "context_meaning" && index >= 2) {
+  if (
+    mode !== "learn_new_words" &&
+    (
+      candidate.type === "context_meaning" ||
+      candidate.type === "pair_match" ||
+      candidate.type === "sentence_builder" ||
+      candidate.type === "error_detection"
+    ) &&
+    index >= 2
+  ) {
     score += 3;
   }
 
-  if (mode === "learn_new_words" && index === total - 1 && candidate.type === "context_meaning") {
+  if (
+    mode === "learn_new_words" &&
+    index === total - 1 &&
+    (
+      candidate.type === "context_meaning" ||
+      candidate.type === "pair_match" ||
+      candidate.type === "sentence_builder" ||
+      candidate.type === "error_detection"
+    )
+  ) {
     score += 4;
   }
 
@@ -538,7 +570,9 @@ export function buildVocabExerciseSession({
       selection_reason: getSelectionReason(next.candidate),
       source_lesson_id: next.candidate.reviewMeta?.sourceLessonId ?? null,
       source_lesson_title: next.candidate.reviewMeta?.sourceLessonTitle ?? null,
+      source_passage_title: next.candidate.reviewMeta?.sourcePassageTitle ?? null,
       source_context_snippet: next.candidate.reviewMeta?.sourceContextSnippet ?? null,
+      source_type: next.candidate.reviewMeta?.sourceType ?? null,
       adaptive_difficulty_band: next.candidate.reviewMeta?.adaptiveDifficultyBand ?? null,
       adaptive_difficulty_reason: getAdaptiveDifficultyReason(next.candidate),
       session_difficulty_bias: next.candidate.reviewMeta?.sessionDifficultyBias ?? null,

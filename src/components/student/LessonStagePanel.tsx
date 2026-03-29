@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import LessonSplitLayout from "./LessonSplitLayout";
 import PassageVocabularyCapture from "./PassageVocabularyCapture";
+import type { CapturedVocabularyItem } from "./PassageVocabularyCapture";
 import VocabularyReviewCards from "./VocabularyReviewCards";
 import LessonPlayer from "./LessonPlayer";
 import InteractivePassageReader from "./InteractivePassageReader";
@@ -51,7 +51,7 @@ export default function LessonStagePanel({
   vocabItems,
 }: Props) {
   const [stage, setStage] = useState(state.stage);
-  const [capturedItems, setCapturedItems] = useState<string[]>([]);
+  const [capturedItems, setCapturedItems] = useState<CapturedVocabularyItem[]>([]);
   const [localVocabItems, setLocalVocabItems] = useState<VocabItem[]>(vocabItems ?? []);
   const readingStageStartedAtRef = useRef<number | null>(null);
 
@@ -115,15 +115,15 @@ export default function LessonStagePanel({
     setStage("questions");
   }
 
-  function handleCaptured(itemText: string) {
+  function handleCaptured(item: CapturedVocabularyItem) {
     setCapturedItems((prev) => {
-      if (prev.some((x) => x.toLowerCase() === itemText.toLowerCase())) return prev;
-      return [...prev, itemText];
+      if (prev.some((x) => x.itemText.toLowerCase() === item.itemText.toLowerCase())) return prev;
+      return [...prev, item];
     });
   }
 
   function handleRemoveCaptured(itemText: string) {
-    setCapturedItems((prev) => prev.filter((x) => x !== itemText));
+    setCapturedItems((prev) => prev.filter((x) => x.itemText !== itemText));
   }
 
   function handleVocabularySubmitted(items: VocabItem[]) {
@@ -138,80 +138,84 @@ export default function LessonStagePanel({
 
   if (stage === "questions") {
     return (
-      <LessonSplitLayout
-        top={
-          <InteractivePassageReader
-            studentId={studentId}
-            lessonId={lessonId}
-            passageId={passageId}
-            passageText={passageText}
-            knownWords={localVocabItems}
-          />
-        }
-        bottom={
-          <LessonPlayer
-            studentId={studentId}
-            lessonId={lessonId}
-            questions={questions}
-            onFinished={() => setStage("completed")}
-          />
-        }
-      />
+      <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col">
+        <LessonPlayer
+          studentId={studentId}
+          lessonId={lessonId}
+          questions={questions}
+          passageText={passageText}
+          passageId={passageId}
+          onFinished={() => setStage("completed")}
+        />
+      </div>
     );
   }
 
   if (stage === "vocab_review") {
     return (
-      <LessonSplitLayout
-        top={
-          <InteractivePassageReader
-            studentId={studentId}
-            lessonId={lessonId}
-            passageId={passageId}
-            passageText={passageText}
-            knownWords={localVocabItems}
-          />
-        }
-        bottom={
-          <VocabularyReviewCards
-            items={localVocabItems}
-            onDone={() => setStage("second_read")}
-          />
-        }
-      />
+      <div className="mx-auto max-w-2xl space-y-4">
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+          Review the captured words, then read the passage one more time.
+        </div>
+        <VocabularyReviewCards
+          items={localVocabItems}
+          onDone={() => setStage("second_read")}
+        />
+      </div>
     );
   }
 
   if (stage === "second_read") {
     return (
-      <LessonSplitLayout
-        top={
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Second Read
+            </div>
+            <div className="mt-1 text-sm text-slate-600">
+              Double tap a marked word to hear its audio.
+            </div>
+          </div>
+          <button
+            onClick={goToQuestions}
+            className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
+          >
+            Start Quiz
+          </button>
+        </div>
+
+        <div className="rounded-[28px] border border-slate-200 bg-white px-4 py-5 shadow-sm sm:px-6">
           <InteractivePassageReader
             studentId={studentId}
             lessonId={lessonId}
             passageId={passageId}
             passageText={passageText}
             knownWords={localVocabItems}
+            mode="audio_review"
           />
-        }
-        bottom={
-          <div className="space-y-4">
-            <div className="text-lg font-semibold">Read the passage again</div>
-            <button
-              onClick={goToQuestions}
-              className="px-4 py-2 rounded-lg bg-black text-white"
-            >
-              Start Quiz
-            </button>
-          </div>
-        }
-      />
+        </div>
+      </div>
     );
   }
 
   return (
-    <LessonSplitLayout
-      top={
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+            First Read
+          </div>
+          <div className="mt-1 text-sm text-slate-600">
+            Long press a word to save it for vocabulary review.
+          </div>
+        </div>
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+          {capturedItems.length} saved
+        </div>
+      </div>
+
+      <div className="rounded-[28px] border border-slate-200 bg-white px-4 py-5 shadow-sm sm:px-6">
         <InteractivePassageReader
           studentId={studentId}
           lessonId={lessonId}
@@ -219,39 +223,40 @@ export default function LessonStagePanel({
           passageText={passageText}
           knownWords={localVocabItems}
           onCaptured={handleCaptured}
+          mode="capture"
         />
-      }
-      bottom={
-        <div className="space-y-4">
-          <PassageVocabularyCapture
-            studentId={studentId}
-            lessonId={lessonId}
-            passageId={passageId}
-            presetItems={capturedItems}
-            onItemsChange={setCapturedItems}
-            onSubmitted={handleVocabularySubmitted}
-          />
+      </div>
 
-          {capturedItems.length > 0 ? (
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-slate-700">
-                Captured from text this session
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {capturedItems.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => handleRemoveCaptured(item)}
-                    className="px-3 py-1 rounded-full bg-blue-100 text-blue-900 text-sm"
-                  >
-                    {item} ×
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      }
-    />
+      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+        <PassageVocabularyCapture
+          studentId={studentId}
+          lessonId={lessonId}
+          passageId={passageId}
+          presetItems={capturedItems}
+          onItemsChange={setCapturedItems}
+          onSubmitted={handleVocabularySubmitted}
+          compact
+          hideManualInput
+        />
+
+        {capturedItems.length > 0 ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {capturedItems.map((item) => (
+              <button
+                key={`${item.sourceType}:${item.itemText}`}
+                onClick={() => handleRemoveCaptured(item.itemText)}
+                className="rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-900"
+              >
+                {item.itemText} ×
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-3 text-sm text-slate-500">
+            Save a few tough words from the passage, then review them as cards.
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
