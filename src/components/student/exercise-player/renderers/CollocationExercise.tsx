@@ -9,7 +9,7 @@ import type { CollocationExerciseData, ExerciseRendererProps } from "../types";
 
 export default function CollocationExercise({
   exercise,
-  selectedOptionId,
+  selectedValue,
   onSelect,
   submitted,
 }: ExerciseRendererProps<CollocationExerciseData>) {
@@ -58,7 +58,7 @@ export default function CollocationExercise({
 
       <ExerciseOptionList
         options={exercise.options}
-        selectedOptionId={selectedOptionId}
+        selectedOptionId={selectedValue || null}
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
         onSelect={onSelect}

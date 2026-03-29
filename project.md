@@ -60,6 +60,10 @@ Current foundations:
 - review queue
 - word progress lifecycle
 - exercise attempt logging
+- lesson-to-vocabulary bridge through captured lesson words and source-aware session shaping
+- audio-backed modalities:
+  - `listen_match`
+  - `spelling_from_audio`
 
 ## Current Product Decisions
 
@@ -72,6 +76,7 @@ Current foundations:
 - Review should be session-based, not a flat random list.
 - Start with transparent rule-based scheduling before heavier adaptive systems.
 - Keep a reusable exercise shell so new vocab modalities do not create new players.
+- Keep lesson-derived words connected to their original reading context when they reappear in Vocabulary Studio.
 
 ### Analytics
 - Collect structured telemetry before adding more adaptation.
@@ -106,6 +111,8 @@ Current foundations:
 - queue-backed summary buckets
 - learn/review/mixed mode switch
 - queue-aware session composition
+- lesson-aware session composition for fresh words from recent reading lessons
+- audio preparation and audio-aware session inclusion
 - dev exercise gallery for all exercise types
 - normalized attempt telemetry and shared debug panels
 
@@ -118,6 +125,8 @@ Implemented today:
 - `review_queue` generation
 - queue bucket prioritization
 - bucket-aware session building
+- lesson-connected source metadata and beginner-friendly lesson word progression
+- audio modalities inside the same reusable exercise player
 - Mistake Brain classification
 
 Not implemented yet:

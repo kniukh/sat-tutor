@@ -12,6 +12,8 @@ import { mockExercises } from "./mock-exercises";
 const TYPE_LABELS: Record<SupportedVocabExerciseType, string> = {
   meaning_match: "Meaning Match",
   translation_match: "Translation Match",
+  listen_match: "Listen Match",
+  spelling_from_audio: "Spelling From Audio",
   fill_blank: "Fill Blank",
   context_meaning: "Context Meaning",
   synonym: "Synonym",
@@ -143,7 +145,7 @@ export default function ExerciseGallery() {
             </h2>
             <p className="max-w-2xl text-sm leading-6 text-slate-600">
               {selection === "all"
-                ? "Run all five exercise types in sequence to verify transitions and shared player behavior."
+                ? "Run all current exercise types in sequence to verify transitions, audio states, and shared player behavior."
                 : "Focus on one exercise type and iterate on its prompt block, answer states, and feedback rhythm."}
             </p>
           </div>

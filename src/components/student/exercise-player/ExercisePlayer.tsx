@@ -3,9 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getExerciseAcceptableAnswers,
+  getExerciseAudioStatus,
+  getExerciseAudioUrl,
   getExerciseCorrectAnswer,
   getExerciseModality,
   getExerciseQuestionText,
+  getExerciseSentenceText,
   getExerciseTargetWord,
   getExerciseTargetWordId,
 } from "@/types/vocab-exercises";
@@ -14,6 +17,8 @@ import ExerciseProgressHeader from "./ExerciseProgressHeader";
 import AttemptTelemetryDebug from "./AttemptTelemetryDebug";
 import type { Exercise, ExerciseResult } from "./types";
 import MeaningMatchExercise from "./renderers/MeaningMatchExercise";
+import ListenMatchExercise from "./renderers/ListenMatchExercise";
+import SpellingFromAudioExercise from "./renderers/SpellingFromAudioExercise";
 import FillBlankExercise from "./renderers/FillBlankExercise";
 import ContextMeaningExercise from "./renderers/ContextMeaningExercise";
 import SynonymExercise from "./renderers/SynonymExercise";
@@ -38,7 +43,7 @@ export default function ExercisePlayer({
       : `session-${Date.now()}`
   );
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const [responseValue, setResponseValue] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [results, setResults] = useState<ExerciseResult[]>([]);
   const [currentFeedback, setCurrentFeedback] = useState<{
@@ -75,17 +80,28 @@ export default function ExercisePlayer({
   }
 
   function handleCheck() {
-    if (!selectedOptionId) return;
+    if (!responseValue.trim()) return;
 
     const timeSpentMs = Math.max(1, Date.now() - startedAtRef.current);
     const correctAnswerId = getExerciseCorrectAnswer(currentExercise);
     const questionText = getExerciseQuestionText(currentExercise);
-    const selectedOption =
-      currentExercise.options.find((option) => option.id === selectedOptionId) ?? null;
-    const correctOption =
-      currentExercise.options.find((option) => option.id === correctAnswerId) ?? null;
-    const isCorrect = getExerciseAcceptableAnswers(currentExercise).includes(selectedOptionId);
-    const selectedAnswer = selectedOption?.label ?? selectedOptionId;
+    const isTypedResponse = currentExercise.type === "spelling_from_audio";
+    const selectedOption = isTypedResponse
+      ? null
+      : currentExercise.options.find((option) => option.id === responseValue) ?? null;
+    const correctOption = isTypedResponse
+      ? null
+      : currentExercise.options.find((option) => option.id === correctAnswerId) ?? null;
+    const selectedAnswer = isTypedResponse
+      ? responseValue.trim()
+      : selectedOption?.label ?? responseValue;
+    const normalizedTypedAnswer = responseValue.trim().toLowerCase();
+    const normalizedAcceptableAnswers = getExerciseAcceptableAnswers(currentExercise).map((answer) =>
+      answer.trim().toLowerCase()
+    );
+    const isCorrect = isTypedResponse
+      ? normalizedAcceptableAnswers.includes(normalizedTypedAnswer)
+      : getExerciseAcceptableAnswers(currentExercise).includes(responseValue);
     const wordProgressId = currentExercise.reviewMeta?.sourceDrillId ?? null;
     const result: ExerciseResult = {
       response_time_ms: timeSpentMs,
@@ -95,16 +111,23 @@ export default function ExercisePlayer({
       target_word_id: getExerciseTargetWordId(currentExercise),
       target_word: getExerciseTargetWord(currentExercise),
       selected_answer: selectedAnswer,
-      correct_answer: correctOption?.label ?? correctAnswerId,
+      correct_answer: isTypedResponse ? correctAnswerId : correctOption?.label ?? correctAnswerId,
       is_correct: isCorrect,
       attempt_index: currentIndex + 1,
       word_progress_id: wordProgressId,
       metadata: {
-        selected_option_id: selectedOptionId,
-        correct_option_id: correctAnswerId,
+        selected_option_id: isTypedResponse ? null : responseValue,
+        correct_option_id: isTypedResponse ? null : correctAnswerId,
+        response_kind: isTypedResponse ? "typed" : "option",
+        normalized_selected_answer: normalizedTypedAnswer,
         question_text: questionText,
+        sentence_text: getExerciseSentenceText(currentExercise) || null,
         prompt: currentExercise.prompt,
+        instructions: currentExercise.instructions ?? null,
         modality: getExerciseModality(currentExercise),
+        audio_url: getExerciseAudioUrl(currentExercise),
+        audio_status: getExerciseAudioStatus(currentExercise),
+        audio_available: Boolean(getExerciseAudioUrl(currentExercise)),
         skill: currentExercise.skill ?? null,
         tags: currentExercise.tags ?? [],
       },
@@ -141,7 +164,7 @@ export default function ExercisePlayer({
     setIsAdvancing(true);
     window.setTimeout(() => {
       setCurrentIndex((prev) => prev + 1);
-      setSelectedOptionId(null);
+      setResponseValue("");
       setSubmitted(false);
       setCurrentFeedback(null);
     }, 140);
@@ -154,8 +177,17 @@ export default function ExercisePlayer({
         return (
           <MeaningMatchExercise
             exercise={currentExercise}
-            selectedOptionId={selectedOptionId}
-            onSelect={setSelectedOptionId}
+            selectedValue={responseValue}
+            onSelect={setResponseValue}
+            submitted={submitted}
+          />
+        );
+      case "spelling_from_audio":
+        return (
+          <SpellingFromAudioExercise
+            exercise={currentExercise}
+            selectedValue={responseValue}
+            onSelect={setResponseValue}
             submitted={submitted}
           />
         );
@@ -163,8 +195,17 @@ export default function ExercisePlayer({
         return (
           <FillBlankExercise
             exercise={currentExercise}
-            selectedOptionId={selectedOptionId}
-            onSelect={setSelectedOptionId}
+            selectedValue={responseValue}
+            onSelect={setResponseValue}
+            submitted={submitted}
+          />
+        );
+      case "listen_match":
+        return (
+          <ListenMatchExercise
+            exercise={currentExercise}
+            selectedValue={responseValue}
+            onSelect={setResponseValue}
             submitted={submitted}
           />
         );
@@ -172,8 +213,8 @@ export default function ExercisePlayer({
         return (
           <ContextMeaningExercise
             exercise={currentExercise}
-            selectedOptionId={selectedOptionId}
-            onSelect={setSelectedOptionId}
+            selectedValue={responseValue}
+            onSelect={setResponseValue}
             submitted={submitted}
           />
         );
@@ -181,8 +222,8 @@ export default function ExercisePlayer({
         return (
           <SynonymExercise
             exercise={currentExercise}
-            selectedOptionId={selectedOptionId}
-            onSelect={setSelectedOptionId}
+            selectedValue={responseValue}
+            onSelect={setResponseValue}
             submitted={submitted}
           />
         );
@@ -190,8 +231,8 @@ export default function ExercisePlayer({
         return (
           <CollocationExercise
             exercise={currentExercise}
-            selectedOptionId={selectedOptionId}
-            onSelect={setSelectedOptionId}
+            selectedValue={responseValue}
+            onSelect={setResponseValue}
             submitted={submitted}
           />
         );
@@ -233,7 +274,7 @@ export default function ExercisePlayer({
 
       <ExercisePlayerFooter
         submitted={submitted}
-        canSubmit={Boolean(selectedOptionId)}
+        canSubmit={Boolean(responseValue.trim())}
         isLast={currentIndex >= exercises.length - 1}
         feedback={currentFeedback}
         onCheck={handleCheck}

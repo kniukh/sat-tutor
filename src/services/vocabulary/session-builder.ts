@@ -1,10 +1,20 @@
 import {
+  getExerciseAudioStatus,
   getExerciseDifficultyBand,
+  getExerciseModality,
+  getExerciseTargetWord,
   getExerciseTargetWordId as readTargetWordId,
   type SupportedVocabExercise,
   type SupportedVocabExerciseType,
   type VocabExerciseQueueBucket,
 } from "@/types/vocab-exercises";
+import type { VocabModality, WordLifecycleState } from "@/types/vocab-tracking";
+import {
+  resolveSessionProgressionRule,
+  SESSION_BUCKET_PRIORITY_ORDER_BY_MODE,
+  SESSION_BUCKET_TARGET_RATIOS_BY_MODE,
+  SESSION_PREFERRED_TYPE_ORDER_BY_MODE,
+} from "@/services/vocabulary/session-builder.config";
 
 export type VocabSessionMode =
   | "default_review"
@@ -25,9 +35,26 @@ export type VocabExerciseSession = {
     actual_size: number;
     counts_by_type: Partial<Record<SupportedVocabExerciseType, number>>;
     counts_by_bucket: Partial<Record<VocabExerciseQueueBucket, number>>;
+    counts_by_rule: Record<string, number>;
     unique_target_words: number;
     repeated_target_words: number;
     dominant_bucket: VocabExerciseQueueBucket | null;
+    sequence_debug: Array<{
+      index: number;
+      exercise_id: string;
+      target_word_id: string;
+      target_word: string;
+      exercise_type: SupportedVocabExerciseType;
+      queue_bucket: VocabExerciseQueueBucket;
+      lifecycle_state: WordLifecycleState | null;
+      preferred_modality: VocabModality | null;
+      selection_rule: string | null;
+      selection_reason: string | null;
+      source_lesson_id: string | null;
+      source_lesson_title: string | null;
+      source_context_snippet: string | null;
+      triggered_by: string;
+    }>;
   };
 };
 
@@ -36,138 +63,6 @@ type BuildSessionParams = {
   mode: VocabSessionMode;
   targetSize?: number;
   seed?: string;
-};
-
-const preferredTypeOrderByMode: Record<VocabSessionMode, SupportedVocabExerciseType[]> = {
-  default_review: [
-    "meaning_match",
-    "fill_blank",
-    "synonym",
-    "context_meaning",
-    "collocation",
-  ],
-  weak_first: [
-    "meaning_match",
-    "fill_blank",
-    "context_meaning",
-    "synonym",
-    "collocation",
-  ],
-  mixed: [
-    "meaning_match",
-    "synonym",
-    "fill_blank",
-    "collocation",
-    "context_meaning",
-  ],
-  learn_new_words: [
-    "meaning_match",
-    "synonym",
-    "fill_blank",
-    "collocation",
-    "context_meaning",
-  ],
-  review_weak_words: [
-    "meaning_match",
-    "fill_blank",
-    "context_meaning",
-    "synonym",
-    "collocation",
-  ],
-  mixed_practice: [
-    "meaning_match",
-    "fill_blank",
-    "synonym",
-    "context_meaning",
-    "collocation",
-  ],
-};
-
-const bucketPriorityOrderByMode: Record<VocabSessionMode, VocabExerciseQueueBucket[]> = {
-  default_review: [
-    "reinforcement",
-    "scheduled",
-    "overdue",
-    "recently_failed",
-    "weak_again",
-  ],
-  weak_first: [
-    "recently_failed",
-    "weak_again",
-    "overdue",
-    "reinforcement",
-    "scheduled",
-  ],
-  mixed: [
-    "recently_failed",
-    "reinforcement",
-    "weak_again",
-    "overdue",
-    "scheduled",
-  ],
-  learn_new_words: [
-    "reinforcement",
-    "scheduled",
-    "overdue",
-    "recently_failed",
-    "weak_again",
-  ],
-  review_weak_words: [
-    "recently_failed",
-    "weak_again",
-    "overdue",
-    "reinforcement",
-    "scheduled",
-  ],
-  mixed_practice: [
-    "recently_failed",
-    "weak_again",
-    "reinforcement",
-    "overdue",
-    "scheduled",
-  ],
-};
-
-const bucketTargetRatiosByMode: Record<
-  VocabSessionMode,
-  Partial<Record<VocabExerciseQueueBucket, number>>
-> = {
-  default_review: {
-    reinforcement: 0.45,
-    scheduled: 0.35,
-    overdue: 0.15,
-    recently_failed: 0.05,
-  },
-  weak_first: {
-    recently_failed: 0.4,
-    weak_again: 0.3,
-    overdue: 0.2,
-    reinforcement: 0.1,
-  },
-  mixed: {
-    recently_failed: 0.2,
-    reinforcement: 0.3,
-    weak_again: 0.2,
-    overdue: 0.2,
-    scheduled: 0.1,
-  },
-  learn_new_words: {
-    reinforcement: 0.6,
-    scheduled: 0.4,
-  },
-  review_weak_words: {
-    recently_failed: 0.4,
-    weak_again: 0.3,
-    overdue: 0.2,
-    reinforcement: 0.1,
-  },
-  mixed_practice: {
-    recently_failed: 0.3,
-    weak_again: 0.25,
-    reinforcement: 0.25,
-    overdue: 0.15,
-    scheduled: 0.05,
-  },
 };
 
 function hashString(input: string) {
@@ -253,8 +148,8 @@ function dominantBucket(items: SupportedVocabExercise[]) {
 }
 
 function getBucketTargets(mode: VocabSessionMode, requestedSize: number) {
-  const ratios = bucketTargetRatiosByMode[mode];
-  const order = bucketPriorityOrderByMode[mode];
+  const ratios = SESSION_BUCKET_TARGET_RATIOS_BY_MODE[mode];
+  const order = SESSION_BUCKET_PRIORITY_ORDER_BY_MODE[mode];
 
   return order.reduce<Partial<Record<VocabExerciseQueueBucket, number>>>((acc, bucket) => {
     const ratio = ratios[bucket] ?? 0;
@@ -281,26 +176,187 @@ function makeSessionId(mode: VocabSessionMode, seed: string) {
   return `vocab-session:${mode}:${hashString(seed).toString(36)}`;
 }
 
-function scoreCandidate(params: {
-  candidate: SupportedVocabExercise;
+function getSelectionBucket(exercise: SupportedVocabExercise) {
+  return exercise.reviewMeta?.selectionBucket ?? "reinforcement";
+}
+
+function getLifecycleState(exercise: SupportedVocabExercise) {
+  return exercise.reviewMeta?.lifecycleState ?? null;
+}
+
+function getPreferredModality(exercise: SupportedVocabExercise) {
+  return exercise.reviewMeta?.preferredModality ?? null;
+}
+
+function getSelectionRule(exercise: SupportedVocabExercise) {
+  return exercise.reviewMeta?.selectionRule ?? null;
+}
+
+function getSelectionReason(exercise: SupportedVocabExercise) {
+  return exercise.reviewMeta?.selectionReason ?? null;
+}
+
+type WordExerciseEntry = {
+  wordId: string;
+  word: string;
+  exercises: SupportedVocabExercise[];
+};
+
+function groupExercisesByWord(exercises: SupportedVocabExercise[]) {
+  const groups = new Map<string, WordExerciseEntry>();
+
+  for (const exercise of exercises) {
+    const wordId = readTargetWordId(exercise) || exercise.id;
+    const existing = groups.get(wordId);
+
+    if (existing) {
+      existing.exercises.push(exercise);
+      continue;
+    }
+
+    groups.set(wordId, {
+      wordId,
+      word: getExerciseTargetWord(exercise),
+      exercises: [exercise],
+    });
+  }
+
+  return Array.from(groups.values());
+}
+
+function getProgressionPlan(entry: WordExerciseEntry, mode: VocabSessionMode) {
+  const reference = entry.exercises[0];
+  return resolveSessionProgressionRule({
+    mode,
+    lifecycleState: getLifecycleState(reference),
+    selectionBucket: getSelectionBucket(reference),
+    selectionRule: getSelectionRule(reference),
+  });
+}
+
+function getDesiredProgressionIndex(index: number, total: number) {
+  if (total <= 1) return 0;
+  const progress = index / Math.max(total - 1, 1);
+  if (progress < 0.34) return 0;
+  if (progress < 0.67) return 1;
+  return 2;
+}
+
+function chooseExerciseForWordEntry(params: {
+  entry: WordExerciseEntry;
   chosen: SupportedVocabExercise[];
   mode: VocabSessionMode;
   index: number;
   total: number;
   seed: string;
 }) {
-  const { candidate, chosen, mode, index, total, seed } = params;
-  let score = 0;
+  const { entry, chosen, mode, index, total, seed } = params;
+  const progression = getProgressionPlan(entry, mode);
+  const desiredProgressionIndex = getDesiredProgressionIndex(index, total);
+  const desiredType = progression.types[Math.min(desiredProgressionIndex, progression.types.length - 1)];
+  const preferredOrder = SESSION_PREFERRED_TYPE_ORDER_BY_MODE[mode];
+  const last = chosen[chosen.length - 1];
+  const secondLast = chosen[chosen.length - 2];
 
-  const preferredOrder = preferredTypeOrderByMode[mode];
-  score += Math.max(0, 10 - preferredOrder.indexOf(candidate.type) * 2);
+  const scoredChoices = entry.exercises
+    .map((candidate) => {
+      let score = 0;
 
-  const desiredDifficulty = desiredDifficultyForIndex(index, total);
-  const candidateDifficulty = getNumericDifficulty(candidate);
-  score -= Math.abs(candidateDifficulty - desiredDifficulty) * 2;
+      score += Math.max(0, 10 - preferredOrder.indexOf(candidate.type) * 2);
+
+      const desiredDifficulty = desiredDifficultyForIndex(index, total);
+      const candidateDifficulty = getNumericDifficulty(candidate);
+      score -= Math.abs(candidateDifficulty - desiredDifficulty) * 2;
+
+      const candidateModality = getExerciseModality(candidate);
+      const preferredModality = getPreferredModality(candidate);
+      const progressionIndex = progression.types.indexOf(candidate.type);
+
+      if (candidate.type === desiredType) {
+        score += 12;
+      }
+
+      if (progressionIndex >= 0) {
+        score += Math.max(0, 10 - Math.abs(progressionIndex - desiredProgressionIndex) * 3);
+      }
+
+      if (candidateModality === preferredModality) {
+        score += 8;
+      } else if (
+        preferredModality &&
+        ((preferredModality === "mixed" && candidateModality !== "audio") ||
+          (preferredModality === "context" && candidateModality === "mixed") ||
+          (preferredModality === "text" && candidateModality === "mixed"))
+      ) {
+        score += 4;
+      }
+
+      if (
+        (candidate.type === "listen_match" || candidate.type === "spelling_from_audio") &&
+        getExerciseAudioStatus(candidate) === "ready"
+      ) {
+        score += candidate.type === "spelling_from_audio"
+          ? mode === "learn_new_words"
+            ? 2
+            : 4
+          : mode === "learn_new_words"
+            ? 4
+            : mode === "mixed_practice"
+              ? 5
+              : 3;
+      }
+
+      if (last?.type === candidate.type) score -= 8;
+      if (last?.type === candidate.type && secondLast?.type === candidate.type) score -= 40;
+
+      const lastModality = last ? getExerciseModality(last) : null;
+      const secondLastModality = secondLast ? getExerciseModality(secondLast) : null;
+
+      if (lastModality === candidateModality && candidateModality !== "mixed") {
+        score -= 4;
+      }
+
+      if (
+        lastModality === candidateModality &&
+        secondLastModality === candidateModality &&
+        candidateModality !== "mixed"
+      ) {
+        score -= 14;
+      }
+
+      score += deterministicWeight(seed, candidate.id);
+
+      return {
+        candidate,
+        score,
+        rule: progression.rule,
+        triggeredBy: candidate.type === desiredType ? "modality_progression" : progression.rule,
+      };
+    })
+    .sort((left, right) => right.score - left.score);
+
+  return scoredChoices[0] ?? null;
+}
+
+function scoreWordEntry(params: {
+  entry: WordExerciseEntry;
+  chosen: SupportedVocabExercise[];
+  mode: VocabSessionMode;
+  index: number;
+  total: number;
+  seed: string;
+}) {
+  const { mode, chosen, total, index } = params;
+  const bestChoice = chooseExerciseForWordEntry(params);
+  if (!bestChoice) {
+    return null;
+  }
+
+  const candidate = bestChoice.candidate;
+  let score = bestChoice.score;
 
   const candidateBucket = getQueueBucket(candidate);
-  const bucketPriorityOrder = bucketPriorityOrderByMode[mode];
+  const bucketPriorityOrder = SESSION_BUCKET_PRIORITY_ORDER_BY_MODE[mode];
   score += Math.max(0, 12 - bucketPriorityOrder.indexOf(candidateBucket) * 3);
 
   const bucketTargets = getBucketTargets(mode, total);
@@ -314,12 +370,6 @@ function scoreCandidate(params: {
   } else if (bucketTarget === 0 && mode !== "learn_new_words") {
     score -= 2;
   }
-
-  const last = chosen[chosen.length - 1];
-  const secondLast = chosen[chosen.length - 2];
-
-  if (last?.type === candidate.type) score -= 6;
-  if (last?.type === candidate.type && secondLast?.type === candidate.type) score -= 12;
 
   const candidateTargetWordId = readTargetWordId(candidate);
   const recentWords = chosen.slice(-2).map((item) => readTargetWordId(item));
@@ -351,9 +401,26 @@ function scoreCandidate(params: {
     score += 4;
   }
 
-  score += deterministicWeight(seed, candidate.id);
   score += (candidate.reviewMeta?.queuePriorityScore ?? 0) * 4;
-  return score;
+  score += (candidate.reviewMeta?.selectionScore ?? 0) * 0.6;
+
+  return {
+    ...bestChoice,
+    score,
+  };
+}
+
+function countByRule(
+  items: Array<{
+    selection_rule: string | null;
+    triggered_by: string;
+  }>
+) {
+  return items.reduce<Record<string, number>>((acc, item) => {
+    const key = item.triggered_by || item.selection_rule || "unspecified";
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
 }
 
 export function buildVocabExerciseSession({
@@ -364,30 +431,49 @@ export function buildVocabExerciseSession({
 }: BuildSessionParams): VocabExerciseSession {
   const requestedSize = targetSize ?? defaultTargetSize(mode, exercises.length);
   const uniquePool = Array.from(new Map(exercises.map((item) => [item.id, item])).values());
+  const groupedPool = groupExercisesByWord(uniquePool);
   const chosen: SupportedVocabExercise[] = [];
-  const remaining = [...uniquePool];
+  const sequenceDebug: VocabExerciseSession["metadata"]["sequence_debug"] = [];
+  const remaining = [...groupedPool];
 
   while (chosen.length < requestedSize && remaining.length > 0) {
     const scored = remaining
-      .map((candidate) => ({
-        candidate,
-        score: scoreCandidate({
-          candidate,
+      .map((entry) =>
+        scoreWordEntry({
+          entry,
           chosen,
           mode,
           index: chosen.length,
           total: requestedSize,
           seed,
-        }),
-      }))
+        })
+      )
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
       .sort((a, b) => b.score - a.score);
 
-    const next = scored[0]?.candidate;
+    const next = scored[0];
     if (!next) break;
 
-    chosen.push(next);
+    chosen.push(next.candidate);
+    sequenceDebug.push({
+      index: chosen.length,
+      exercise_id: next.candidate.id,
+      target_word_id: readTargetWordId(next.candidate),
+      target_word: getExerciseTargetWord(next.candidate),
+      exercise_type: next.candidate.type,
+      queue_bucket: getQueueBucket(next.candidate),
+      lifecycle_state: getLifecycleState(next.candidate),
+      preferred_modality: getPreferredModality(next.candidate),
+      selection_rule: getSelectionRule(next.candidate),
+      selection_reason: getSelectionReason(next.candidate),
+      source_lesson_id: next.candidate.reviewMeta?.sourceLessonId ?? null,
+      source_lesson_title: next.candidate.reviewMeta?.sourceLessonTitle ?? null,
+      source_context_snippet: next.candidate.reviewMeta?.sourceContextSnippet ?? null,
+      triggered_by: next.triggeredBy,
+    });
 
-    const nextIndex = remaining.findIndex((item) => item.id === next.id);
+    const nextWordId = readTargetWordId(next.candidate) || next.candidate.id;
+    const nextIndex = remaining.findIndex((item) => item.wordId === nextWordId);
     if (nextIndex >= 0) {
       remaining.splice(nextIndex, 1);
     }
@@ -409,9 +495,11 @@ export function buildVocabExerciseSession({
       actual_size: chosen.length,
       counts_by_type: countsByType,
       counts_by_bucket: countsByBucket,
+      counts_by_rule: countByRule(sequenceDebug),
       unique_target_words: uniqueTargetWords,
       repeated_target_words: chosen.length - uniqueTargetWords,
       dominant_bucket: dominantBucket(chosen),
+      sequence_debug: sequenceDebug,
     },
   };
 }

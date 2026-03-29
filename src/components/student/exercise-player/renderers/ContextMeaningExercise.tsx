@@ -34,7 +34,7 @@ function renderHighlightedContext(contextText: string, focusText: string) {
 
 export default function ContextMeaningExercise({
   exercise,
-  selectedOptionId,
+  selectedValue,
   onSelect,
   submitted,
 }: ExerciseRendererProps<ContextMeaningExerciseData>) {
@@ -79,7 +79,7 @@ export default function ContextMeaningExercise({
 
       <ExerciseOptionList
         options={exercise.options}
-        selectedOptionId={selectedOptionId}
+        selectedOptionId={selectedValue || null}
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
         onSelect={onSelect}

@@ -170,6 +170,8 @@ Current shape:
 
 Supported exercise types:
 - `meaning_match`
+- `listen_match`
+- `spelling_from_audio`
 - `fill_blank`
 - `context_meaning`
 - `synonym`
@@ -184,6 +186,8 @@ Supported exercise types:
 
 ### Per-type renderers
 - `MeaningMatchExercise`
+- `ListenMatchExercise`
+- `SpellingFromAudioExercise`
 - `FillBlankExercise`
 - `ContextMeaningExercise`
 - `SynonymExercise`
@@ -192,7 +196,13 @@ Supported exercise types:
 ### Adapters and sessions
 - [exercise-adapters.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/exercise-adapters.ts)
 - [session-builder.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/session-builder.ts)
+- [session-builder.config.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/session-builder.config.ts)
 - [drill-session-builder.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/drill-session-builder.ts)
+
+Current vocab session shaping also includes:
+- adaptive word selection from `word_progress`, `review_queue`, and recent `exercise_attempts`
+- lesson-aware source metadata carried from captured lesson vocabulary into exercise `reviewMeta`
+- controlled modality progression, including audio-backed exercises when audio is ready
 
 ## Service Architecture By Domain
 
@@ -250,6 +260,7 @@ Important files:
 Current responsibilities:
 - normalize exercises
 - build sessions
+- choose adaptive word slices and modality paths
 - persist exercise attempts
 - update `word_progress`
 - generate and fetch `review_queue`

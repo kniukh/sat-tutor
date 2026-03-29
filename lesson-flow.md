@@ -37,6 +37,7 @@ After `Submit Vocabulary`:
 - vocabulary cards are generated in bulk
 - audio is generated in bulk when available
 - cards are shown one by one
+- captured lesson words are stored so they can later enter Vocabulary Studio with lesson-aware context
 
 Vocabulary card content may include:
 - word or phrase
@@ -136,6 +137,15 @@ The separate Vocabulary Studio is not part of the reading lesson stage machine, 
 - `exercise_attempts`
 - `word_progress`
 - `review_queue`
+
+Current bridge behavior:
+- lesson-derived words keep their lesson linkage through `lesson_id`
+- source context comes from captured passage context, `context_sentence`, and `example_text`
+- fresh lesson words can later reappear in Vocabulary Studio through a softer first-exposure path:
+  - `meaning_match`
+  - `context_meaning`
+  - `fill_blank`
+- when audio is ready, they may also enter audio-backed modalities like `listen_match` and `spelling_from_audio`
 
 That makes the lesson flow and vocabulary flow connected, but still separate products.
 

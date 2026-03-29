@@ -18,19 +18,26 @@ export async function POST(request: Request) {
 
     const { data: vocabItems, error: vocabError } = await supabase
       .from("vocabulary_item_details")
-      .select("id, item_text, audio_status")
+      .select("id, item_text, audio_status, audio_url")
       .eq("student_id", studentId)
-      .eq("lesson_id", lessonId)
-      .in("audio_status", ["pending", "failed"]);
+      .eq("lesson_id", lessonId);
 
     if (vocabError) {
       console.error("generate-audio-bulk vocabError", vocabError);
       return NextResponse.json({ error: vocabError.message }, { status: 500 });
     }
 
-    const itemsToGenerate = (vocabItems ?? []).filter(
-      (item) => item.item_text && item.item_text.trim().length > 0
-    );
+    const itemsToGenerate = (vocabItems ?? []).filter((item) => {
+      if (!item.item_text || item.item_text.trim().length === 0) {
+        return false;
+      }
+
+      if (item.audio_status === "ready" && item.audio_url) {
+        return false;
+      }
+
+      return true;
+    });
 
     if (!itemsToGenerate.length) {
       const { data: items } = await supabase

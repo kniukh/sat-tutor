@@ -28,6 +28,7 @@ The project currently has four major student surfaces:
 
 ### Vocabulary Studio
 - Queue-backed vocabulary review
+- Lesson-connected fresh vocabulary from reading sessions
 - Three student modes:
   - `learn_new_words`
   - `review_weak_words`
@@ -35,11 +36,15 @@ The project currently has four major student surfaces:
 - Reusable vocab exercise shell
 - Supported exercise types:
   - `meaning_match`
+  - `listen_match`
+  - `spelling_from_audio`
   - `fill_blank`
   - `context_meaning`
   - `synonym`
   - `collocation`
 - Session builder and drill session builder
+- Controlled mixed sequencing with rule-based modality progression
+- Source-aware session shaping for lesson-derived words
 - Normalized attempt logging and local debug telemetry
 
 ## Tech Stack
@@ -142,5 +147,7 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 - Reading analytics, question timing, Mistake Brain, and vocab telemetry are implemented.
 - Vocab attempt persistence and word progress updates are live.
 - Review queue generation is rule-based for now.
+- Lesson-derived vocabulary now carries source lesson/context metadata into Vocabulary Studio sessions.
+- Audio-backed vocab practice now includes `listen_match` and `spelling_from_audio`.
 - Adaptive difficulty is not implemented yet.
 - Books mode is chapter-aware in the UI, but still linear in progression.

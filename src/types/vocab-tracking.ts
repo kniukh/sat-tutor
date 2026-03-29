@@ -1,10 +1,12 @@
 export type VocabExerciseType =
+  | "meaning_match"
   | "translation_match"
   | "fill_blank"
   | "context_meaning"
   | "synonym"
   | "collocation"
   | "listen_match"
+  | "spelling_from_audio"
   | "spelling"
   | "memory"
   | "speed_round";

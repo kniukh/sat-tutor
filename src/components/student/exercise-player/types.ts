@@ -2,7 +2,9 @@ import type {
   CollocationVocabExercise,
   ContextMeaningVocabExercise,
   FillBlankVocabExercise,
+  ListenMatchVocabExercise,
   MeaningMatchVocabExercise,
+  SpellingFromAudioVocabExercise,
   SupportedVocabExercise,
   SupportedVocabExerciseType,
   SynonymVocabExercise,
@@ -16,6 +18,8 @@ export type ExerciseOption = VocabExerciseOption;
 export type MeaningMatchExerciseData =
   | MeaningMatchVocabExercise
   | TranslationMatchVocabExercise;
+export type ListenMatchExerciseData = ListenMatchVocabExercise;
+export type SpellingFromAudioExerciseData = SpellingFromAudioVocabExercise;
 export type FillBlankExerciseData = FillBlankVocabExercise;
 export type ContextMeaningExerciseData = ContextMeaningVocabExercise;
 export type SynonymExerciseData = SynonymVocabExercise;
@@ -25,7 +29,7 @@ export type ExerciseResult = VocabExerciseResult;
 
 export type ExerciseRendererProps<TExercise extends Exercise = Exercise> = {
   exercise: TExercise;
-  selectedOptionId: string | null;
-  onSelect: (optionId: string) => void;
+  selectedValue: string;
+  onSelect: (value: string) => void;
   submitted: boolean;
 };

@@ -62,10 +62,10 @@ export default function ExercisePlayerFooter({
             {submitted
               ? isLast
                 ? "Review finished. Finish when you are ready."
-                : "Feedback saved. Continue when you are ready."
+              : "Feedback saved. Continue when you are ready."
               : canSubmit
-                ? "Answer selected. Check it when ready."
-                : "Choose one answer to continue."}
+                ? "Response ready. Check it when ready."
+                : "Choose or enter an answer to continue."}
           </div>
 
           <div className="flex justify-end">

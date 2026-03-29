@@ -1,7 +1,18 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
+  groupExercisesByWord,
+  selectAdaptiveSessionExercises,
+  type AdaptiveSessionSelectionSummary,
+  type AdaptiveWordCandidate,
+} from "@/services/vocabulary/adaptive-session-selection.service";
+import {
   adaptClozeDrillsToExercises,
+  adaptCollocationDrillsToExercises,
+  adaptContextMeaningDrillsToExercises,
+  adaptListenMatchDrillsToExercises,
   adaptMeaningDrillsToExercises,
+  adaptSpellingFromAudioDrillsToExercises,
+  adaptSynonymDrillsToExercises,
 } from "@/services/vocabulary/exercise-adapters";
 import {
   classifyReviewQueueCandidate,
@@ -20,6 +31,7 @@ import {
   getExerciseTargetWordId,
   type SupportedVocabExercise,
 } from "@/types/vocab-exercises";
+import type { ExerciseAttemptRow } from "@/types/vocab-tracking";
 
 type VocabularyPageStudent = {
   id: string;
@@ -35,9 +47,30 @@ type DrillItem = {
   correctAnswer: string;
   distractors: string[];
   contextSentence: string;
+  plainMeaning: string;
+  exampleText: string;
+  audioUrl: string | null;
+  audioStatus: "ready" | "pending" | "failed" | "missing" | null;
+  sourceLessonId: string | null;
+  sourceLessonTitle: string | null;
+  sourceContextSnippet: string | null;
+  sourceCapturedAt: string | null;
 };
 
 type QueueBucketCounts = Record<ReviewQueuePriorityBucket, number>;
+
+type AudioPreparationSummary = {
+  readyCount: number;
+  pendingCount: number;
+  failedCount: number;
+  missingCount: number;
+  listenReadyWordCount: number;
+  topPrepLesson: {
+    lessonId: string;
+    lessonName: string;
+    prepItemCount: number;
+  } | null;
+};
 
 export type VocabularyPageMode = Extract<
   VocabSessionMode,
@@ -57,6 +90,7 @@ export type StudentVocabularyPageData = {
     topPriorityBucket: ReviewQueuePriorityBucket | null;
     topPriorityLabel: string | null;
     upcomingWords: string[];
+    audioPreparation: AudioPreparationSummary;
     learnNewWords: {
       newestCapturedItems: string[];
       recentLessons: Array<{
@@ -66,6 +100,7 @@ export type StudentVocabularyPageData = {
       }>;
     };
   };
+  adaptiveSelection: AdaptiveSessionSelectionSummary | null;
   drillCounts: {
     words: number;
     phrases: number;
@@ -126,7 +161,11 @@ export function normalizeVocabularyPageMode(mode: string | undefined): Vocabular
   return "mixed_practice";
 }
 
-function toDrillItem(detail: any, wordProgressId: string): DrillItem | null {
+function toDrillItem(
+  detail: any,
+  wordProgressId: string,
+  lessonNameMap?: Map<string, string>
+): DrillItem | null {
   if (
     !detail ||
     !detail.id ||
@@ -152,6 +191,22 @@ function toDrillItem(detail: any, wordProgressId: string): DrillItem | null {
     correctAnswer,
     distractors: detail.distractors,
     contextSentence: detail.context_sentence || "",
+    plainMeaning: detail.english_explanation,
+    exampleText: detail.example_text || "",
+    audioUrl: detail.audio_url || null,
+    audioStatus: (detail.audio_status ?? null) as
+      | "ready"
+      | "pending"
+      | "failed"
+      | "missing"
+      | null,
+    sourceLessonId: detail.lesson_id ?? null,
+    sourceLessonTitle: detail.lesson_id
+      ? lessonNameMap?.get(detail.lesson_id) ?? null
+      : null,
+    sourceContextSnippet:
+      detail.context_sentence || detail.example_text || detail.item_text || null,
+    sourceCapturedAt: detail.created_at ?? null,
   };
 }
 
@@ -179,6 +234,16 @@ function attachQueueReviewMeta<TExercise extends SupportedVocabExercise>(
         queueBucket: classifyReviewQueueCandidate(candidate, new Date()),
         queueReason: candidate.reason,
         queuePriorityScore: candidate.priority_score,
+        lifecycleState: wordProgress?.lifecycle_state ?? null,
+        masteryScore: wordProgress?.mastery_score ?? null,
+        lastModality: wordProgress?.last_modality ?? null,
+        recommendedModality: candidate.recommended_modality ?? null,
+        consecutiveIncorrect: wordProgress?.consecutive_incorrect ?? 0,
+        sourceOrigin:
+          exercise.reviewMeta?.sourceLessonId
+            ? "review_queue"
+            : exercise.reviewMeta?.sourceOrigin,
+        lessonFirstExposure: false,
       },
     };
   });
@@ -195,6 +260,14 @@ function attachNewWordReviewMeta<TExercise extends { reviewMeta?: Record<string,
       queueReason: "new_word_introduction",
       queuePriorityScore: 0.2,
       attemptCount: exercise.reviewMeta?.attemptCount ?? 0,
+      lifecycleState: "new" as const,
+      masteryScore: 0,
+      lastModality: null,
+      recommendedModality: "text" as const,
+      consecutiveIncorrect: 0,
+      lessonFirstExposure: Boolean(exercise.reviewMeta?.sourceLessonId),
+      sourceOrigin:
+        exercise.reviewMeta?.sourceLessonId ? "new_word_pool" : exercise.reviewMeta?.sourceOrigin,
     },
   }));
 }
@@ -203,17 +276,183 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
   const wordDrills = drillItems.filter((item) => item.itemType === "word");
   const phraseDrills = drillItems.filter((item) => item.itemType === "phrase");
   const clozeDrills = drillItems.filter((item) => item.contextSentence);
+  const contextMeaningDrills = drillItems.filter((item) => item.contextSentence);
+  const synonymDrills = drillItems;
+  const collocationDrills = drillItems.filter(
+    (item) => Boolean(item.exampleText || item.contextSentence)
+  );
+  const listenMatchDrills = drillItems.filter(
+    (item) => Boolean(item.audioUrl) && item.audioStatus !== "failed" && item.audioStatus !== "missing"
+  );
+  const spellingFromAudioDrills = listenMatchDrills;
 
   return {
     wordDrills,
     phraseDrills,
     clozeDrills,
+    contextMeaningDrills,
+    synonymDrills,
+    collocationDrills,
+    listenMatchDrills,
+    spellingFromAudioDrills,
     exercises: [
       ...adaptMeaningDrillsToExercises(wordDrills),
       ...adaptMeaningDrillsToExercises(phraseDrills),
+      ...adaptListenMatchDrillsToExercises(listenMatchDrills),
+      ...adaptSpellingFromAudioDrillsToExercises(spellingFromAudioDrills),
       ...adaptClozeDrillsToExercises(clozeDrills),
+      ...adaptContextMeaningDrillsToExercises(contextMeaningDrills),
+      ...adaptSynonymDrillsToExercises(synonymDrills),
+      ...adaptCollocationDrillsToExercises(collocationDrills),
     ],
   };
+}
+
+function summarizeAudioPreparation(params: {
+  details: any[];
+  lessonNameMap: Map<string, string>;
+}) {
+  const summary: AudioPreparationSummary = {
+    readyCount: 0,
+    pendingCount: 0,
+    failedCount: 0,
+    missingCount: 0,
+    listenReadyWordCount: 0,
+    topPrepLesson: null,
+  };
+  const prepLessonMap = new Map<
+    string,
+    { lessonId: string; lessonName: string; prepItemCount: number }
+  >();
+
+  for (const detail of params.details) {
+    if (!detail?.id || !detail.item_text) {
+      continue;
+    }
+
+    const isReady = detail.audio_status === "ready" && Boolean(detail.audio_url);
+
+    if (isReady) {
+      summary.readyCount += 1;
+      summary.listenReadyWordCount += 1;
+      continue;
+    }
+
+    if (detail.audio_status === "pending") {
+      summary.pendingCount += 1;
+    } else if (detail.audio_status === "failed") {
+      summary.failedCount += 1;
+    } else {
+      summary.missingCount += 1;
+    }
+
+    if (!detail.lesson_id) {
+      continue;
+    }
+
+    const existing = prepLessonMap.get(detail.lesson_id);
+    if (existing) {
+      existing.prepItemCount += 1;
+      continue;
+    }
+
+    prepLessonMap.set(detail.lesson_id, {
+      lessonId: detail.lesson_id,
+      lessonName: params.lessonNameMap.get(detail.lesson_id) ?? "Untitled lesson",
+      prepItemCount: 1,
+    });
+  }
+
+  summary.topPrepLesson =
+    Array.from(prepLessonMap.values()).sort((a, b) => b.prepItemCount - a.prepItemCount)[0] ??
+    null;
+
+  return summary;
+}
+
+function groupRecentAttemptsByWord(recentAttempts: ExerciseAttemptRow[]) {
+  const grouped = new Map<string, ExerciseAttemptRow[]>();
+
+  for (const attempt of recentAttempts) {
+    if (!attempt.target_word_id) {
+      continue;
+    }
+
+    const existing = grouped.get(attempt.target_word_id) ?? [];
+    if (existing.length < 5) {
+      existing.push(attempt);
+      grouped.set(attempt.target_word_id, existing);
+    }
+  }
+
+  return grouped;
+}
+
+function buildAdaptiveWordCandidates(params: {
+  exercises: SupportedVocabExercise[];
+  recentAttemptsByWordId: Map<string, ExerciseAttemptRow[]>;
+  wordProgressMap?: Map<string, any>;
+  queueCandidateMap?: Map<string, ReviewQueueCandidate>;
+  isNewWord: boolean;
+}) {
+  const groupedExercises = groupExercisesByWord(params.exercises);
+
+  return Array.from(groupedExercises.entries()).map(([wordId, exercises]) => {
+    const firstExercise = exercises[0];
+    const wordProgress = params.wordProgressMap?.get(wordId);
+    const queueCandidate = params.queueCandidateMap?.get(wordId);
+
+    return {
+      wordId,
+      word: firstExercise.target_word ?? firstExercise.targetWord ?? "",
+      exercises,
+      lifecycleState: wordProgress?.lifecycle_state ?? queueCandidate?.lifecycle_state ?? null,
+      masteryScore: wordProgress?.mastery_score ?? queueCandidate?.mastery_score ?? null,
+      consecutiveIncorrect: Number(wordProgress?.consecutive_incorrect ?? 0),
+      nextReviewAt: wordProgress?.next_review_at ?? queueCandidate?.scheduled_for ?? null,
+      lastSeenAt: wordProgress?.last_seen_at ?? null,
+      lastModality: wordProgress?.last_modality ?? queueCandidate?.last_modality ?? null,
+      queueBucket: firstExercise.reviewMeta?.queueBucket ?? null,
+      queueReason: firstExercise.reviewMeta?.queueReason ?? null,
+      queuePriorityScore: firstExercise.reviewMeta?.queuePriorityScore ?? null,
+      recommendedModality: firstExercise.reviewMeta?.recommendedModality ?? null,
+      recentAttempts: params.recentAttemptsByWordId.get(wordId) ?? [],
+      isNewWord: params.isNewWord,
+      sourceLessonId: firstExercise.reviewMeta?.sourceLessonId ?? null,
+      sourceLessonTitle: firstExercise.reviewMeta?.sourceLessonTitle ?? null,
+      sourceContextSnippet: firstExercise.reviewMeta?.sourceContextSnippet ?? null,
+      sourceCapturedAt: firstExercise.reviewMeta?.sourceCapturedAt ?? null,
+      lessonFirstExposure: Boolean(firstExercise.reviewMeta?.lessonFirstExposure),
+    } satisfies AdaptiveWordCandidate;
+  });
+}
+
+function attachAdaptiveSelectionMeta<TExercise extends SupportedVocabExercise>(params: {
+  exercises: TExercise[];
+  selectedWords: AdaptiveSessionSelectionSummary["selectedWords"];
+}) {
+  const selectedWordMap = new Map(params.selectedWords.map((item) => [item.wordId, item]));
+
+  return params.exercises
+    .filter((exercise) => selectedWordMap.has(getExerciseTargetWordId(exercise)))
+    .map((exercise) => {
+      const summary = selectedWordMap.get(getExerciseTargetWordId(exercise));
+      if (!summary) {
+        return exercise;
+      }
+
+      return {
+        ...exercise,
+        reviewMeta: {
+          ...(exercise.reviewMeta ?? {}),
+          selectionBucket: summary.bucket,
+          selectionReason: summary.reason,
+          preferredModality: summary.preferredModality,
+          selectionScore: summary.score,
+          selectionRule: summary.selectionRule,
+        },
+      };
+    });
 }
 
 export async function getStudentVocabularyPageData(
@@ -315,35 +554,10 @@ export async function getStudentVocabularyPageData(
     activeQueueCandidates.map((candidate) => [candidate.word_id, candidate])
   );
 
-  const queueDrillItems = activeQueueCandidates
-    .map((candidate) => {
-      const detail = queueVocabDetailMap.get(candidate.word_id);
-      const wordProgress = wordProgressMap.get(candidate.word_id);
-      if (!wordProgress) return null;
-      return toDrillItem(detail, wordProgress.id);
-    })
-    .filter(Boolean) as DrillItem[];
-
-  const queueExercisePool = buildExercisePoolFromDrillItems(queueDrillItems);
-  const queueExercises = [
-    ...attachQueueReviewMeta(queueExercisePool.exercises, queueCandidateMap, wordProgressMap),
-  ];
-
   const attemptedWordIdSet = new Set(
     (attemptedWordIds.data ?? []).map((row: any) => row.target_word_id).filter(Boolean)
   );
   const activeQueueWordIdSet = new Set(queueWordIds);
-
-  const newWordDrillItems = (allVocabDetails.data ?? [])
-    .filter((detail: any) => {
-      if (!detail?.id) return false;
-      if (activeQueueWordIdSet.has(detail.id)) return false;
-      if (attemptedWordIdSet.has(detail.id)) return false;
-      if (detail.is_understood === true) return false;
-      return true;
-    })
-    .map((detail: any) => toDrillItem(detail, `new:${detail.id}`))
-    .filter(Boolean) as DrillItem[];
 
   const recentNewWordDetails = (allVocabDetails.data ?? []).filter((detail: any) => {
     if (!detail?.id) return false;
@@ -363,10 +577,23 @@ export async function getStudentVocabularyPageData(
     )
   ).slice(0, 8);
 
+  const audioCandidateDetails = [
+    ...(queueVocabDetails ?? []),
+    ...recentNewWordDetails,
+  ].filter((detail: any) => Boolean(detail?.id));
+  const audioLessonIds = Array.from(
+    new Set(
+      audioCandidateDetails
+        .map((detail: any) => detail.lesson_id)
+        .filter((lessonId: string | null) => Boolean(lessonId))
+    )
+  );
+  const lessonIdsForLookup = Array.from(new Set([...recentLessonIds, ...audioLessonIds]));
+
   const { data: recentLessons, error: recentLessonsError } = await supabase
     .from("lessons")
     .select("id, name")
-    .in("id", recentLessonIds.length > 0 ? recentLessonIds : [EMPTY_UUID]);
+    .in("id", lessonIdsForLookup.length > 0 ? lessonIdsForLookup : [EMPTY_UUID]);
 
   if (recentLessonsError) {
     throw recentLessonsError;
@@ -375,6 +602,28 @@ export async function getStudentVocabularyPageData(
   const recentLessonNameMap = new Map(
     (recentLessons ?? []).map((lesson: any) => [lesson.id, lesson.name as string])
   );
+  const audioPreparation = summarizeAudioPreparation({
+    details: audioCandidateDetails,
+    lessonNameMap: recentLessonNameMap,
+  });
+
+  const queueDrillItems = activeQueueCandidates
+    .map((candidate) => {
+      const detail = queueVocabDetailMap.get(candidate.word_id);
+      const wordProgress = wordProgressMap.get(candidate.word_id);
+      if (!wordProgress) return null;
+      return toDrillItem(detail, wordProgress.id, recentLessonNameMap);
+    })
+    .filter(Boolean) as DrillItem[];
+
+  const newWordDrillItems = recentNewWordDetails
+    .map((detail: any) => toDrillItem(detail, `new:${detail.id}`, recentLessonNameMap))
+    .filter(Boolean) as DrillItem[];
+
+  const queueExercisePool = buildExercisePoolFromDrillItems(queueDrillItems);
+  const queueExercises = [
+    ...attachQueueReviewMeta(queueExercisePool.exercises, queueCandidateMap, wordProgressMap),
+  ];
 
   const recentLessonsSummary = Array.from(
     recentNewWordDetails.reduce<
@@ -405,23 +654,79 @@ export async function getStudentVocabularyPageData(
   const newWordExercisePool = buildExercisePoolFromDrillItems(newWordDrillItems);
   const newWordExercises = attachNewWordReviewMeta(newWordExercisePool.exercises);
 
-  const selectedExercisePool =
-    selectedMode === "learn_new_words" ? newWordExercises : queueExercises;
+  const adaptiveWordIds = Array.from(
+    new Set([
+      ...queueDrillItems.map((item) => item.vocabularyItemId),
+      ...newWordDrillItems.map((item) => item.vocabularyItemId),
+    ])
+  );
+
+  const { data: recentAttemptsRows, error: recentAttemptsError } = await supabase
+    .from("exercise_attempts")
+    .select("*")
+    .eq("student_id", studentData.id)
+    .in("target_word_id", adaptiveWordIds.length > 0 ? adaptiveWordIds : [EMPTY_UUID])
+    .order("created_at", { ascending: false })
+    .limit(300);
+
+  if (recentAttemptsError) {
+    throw recentAttemptsError;
+  }
+
+  const recentAttemptsByWordId = groupRecentAttemptsByWord(
+    (recentAttemptsRows ?? []) as ExerciseAttemptRow[]
+  );
+
+  const adaptiveQueueCandidates = buildAdaptiveWordCandidates({
+    exercises: queueExercises,
+    recentAttemptsByWordId,
+    wordProgressMap,
+    queueCandidateMap,
+    isNewWord: false,
+  });
+  const adaptiveNewWordCandidates = buildAdaptiveWordCandidates({
+    exercises: newWordExercises,
+    recentAttemptsByWordId,
+    isNewWord: true,
+  });
+  const adaptiveCandidates =
+    selectedMode === "learn_new_words"
+      ? adaptiveNewWordCandidates
+      : [...adaptiveQueueCandidates, ...adaptiveNewWordCandidates];
+  const adaptiveTargetSize = Math.min(
+    selectedMode === "learn_new_words" ? 6 : 8,
+    Math.max(adaptiveCandidates.length, 0)
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const adaptiveSelection =
+    adaptiveTargetSize > 0
+      ? selectAdaptiveSessionExercises({
+          mode: selectedMode,
+          candidates: adaptiveCandidates,
+          targetSize: adaptiveTargetSize,
+          seed: `${studentData.id}:${today}:${selectedMode}:adaptive:${bucketCounts.recently_failed}:${bucketCounts.weak_again}:${bucketCounts.overdue}:${newWordExercises.length}`,
+        })
+      : null;
+  const selectedExercisePool = adaptiveSelection
+    ? attachAdaptiveSelectionMeta({
+        exercises:
+          selectedMode === "learn_new_words"
+            ? newWordExercises
+            : [...queueExercises, ...newWordExercises],
+        selectedWords: adaptiveSelection.summary.selectedWords,
+      })
+    : [];
   const selectedDrillCounts =
     selectedMode === "learn_new_words"
       ? newWordExercisePool
       : queueExercisePool;
 
-  const today = new Date().toISOString().slice(0, 10);
   const session =
     selectedExercisePool.length > 0
       ? buildVocabExerciseSession({
           exercises: selectedExercisePool,
           mode: selectedMode,
-          targetSize: Math.min(
-            selectedMode === "learn_new_words" ? 6 : 8,
-            selectedExercisePool.length
-          ),
+          targetSize: adaptiveTargetSize,
           seed: `${studentData.id}:${today}:${selectedMode}:${bucketCounts.recently_failed}:${bucketCounts.weak_again}:${bucketCounts.overdue}:${newWordExercises.length}`,
         })
       : null;
@@ -448,6 +753,7 @@ export async function getStudentVocabularyPageData(
         .map((candidate) => candidate.word)
         .filter((word): word is string => Boolean(word))
         .slice(0, 4),
+      audioPreparation,
       learnNewWords: {
         newestCapturedItems: recentNewWordDetails
           .map((detail: any) => detail.item_text)
@@ -456,6 +762,7 @@ export async function getStudentVocabularyPageData(
         recentLessons: recentLessonsSummary,
       },
     },
+    adaptiveSelection: adaptiveSelection?.summary ?? null,
     drillCounts: {
       words: selectedDrillCounts.wordDrills.length,
       phrases: selectedDrillCounts.phraseDrills.length,

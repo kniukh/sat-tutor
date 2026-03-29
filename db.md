@@ -216,6 +216,11 @@ Important fields:
 - `audio_status`
 - `is_understood`
 
+Current role in product flow:
+- stores the lesson-derived vocabulary cards that later feed Vocabulary Studio
+- keeps the original lesson linkage through `lesson_id`
+- keeps sentence-level context through `context_sentence` and `example_text`
+
 ## Vocab Attempts, Progress, and Scheduling
 
 ### `exercise_attempts`
@@ -354,6 +359,17 @@ XP, level, streak, achievements.
 -> `word_progress`
 -> `review_queue`
 
+### Lesson-to-vocabulary bridge
+`lesson_passages`
+-> inline capture / lesson vocabulary submit
+-> `vocabulary_capture_events`
+-> `vocabulary_item_details`
+-> Vocabulary Studio session shaping
+
+Current note:
+- the bridge is still rule-based
+- lesson linkage is carried mostly through `lesson_id`, context sentence fields, and service-layer source metadata on exercises
+
 ### Book progress flow
 `students`
 -> `student_book_progress`
@@ -365,6 +381,7 @@ XP, level, streak, achievements.
 - Books remain linear. `student_book_progress.current_lesson_id` tracks progress, not adaptive rerouting.
 - Chapter grouping for books comes from `generated_passages.chapter_index` and `generated_passages.chapter_title`.
 - Vocab telemetry is stored before adaptive scheduling is applied.
+- Lesson vocabulary remains tied to the originating lesson through stored lesson/context fields instead of a separate session-source table.
 - `exercise_attempts` feed `word_progress`.
 - `word_progress` feeds `review_queue`.
 - Mistake Brain writes post-lesson AI analysis into `mistake_analysis`.

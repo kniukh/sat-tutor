@@ -17,7 +17,7 @@ function getPromptHint(promptStyle: SynonymExerciseData["promptStyle"]) {
 
 export default function SynonymExercise({
   exercise,
-  selectedOptionId,
+  selectedValue,
   onSelect,
   submitted,
 }: ExerciseRendererProps<SynonymExerciseData>) {
@@ -67,7 +67,7 @@ export default function SynonymExercise({
 
       <ExerciseOptionList
         options={exercise.options}
-        selectedOptionId={selectedOptionId}
+        selectedOptionId={selectedValue || null}
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
         onSelect={onSelect}

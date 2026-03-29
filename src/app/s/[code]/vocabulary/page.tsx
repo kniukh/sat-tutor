@@ -1,6 +1,8 @@
 import Link from "next/link";
+import VocabularyAudioPrefetch from "@/components/student/VocabularyAudioPrefetch";
 import PrepareVocabularyDrillsButton from "@/components/student/PrepareVocabularyDrillsButton";
 import VocabSessionPlayer from "@/components/student/VocabSessionPlayer";
+import VocabularySessionDevSummary from "@/components/student/VocabularySessionDevSummary";
 import {
   getStudentVocabularyPageData,
   normalizeVocabularyPageMode,
@@ -51,6 +53,7 @@ export default async function StudentVocabularyPage({
   const {
     student,
     summary,
+    adaptiveSelection,
     drillCounts,
     session,
     preparationNeeded,
@@ -109,6 +112,23 @@ export default async function StudentVocabularyPage({
                 New Word Pool
               </div>
               <div className="mt-2 text-3xl font-semibold">{summary.newWordPoolCount}</div>
+            </div>
+            <div className="rounded-[24px] border border-white/10 bg-white/10 p-4 backdrop-blur-sm sm:col-span-2 xl:col-span-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-white/55">
+                    Listen Match Readiness
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-white/75">
+                    {summary.audioPreparation.listenReadyWordCount > 0
+                      ? `${summary.audioPreparation.listenReadyWordCount} words already have audio ready for listen-based exercises.`
+                      : "No audio-ready words are available yet, so the system is leaning on text and context drills first."}
+                  </div>
+                </div>
+                <div className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white/75">
+                  {summary.audioPreparation.listenReadyWordCount} ready
+                </div>
+              </div>
             </div>
           </div>
 
@@ -284,6 +304,18 @@ export default async function StudentVocabularyPage({
         </div>
       </section>
 
+      <VocabularyAudioPrefetch
+        studentId={student.id}
+        lessonId={summary.audioPreparation.topPrepLesson?.lessonId ?? null}
+        lessonName={summary.audioPreparation.topPrepLesson?.lessonName ?? null}
+        pendingCount={
+          summary.audioPreparation.pendingCount +
+          summary.audioPreparation.failedCount +
+          summary.audioPreparation.missingCount
+        }
+        readyCount={summary.audioPreparation.listenReadyWordCount}
+      />
+
       {preparationNeeded ? (
         <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
           <div className="space-y-2">
@@ -367,6 +399,11 @@ export default async function StudentVocabularyPage({
                 </div>
               </div>
             </div>
+
+            <VocabularySessionDevSummary
+              session={session}
+              adaptiveSelection={adaptiveSelection}
+            />
           </div>
 
           <VocabSessionPlayer session={session} studentId={student.id} />

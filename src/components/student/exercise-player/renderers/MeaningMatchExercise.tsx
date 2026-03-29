@@ -8,7 +8,7 @@ import type { ExerciseRendererProps, MeaningMatchExerciseData } from "../types";
 
 export default function MeaningMatchExercise({
   exercise,
-  selectedOptionId,
+  selectedValue,
   onSelect,
   submitted,
 }: ExerciseRendererProps<MeaningMatchExerciseData>) {
@@ -27,7 +27,7 @@ export default function MeaningMatchExercise({
 
       <ExerciseOptionList
         options={exercise.options}
-        selectedOptionId={selectedOptionId}
+        selectedOptionId={selectedValue || null}
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
         onSelect={onSelect}

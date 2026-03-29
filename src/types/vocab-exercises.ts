@@ -1,13 +1,16 @@
+import type { VocabModality, WordLifecycleState } from "@/types/vocab-tracking";
+
 export type SupportedVocabExerciseType =
   | "meaning_match"
   | "translation_match"
+  | "listen_match"
+  | "spelling_from_audio"
   | "fill_blank"
   | "context_meaning"
   | "synonym"
   | "collocation";
 
 export type FutureVocabExerciseType =
-  | "listen_match"
   | "spelling"
   | "memory"
   | "speed_round";
@@ -49,10 +52,26 @@ export type VocabExerciseReviewMeta = {
   dueAt?: string | null;
   lastReviewedAt?: string | null;
   sourceLessonId?: string | null;
+  sourceLessonTitle?: string | null;
+  sourcePassageTitle?: string | null;
+  sourceContextSnippet?: string | null;
+  sourceCapturedAt?: string | null;
+  sourceOrigin?: "lesson_capture" | "review_queue" | "new_word_pool" | "unknown";
+  lessonFirstExposure?: boolean;
   sourceDrillId?: string | null;
   queueBucket?: VocabExerciseQueueBucket;
   queueReason?: string | null;
   queuePriorityScore?: number | null;
+  lifecycleState?: WordLifecycleState | null;
+  masteryScore?: number | null;
+  lastModality?: VocabModality | null;
+  recommendedModality?: VocabModality | null;
+  consecutiveIncorrect?: number;
+  selectionBucket?: "weak_recent" | "reinforcement" | "newer_words" | "retention_check";
+  selectionRule?: string | null;
+  selectionReason?: string | null;
+  preferredModality?: VocabModality | null;
+  selectionScore?: number | null;
 };
 
 export type VocabExerciseMetadata = Record<string, unknown>;
@@ -87,6 +106,14 @@ type VocabExerciseBase<TType extends VocabExerciseType> = {
   reviewMeta?: VocabExerciseReviewMeta;
 };
 
+type AudioBackedExerciseFields = {
+  audioAssetId?: string;
+  audio_url?: string | null;
+  audioUrl?: string | null;
+  audio_status?: "ready" | "pending" | "failed" | "missing" | null;
+  audioStatus?: "ready" | "pending" | "failed" | "missing" | null;
+};
+
 // Shared normalized contract for current vocab drills.
 export type MeaningMatchVocabExercise = VocabExerciseBase<"meaning_match"> & {
   sourceLanguageLabel?: string;
@@ -117,9 +144,15 @@ export type CollocationVocabExercise = VocabExerciseBase<"collocation"> & {
 };
 
 // Future placeholders keep the contract ready without forcing implementation details yet.
-export type ListenMatchVocabExercise = VocabExerciseBase<"listen_match"> & {
-  audioAssetId?: string;
-};
+export type ListenMatchVocabExercise = VocabExerciseBase<"listen_match"> &
+  AudioBackedExerciseFields;
+
+export type SpellingFromAudioVocabExercise =
+  VocabExerciseBase<"spelling_from_audio"> &
+    AudioBackedExerciseFields & {
+      placeholder?: string;
+      inputLabel?: string;
+    };
 
 export type SpellingVocabExercise = VocabExerciseBase<"spelling"> & {
   maskedWord?: string;
@@ -136,6 +169,8 @@ export type SpeedRoundVocabExercise = VocabExerciseBase<"speed_round"> & {
 export type SupportedVocabExercise =
   | MeaningMatchVocabExercise
   | TranslationMatchVocabExercise
+  | ListenMatchVocabExercise
+  | SpellingFromAudioVocabExercise
   | FillBlankVocabExercise
   | ContextMeaningVocabExercise
   | SynonymVocabExercise
@@ -200,4 +235,28 @@ export function getExerciseModality(exercise: VocabExerciseBase<VocabExerciseTyp
 
 export function getExerciseDifficultyBand(exercise: VocabExerciseBase<VocabExerciseType>) {
   return exercise.difficulty_band ?? null;
+}
+
+export function getExerciseAudioUrl(exercise: VocabExerciseBase<VocabExerciseType>) {
+  if ("audio_url" in exercise || "audioUrl" in exercise) {
+    return (
+      (exercise as ListenMatchVocabExercise | SpellingFromAudioVocabExercise).audio_url ??
+      (exercise as ListenMatchVocabExercise | SpellingFromAudioVocabExercise).audioUrl ??
+      null
+    );
+  }
+
+  return null;
+}
+
+export function getExerciseAudioStatus(exercise: VocabExerciseBase<VocabExerciseType>) {
+  if ("audio_status" in exercise || "audioStatus" in exercise) {
+    return (
+      (exercise as ListenMatchVocabExercise | SpellingFromAudioVocabExercise).audio_status ??
+      (exercise as ListenMatchVocabExercise | SpellingFromAudioVocabExercise).audioStatus ??
+      null
+    );
+  }
+
+  return null;
 }

@@ -8,7 +8,7 @@ import type { ExerciseRendererProps, FillBlankExerciseData } from "../types";
 
 export default function FillBlankExercise({
   exercise,
-  selectedOptionId,
+  selectedValue,
   onSelect,
   submitted,
 }: ExerciseRendererProps<FillBlankExerciseData>) {
@@ -22,7 +22,7 @@ export default function FillBlankExercise({
 
       <ExerciseOptionList
         options={exercise.options}
-        selectedOptionId={selectedOptionId}
+        selectedOptionId={selectedValue || null}
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
         onSelect={onSelect}
