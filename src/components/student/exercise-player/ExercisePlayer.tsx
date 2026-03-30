@@ -19,6 +19,7 @@ import {
 import ExercisePlayerFooter from "./ExercisePlayerFooter";
 import ExerciseProgressHeader from "./ExerciseProgressHeader";
 import type { Exercise, ExerciseResult } from "./types";
+import DrillCaptureText from "./DrillCaptureText";
 import MeaningMatchExercise from "./renderers/MeaningMatchExercise";
 import PairMatchExercise from "./renderers/PairMatchExercise";
 import ListenMatchExercise from "./renderers/ListenMatchExercise";
@@ -37,6 +38,8 @@ type Props = {
   sessionMetadata?: Record<string, unknown>;
   modeLabel?: string;
   headerHelperText?: string;
+  focused?: boolean;
+  captureStudentId?: string;
   onExerciseComplete?: (result: ExerciseResult) => void;
   onComplete?: (results: ExerciseResult[]) => void;
 };
@@ -79,6 +82,8 @@ export default function ExercisePlayer({
   exercises,
   sessionId,
   sessionMetadata,
+  focused = false,
+  captureStudentId,
   onExerciseComplete,
   onComplete,
 }: Props) {
@@ -92,6 +97,7 @@ export default function ExercisePlayer({
   const [responseValue, setResponseValue] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [results, setResults] = useState<ExerciseResult[]>([]);
+  const [captureToast, setCaptureToast] = useState<string | null>(null);
   const [currentFeedback, setCurrentFeedback] = useState<{
     isCorrect: boolean;
     explanation?: string;
@@ -315,6 +321,40 @@ export default function ExercisePlayer({
   }
 
   function renderExercise() {
+    const renderCaptureText = ({
+      text,
+      contextText,
+      isDistractor = false,
+      className,
+      highlightText,
+      as = "span",
+    }: {
+      text: string;
+      contextText?: string | null;
+      isDistractor?: boolean;
+      className?: string;
+      highlightText?: string | null;
+      as?: "span" | "div";
+    }) => (
+      <DrillCaptureText
+        text={text}
+        studentId={captureStudentId}
+        lessonId={currentExercise.reviewMeta?.sourceLessonId ?? null}
+        drillType={currentExercise.type}
+        contextText={contextText ?? null}
+        isDistractor={isDistractor}
+        className={className}
+        highlightText={highlightText ?? null}
+        as={as}
+        onCaptured={(itemText) => {
+          setCaptureToast(itemText);
+          window.setTimeout(() => {
+            setCaptureToast((current) => (current === itemText ? null : current));
+          }, 1600);
+        }}
+      />
+    );
+
     switch (currentExercise.type) {
       case "meaning_match":
       case "translation_match":
@@ -324,6 +364,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            renderCaptureText={renderCaptureText}
           />
         );
       case "spelling_from_audio":
@@ -342,6 +383,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            renderCaptureText={renderCaptureText}
           />
         );
       case "sentence_builder":
@@ -351,6 +393,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            renderCaptureText={renderCaptureText}
           />
         );
       case "error_detection":
@@ -360,6 +403,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            renderCaptureText={renderCaptureText}
           />
         );
       case "fill_blank":
@@ -369,6 +413,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            renderCaptureText={renderCaptureText}
           />
         );
       case "listen_match":
@@ -387,6 +432,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            renderCaptureText={renderCaptureText}
           />
         );
       case "synonym":
@@ -396,6 +442,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            renderCaptureText={renderCaptureText}
           />
         );
       case "collocation":
@@ -405,6 +452,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            renderCaptureText={renderCaptureText}
           />
         );
       default:
@@ -413,15 +461,26 @@ export default function ExercisePlayer({
   }
 
   return (
-    <div className="mx-auto flex min-h-[70vh] w-full max-w-2xl flex-col gap-6 rounded-[28px] bg-white px-4 py-5 sm:px-6 sm:py-6">
+    <div
+      className={`mx-auto flex w-full flex-col ${
+        focused
+          ? "min-h-[100svh] max-w-xl gap-5 bg-white px-4 py-4 sm:px-6 sm:py-6"
+          : "min-h-[70vh] max-w-2xl gap-6 rounded-[28px] bg-white px-4 py-5 sm:px-6 sm:py-6"
+      }`}
+    >
       <ExerciseProgressHeader
         currentIndex={currentIndex}
         total={exercises.length}
+        focused={focused}
       />
 
-      <div className="space-y-2">
+      <div className={focused ? "space-y-1 pt-1" : "space-y-2"}>
         {getExerciseQuestionText(currentExercise) ? (
-          <div className="text-2xl font-semibold leading-tight text-slate-950 sm:text-3xl">
+          <div
+            className={`font-semibold leading-tight text-slate-950 ${
+              focused ? "text-[1.75rem] sm:text-[2rem]" : "text-2xl sm:text-3xl"
+            }`}
+          >
             {getExerciseQuestionText(currentExercise)}
           </div>
         ) : null}
@@ -441,9 +500,16 @@ export default function ExercisePlayer({
         canSubmit={canSubmit}
         isLast={currentIndex >= exercises.length - 1}
         feedback={currentFeedback}
+        focused={focused}
         onCheck={handleCheck}
         onContinue={handleContinue}
       />
+
+      {captureToast ? (
+        <div className="pointer-events-none fixed inset-x-4 bottom-4 z-40 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white shadow-xl sm:left-auto sm:right-6 sm:max-w-sm">
+          Added "{captureToast}" to your vocabulary list.
+        </div>
+      ) : null}
     </div>
   );
 }

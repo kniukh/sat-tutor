@@ -12,6 +12,7 @@ export default function CollocationExercise({
   selectedValue,
   onSelect,
   submitted,
+  renderCaptureText,
 }: ExerciseRendererProps<CollocationExerciseData>) {
   const isPairSelection = exercise.variant === "pair_selection";
 
@@ -26,7 +27,13 @@ export default function CollocationExercise({
                 {isPairSelection ? "Complete the pair" : "Build the phrase"}
               </span>
               <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-800">
-                Target: {getExerciseTargetWord(exercise)}
+                Target:{" "}
+                {renderCaptureText
+                  ? renderCaptureText({
+                      text: getExerciseTargetWord(exercise),
+                      contextText: exercise.exampleSentence ?? getExerciseSentenceText(exercise),
+                    })
+                  : getExerciseTargetWord(exercise)}
               </span>
             </div>
 
@@ -36,9 +43,18 @@ export default function CollocationExercise({
                   {isPairSelection ? "Pair Lead" : "Phrase Stem"}
                 </div>
                 <div className="mt-3 text-2xl font-semibold tracking-tight">
-                  {isPairSelection && exercise.pairLead
-                    ? `${exercise.pairLead} ____`
-                    : exercise.stem}
+                  {renderCaptureText
+                    ? renderCaptureText({
+                        text:
+                          isPairSelection && exercise.pairLead
+                            ? `${exercise.pairLead} ____`
+                            : exercise.stem,
+                        contextText: exercise.exampleSentence ?? getExerciseSentenceText(exercise),
+                        as: "div",
+                      })
+                    : isPairSelection && exercise.pairLead
+                      ? `${exercise.pairLead} ____`
+                      : exercise.stem}
                 </div>
               </div>
 
@@ -55,7 +71,13 @@ export default function CollocationExercise({
                   In Use
                 </div>
                 <div className="mt-2 text-base leading-7 text-slate-800">
-                  {exercise.exampleSentence ?? getExerciseSentenceText(exercise)}
+                  {renderCaptureText
+                    ? renderCaptureText({
+                        text: exercise.exampleSentence ?? getExerciseSentenceText(exercise),
+                        contextText: exercise.exampleSentence ?? getExerciseSentenceText(exercise),
+                        as: "div",
+                      })
+                    : exercise.exampleSentence ?? getExerciseSentenceText(exercise)}
                 </div>
               </div>
             ) : null}
@@ -76,6 +98,15 @@ export default function CollocationExercise({
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
         onSelect={onSelect}
+        renderOptionLabel={({ option, isDistractor }) =>
+          renderCaptureText
+            ? renderCaptureText({
+                text: option.label,
+                contextText: exercise.exampleSentence ?? getExerciseSentenceText(exercise),
+                isDistractor,
+              })
+            : option.label
+        }
       />
     </div>
   );

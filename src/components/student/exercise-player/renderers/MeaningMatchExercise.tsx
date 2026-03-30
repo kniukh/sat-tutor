@@ -11,6 +11,7 @@ export default function MeaningMatchExercise({
   selectedValue,
   onSelect,
   submitted,
+  renderCaptureText,
 }: ExerciseRendererProps<MeaningMatchExerciseData>) {
   const isTranslation = exercise.type === "translation_match";
   const displayTerm =
@@ -27,7 +28,14 @@ export default function MeaningMatchExercise({
     <div className="space-y-5">
       <ExercisePromptPanel
         eyebrow={exercise.prompt}
-        title={displayTerm}
+        title={
+          renderCaptureText
+            ? renderCaptureText({
+                text: displayTerm,
+                contextText: footer,
+              })
+            : displayTerm
+        }
         footer={<>{footer}</>}
       />
 
@@ -37,6 +45,15 @@ export default function MeaningMatchExercise({
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
         onSelect={onSelect}
+        renderOptionLabel={({ option, isDistractor }) =>
+          renderCaptureText
+            ? renderCaptureText({
+                text: option.label,
+                contextText: footer,
+                isDistractor,
+              })
+            : option.label
+        }
       />
     </div>
   );

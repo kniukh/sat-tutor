@@ -114,7 +114,16 @@ Current shape:
 - data from [vocabulary-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/vocabulary-page.service.ts)
 - queue-backed summary
 - three explicit modes
-- session player and prep CTA
+- focused drill launcher
+
+### `/s/[code]/vocabulary/drill`
+Focused full-screen drill page.
+
+Current shape:
+- thin page
+- data from [vocabulary-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/vocabulary-page.service.ts)
+- reuses [VocabSessionPlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/VocabSessionPlayer.tsx) in focused mode
+- hides summary chrome and keeps the drill surface to progress, question, answers, and action CTA
 
 ## Important API Routes
 
@@ -137,6 +146,10 @@ Current shape:
 - `/api/vocabulary/preview-inline`
 - `/api/vocabulary/generate-audio`
 - `/api/vocabulary/generate-audio-bulk`
+
+Current note:
+- `prepare-drills` and `generate-from-captures` now thinly wrap shared vocabulary prep services instead of owning the orchestration directly
+- lesson completion also triggers the same preparation pipeline in the backend
 
 ### AI
 - `/api/ai/tutor`
@@ -168,6 +181,10 @@ Current shape:
 - reusable shell under `src/components/student/exercise-player/`
 - dev gallery at `/test/exercise-gallery`
 
+Current patterns:
+- focused full-screen drill mode lives on `/s/[code]/vocabulary/drill`
+- drill text can now long-press capture into shared vocabulary storage from answer choices and sentence fragments
+
 ## Vocab Exercise Architecture
 
 ### Central model
@@ -192,6 +209,8 @@ Supported exercise types:
 - shared footer
 - shared answer-state logic
 - normalized per-exercise telemetry
+- focused drill rendering mode
+- reusable drill long-press capture text wrapper
 
 ### Per-type renderers
 - `MeaningMatchExercise`
@@ -207,6 +226,8 @@ Supported exercise types:
 - [session-builder.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/session-builder.ts)
 - [session-builder.config.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/session-builder.config.ts)
 - [drill-session-builder.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/drill-session-builder.ts)
+- [drill-answer-sets.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/drill-answer-sets.service.ts)
+- [drill-preparation.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/drill-preparation.service.ts)
 
 Current vocab session shaping also includes:
 - adaptive word selection from `word_progress`, `review_queue`, and recent `exercise_attempts`
@@ -214,6 +235,8 @@ Current vocab session shaping also includes:
 - lesson-aware source metadata carried from captured lesson vocabulary into exercise `reviewMeta`
 - controlled modality progression, including audio-backed exercises when audio is ready
 - end-of-session results and reusable analytics surfaces built from normalized attempt/session metadata
+- stored per-drill answer sets reused across `translation_match`, `synonym`, `context_meaning`, and `collocation`
+- automatic generation + normalization of new lesson vocabulary before it enters session building
 
 ## Service Architecture By Domain
 
@@ -237,6 +260,7 @@ Current responsibilities:
 - final lesson completion
 - skill tracking hook-in
 - Mistake Brain hook-in
+- post-lesson vocabulary drill preparation hook
 
 Important files:
 - [lesson-state.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/lesson-state/lesson-state.service.ts)
@@ -264,6 +288,7 @@ Current responsibilities:
 - vocab card generation
 - audio generation
 - passage analysis
+- drill answer-set generation
 
 Important files:
 - [tutor.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/tutor.service.ts)
@@ -279,6 +304,9 @@ Current responsibilities:
 - update `word_progress`
 - generate and fetch `review_queue`
 - aggregate vocabulary page data
+- normalize and store reusable drill answer sets
+- generate lesson vocabulary from captures
+- prepare drill-ready vocab payloads for lesson completion and vocabulary APIs
 
 Important files:
 - [vocabulary-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/vocabulary-page.service.ts)

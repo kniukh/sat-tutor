@@ -20,6 +20,7 @@ export default function VocabularySessionResults({
   progressSignals,
   rewardCredit,
   isRewardPending = false,
+  focused = false,
 }: {
   session: VocabExerciseSession;
   results: ExerciseResult[];
@@ -27,6 +28,7 @@ export default function VocabularySessionResults({
   progressSignals?: VocabularySessionProgressSignal[];
   rewardCredit?: VocabularySessionRewardCredit | null;
   isRewardPending?: boolean;
+  focused?: boolean;
 }) {
   const summary = buildVocabularySessionResultsSummary({
     session,
@@ -101,6 +103,50 @@ export default function VocabularySessionResults({
     violet: "border-violet-200 bg-violet-50 text-violet-800",
     slate: "border-slate-200 bg-slate-100 text-slate-700",
   } as const;
+
+  if (focused) {
+    return (
+      <div className="mx-auto flex min-h-[100svh] w-full max-w-xl flex-col justify-center gap-6 bg-white px-4 py-6 text-center sm:px-6">
+        <div className="space-y-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Session Complete
+          </div>
+          <h2 className="text-3xl font-semibold text-slate-950">Finished.</h2>
+          <p className="text-base leading-7 text-slate-600">{summary.accuracyTone}</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Accuracy
+            </div>
+            <div className="mt-2 text-3xl font-semibold text-slate-950">{summary.accuracy}%</div>
+          </div>
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+              XP
+            </div>
+            <div className="mt-2 text-3xl font-semibold text-slate-950">+{summary.reward.totalXp}</div>
+          </div>
+        </div>
+
+        <div className="space-y-3 pt-2">
+          <Link
+            href={`/s/${accessCode}/vocabulary/drill?mode=mixed_practice`}
+            className="block rounded-2xl bg-slate-950 px-5 py-4 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+          >
+            Start another session
+          </Link>
+          <Link
+            href={`/s/${accessCode}/vocabulary`}
+            className="block rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+          >
+            Back to vocabulary
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">

@@ -9,6 +9,11 @@ import type {
   SynonymVocabExercise,
   TranslationMatchVocabExercise,
 } from "@/types/vocab-exercises";
+import type {
+  VocabularyDrillAnswerSet,
+  VocabularyDrillAnswerSetKey,
+  VocabularyDrillAnswerSetMap,
+} from "@/types/vocabulary-answer-sets";
 
 export type MeaningDrillItem = {
   wordProgressId: string;
@@ -17,6 +22,7 @@ export type MeaningDrillItem = {
   itemType: "word" | "phrase";
   correctAnswer: string;
   distractors: string[];
+  answerSets?: VocabularyDrillAnswerSetMap;
   plainMeaning?: string;
   translatedExplanation?: string | null;
   translationLanguage?: string | null;
@@ -40,6 +46,7 @@ export type ClozeDrillItem = {
   contextSentence: string;
   correctAnswer: string;
   distractors: string[];
+  answerSets?: VocabularyDrillAnswerSetMap;
   plainMeaning?: string;
   translatedExplanation?: string | null;
   translationLanguage?: string | null;
@@ -185,6 +192,26 @@ function buildMeaningOptions(
   return shuffle([
     { id: "correct", label: getPlainMeaning(item) },
     ...uniqueNonEmpty(item.distractors ?? []).slice(0, 3).map((label, index) => ({
+      id: `${optionPrefix}-${index}`,
+      label,
+    })),
+  ]);
+}
+
+function getStoredAnswerSet(
+  item: MeaningDrillItem | ClozeDrillItem,
+  drillType: VocabularyDrillAnswerSetKey
+) {
+  return item.answerSets?.[drillType] ?? null;
+}
+
+function buildStoredAnswerSetOptions(
+  answerSet: VocabularyDrillAnswerSet,
+  optionPrefix: string
+) {
+  return shuffle([
+    { id: "correct", label: answerSet.drill_correct_answer },
+    ...uniqueNonEmpty(answerSet.distractors ?? []).slice(0, 3).map((label, index) => ({
       id: `${optionPrefix}-${index}`,
       label,
     })),
@@ -372,6 +399,8 @@ export function adaptMeaningDrillToExercise(
     options,
     correct_answer: "correct",
     correctAnswer: "correct",
+    drill_correct_answer: plainMeaning,
+    drillCorrectAnswer: plainMeaning,
     acceptable_answers: ["correct"],
     acceptableAnswers: ["correct"],
     distractors: item.distractors,
@@ -409,6 +438,31 @@ export function adaptTranslationDrillToExercises(
     return [];
   }
 
+  const englishToNativeAnswerSet = getStoredAnswerSet(
+    item,
+    "translation_english_to_native"
+  );
+  const nativeToEnglishAnswerSet = getStoredAnswerSet(
+    item,
+    "translation_native_to_english"
+  );
+  const englishToNativeCorrectAnswer =
+    englishToNativeAnswerSet?.drill_correct_answer ?? translatedMeaning;
+  const nativeToEnglishCorrectAnswer =
+    nativeToEnglishAnswerSet?.drill_correct_answer ?? item.itemText;
+  const englishToNativeOptions = englishToNativeAnswerSet
+    ? buildStoredAnswerSetOptions(
+        englishToNativeAnswerSet,
+        `translation-native-${item.vocabularyItemId}`
+      )
+    : buildTranslationOptions(item, allItems, `translation-native-${item.vocabularyItemId}`);
+  const nativeToEnglishOptions = nativeToEnglishAnswerSet
+    ? buildStoredAnswerSetOptions(
+        nativeToEnglishAnswerSet,
+        `translation-english-${item.wordProgressId}`
+      )
+    : buildLexicalOptions(item, allItems, `translation-english-${item.wordProgressId}`);
+
   return [
     {
       id: `${item.wordProgressId}:translation_match:english_to_native`,
@@ -421,13 +475,15 @@ export function adaptTranslationDrillToExercises(
       targetWordId: item.vocabularyItemId,
       question_text: `Which translation best matches "${item.itemText}"?`,
       questionText: `Which translation best matches "${item.itemText}"?`,
-      options: buildTranslationOptions(item, allItems, `translation-native-${item.vocabularyItemId}`),
+      options: englishToNativeOptions,
       correct_answer: "correct",
       correctAnswer: "correct",
+      drill_correct_answer: englishToNativeCorrectAnswer,
+      drillCorrectAnswer: englishToNativeCorrectAnswer,
       acceptable_answers: ["correct"],
       acceptableAnswers: ["correct"],
-      distractors: item.distractors,
-      explanation: `"${item.itemText}" translates here as ${translatedMeaning}.`,
+      distractors: englishToNativeAnswerSet?.distractors ?? item.distractors,
+      explanation: `"${item.itemText}" translates here as ${englishToNativeCorrectAnswer}.`,
       modality: "text",
       difficulty_band: "easy",
       metadata: {
@@ -437,6 +493,7 @@ export function adaptTranslationDrillToExercises(
       },
       tags: [item.itemType, "translation", "english_to_native"],
       skill: "translation_match",
+      answerSet: englishToNativeAnswerSet ?? undefined,
       sourceLanguageLabel: "English",
       targetLanguageLabel: item.translationLanguage?.toUpperCase() ?? "Native",
       translationLanguageLabel: item.translationLanguage ?? null,
@@ -458,13 +515,15 @@ export function adaptTranslationDrillToExercises(
       targetWordId: item.vocabularyItemId,
       question_text: "Which English word matches this translation?",
       questionText: "Which English word matches this translation?",
-      options: buildLexicalOptions(item, allItems, `translation-english-${item.wordProgressId}`),
+      options: nativeToEnglishOptions,
       correct_answer: "correct",
       correctAnswer: "correct",
+      drill_correct_answer: nativeToEnglishCorrectAnswer,
+      drillCorrectAnswer: nativeToEnglishCorrectAnswer,
       acceptable_answers: ["correct"],
       acceptableAnswers: ["correct"],
-      distractors: item.distractors,
-      explanation: `${translatedMeaning} maps back to the English word "${item.itemText}".`,
+      distractors: nativeToEnglishAnswerSet?.distractors ?? item.distractors,
+      explanation: `${translatedMeaning} maps back to the English word "${nativeToEnglishCorrectAnswer}".`,
       modality: "text",
       difficulty_band: "easy",
       metadata: {
@@ -474,6 +533,7 @@ export function adaptTranslationDrillToExercises(
       },
       tags: [item.itemType, "translation", "native_to_english"],
       skill: "translation_match",
+      answerSet: nativeToEnglishAnswerSet ?? undefined,
       sourceLanguageLabel: item.translationLanguage?.toUpperCase() ?? "Native",
       targetLanguageLabel: "English",
       translationLanguageLabel: item.translationLanguage ?? null,
@@ -972,11 +1032,12 @@ export function adaptContextMeaningDrillToExercise(
     return null;
   }
 
+  const answerSet = getStoredAnswerSet(item, "context_meaning");
   const questionText =
     item.itemType === "phrase"
       ? `What does "${item.itemText}" mean in this sentence?`
       : `What does "${item.itemText}" mean in this sentence?`;
-  const plainMeaning = getPlainMeaning(item);
+  const plainMeaning = answerSet?.drill_correct_answer ?? getPlainMeaning(item);
 
   return {
     id: `${item.wordProgressId}:context_meaning`,
@@ -996,12 +1057,16 @@ export function adaptContextMeaningDrillToExercise(
     sentenceText: contextText,
     contextText,
     focusText: item.itemText,
-    options: buildMeaningOptions(item, `context-${item.wordProgressId}`),
+    options: answerSet
+      ? buildStoredAnswerSetOptions(answerSet, `context-${item.wordProgressId}`)
+      : buildMeaningOptions(item, `context-${item.wordProgressId}`),
     correct_answer: "correct",
     correctAnswer: "correct",
+    drill_correct_answer: plainMeaning,
+    drillCorrectAnswer: plainMeaning,
     acceptable_answers: ["correct"],
     acceptableAnswers: ["correct"],
-    distractors: item.distractors,
+    distractors: answerSet?.distractors ?? item.distractors,
     explanation: `Context clue points to: ${plainMeaning}`,
     modality: "context",
     difficulty_band: "hard",
@@ -1012,6 +1077,7 @@ export function adaptContextMeaningDrillToExercise(
     },
     tags: [item.itemType, "context", "inference"],
     skill: "context_meaning",
+    answerSet: answerSet ?? undefined,
     reviewMeta: {
       sourceDrillId: item.wordProgressId,
       ...buildSourceReviewMeta(item),
@@ -1030,12 +1096,13 @@ export function adaptContextMeaningDrillsToExercises(
 export function adaptSynonymDrillToExercise(
   item: MeaningDrillItem | ClozeDrillItem
 ): SynonymVocabExercise {
+  const answerSet = getStoredAnswerSet(item, "synonym");
   const questionText =
     item.itemType === "phrase"
       ? `Which option is the closest substitute for "${item.itemText}"?`
       : `Which option is the closest synonym or substitute for "${item.itemText}"?`;
   const sentenceText = getSourceSentence(item) || null;
-  const plainMeaning = getPlainMeaning(item);
+  const plainMeaning = answerSet?.drill_correct_answer ?? getPlainMeaning(item);
 
   return {
     id: `${item.wordProgressId}:synonym`,
@@ -1053,12 +1120,16 @@ export function adaptSynonymDrillToExercise(
     questionText,
     sentence_text: sentenceText,
     sentenceText: sentenceText,
-    options: buildMeaningOptions(item, `synonym-${item.wordProgressId}`),
+    options: answerSet
+      ? buildStoredAnswerSetOptions(answerSet, `synonym-${item.wordProgressId}`)
+      : buildMeaningOptions(item, `synonym-${item.wordProgressId}`),
     correct_answer: "correct",
     correctAnswer: "correct",
+    drill_correct_answer: plainMeaning,
+    drillCorrectAnswer: plainMeaning,
     acceptable_answers: ["correct"],
     acceptableAnswers: ["correct"],
-    distractors: item.distractors,
+    distractors: answerSet?.distractors ?? item.distractors,
     explanation: `Closest substitute meaning: ${plainMeaning}`,
     modality: "text",
     difficulty_band: "hard",
@@ -1069,6 +1140,7 @@ export function adaptSynonymDrillToExercise(
     },
     tags: [item.itemType, "substitution", "meaning"],
     skill: "synonym",
+    answerSet: answerSet ?? undefined,
     promptStyle: item.itemType === "phrase" ? "closest_meaning" : "best_synonym",
     variant: "synonym",
     reviewMeta: {
@@ -1093,7 +1165,9 @@ export function adaptCollocationDrillToExercise(
     return null;
   }
 
+  const answerSet = getStoredAnswerSet(item, "collocation");
   const stem = makeBlank(sourceSentence, item.itemText);
+  const correctCollocation = answerSet?.drill_correct_answer ?? item.itemText;
   const plainMeaning = getPlainMeaning(item);
 
   return {
@@ -1110,13 +1184,17 @@ export function adaptCollocationDrillToExercise(
     questionText: `Which option best restores the natural phrase in the sentence?`,
     sentence_text: stem,
     sentenceText: stem,
-    options: buildLexicalOptions(item, allItems, `collocation-${item.wordProgressId}`),
+    options: answerSet
+      ? buildStoredAnswerSetOptions(answerSet, `collocation-${item.wordProgressId}`)
+      : buildLexicalOptions(item, allItems, `collocation-${item.wordProgressId}`),
     correct_answer: "correct",
     correctAnswer: "correct",
+    drill_correct_answer: correctCollocation,
+    drillCorrectAnswer: correctCollocation,
     acceptable_answers: ["correct"],
     acceptableAnswers: ["correct"],
-    distractors: item.distractors,
-    explanation: `The natural phrase in the source sentence uses "${item.itemText}", meaning ${plainMeaning}.`,
+    distractors: answerSet?.distractors ?? item.distractors,
+    explanation: `The natural phrase in the source sentence uses "${correctCollocation}", meaning ${plainMeaning}.`,
     modality: "mixed",
     difficulty_band: "hard",
     metadata: {
@@ -1126,6 +1204,7 @@ export function adaptCollocationDrillToExercise(
     },
     tags: [item.itemType, "phrase_building", "collocation"],
     skill: "collocation",
+    answerSet: answerSet ?? undefined,
     stem,
     exampleSentence: sourceSentence,
     variant: "best_fit",

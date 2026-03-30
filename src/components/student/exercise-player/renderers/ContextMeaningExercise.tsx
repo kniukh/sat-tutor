@@ -10,9 +10,18 @@ function escapeRegExp(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function renderHighlightedContext(contextText: string, focusText: string) {
+function renderHighlightedContext(
+  contextText: string,
+  focusText: string,
+  renderCaptureText?: ExerciseRendererProps<ContextMeaningExerciseData>["renderCaptureText"]
+) {
   if (!focusText.trim()) {
-    return contextText;
+    return renderCaptureText
+      ? renderCaptureText({
+          text: contextText,
+          contextText,
+        })
+      : contextText;
   }
 
   const pattern = new RegExp(`(${escapeRegExp(focusText)})`, "gi");
@@ -20,14 +29,31 @@ function renderHighlightedContext(contextText: string, focusText: string) {
 
   return parts.map((part, index) =>
     part.toLowerCase() === focusText.toLowerCase() ? (
-      <mark
-        key={`${part}-${index}`}
-        className="rounded-md bg-amber-200/80 px-1.5 py-0.5 font-semibold text-slate-950"
-      >
-        {part}
-      </mark>
+      renderCaptureText ? (
+        <span key={`${part}-${index}`}>
+          {renderCaptureText({
+            text: part,
+            contextText,
+            highlightText: focusText,
+          })}
+        </span>
+      ) : (
+        <mark
+          key={`${part}-${index}`}
+          className="rounded-md bg-amber-200/80 px-1.5 py-0.5 font-semibold text-slate-950"
+        >
+          {part}
+        </mark>
+      )
     ) : (
-      <span key={`${part}-${index}`}>{part}</span>
+      <span key={`${part}-${index}`}>
+        {renderCaptureText
+          ? renderCaptureText({
+              text: part,
+              contextText,
+            })
+          : part}
+      </span>
     )
   );
 }
@@ -37,6 +63,7 @@ export default function ContextMeaningExercise({
   selectedValue,
   onSelect,
   submitted,
+  renderCaptureText,
 }: ExerciseRendererProps<ContextMeaningExerciseData>) {
   return (
     <div className="space-y-5">
@@ -49,7 +76,13 @@ export default function ContextMeaningExercise({
                 Read the context
               </span>
               <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-800">
-                Focus: {exercise.focusText}
+                Focus:{" "}
+                {renderCaptureText
+                  ? renderCaptureText({
+                      text: exercise.focusText,
+                      contextText: exercise.contextText,
+                    })
+                  : exercise.focusText}
               </span>
             </div>
             <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-5 text-base leading-8 text-slate-100 shadow-[0_18px_35px_-24px_rgba(15,23,42,0.8)]">
@@ -57,7 +90,11 @@ export default function ContextMeaningExercise({
                 Passage
               </div>
               <div className="mt-3">
-                {renderHighlightedContext(exercise.contextText, exercise.focusText)}
+                {renderHighlightedContext(
+                  exercise.contextText,
+                  exercise.focusText,
+                  renderCaptureText
+                )}
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-[0.7fr_1fr]">
@@ -66,7 +103,12 @@ export default function ContextMeaningExercise({
                   Focus Word
                 </div>
                 <div className="mt-2 text-lg font-semibold text-slate-950">
-                  {exercise.focusText}
+                  {renderCaptureText
+                    ? renderCaptureText({
+                        text: exercise.focusText,
+                        contextText: exercise.contextText,
+                      })
+                    : exercise.focusText}
                 </div>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
@@ -84,6 +126,15 @@ export default function ContextMeaningExercise({
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
         onSelect={onSelect}
+        renderOptionLabel={({ option, isDistractor }) =>
+          renderCaptureText
+            ? renderCaptureText({
+                text: option.label,
+                contextText: exercise.contextText,
+                isDistractor,
+              })
+            : option.label
+        }
       />
     </div>
   );

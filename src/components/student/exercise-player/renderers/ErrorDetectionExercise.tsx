@@ -12,6 +12,7 @@ export default function ErrorDetectionExercise({
   selectedValue,
   onSelect,
   submitted,
+  renderCaptureText,
 }: ExerciseRendererProps<ErrorDetectionExerciseData>) {
   const sentenceSegments = getExerciseSentenceSegments(exercise);
   const allowNoError = exercise.allow_no_error ?? exercise.allowNoError ?? false;
@@ -27,7 +28,13 @@ export default function ErrorDetectionExercise({
                 SAT-style language
               </span>
               <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-800">
-                Focus: {getExerciseTargetWord(exercise)}
+                Focus:{" "}
+                {renderCaptureText
+                  ? renderCaptureText({
+                      text: getExerciseTargetWord(exercise),
+                      contextText: sentenceSegments.map((segment) => segment.text).join(" "),
+                    })
+                  : getExerciseTargetWord(exercise)}
               </span>
             </div>
 
@@ -51,7 +58,13 @@ export default function ErrorDetectionExercise({
                           : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50"
                       } disabled:cursor-not-allowed disabled:opacity-100`}
                     >
-                      {segment.text}
+                      {renderCaptureText
+                        ? renderCaptureText({
+                            text: segment.text,
+                            contextText: sentenceSegments.map((item) => item.text).join(" "),
+                            isDistractor: false,
+                          })
+                        : segment.text}
                     </button>
                   );
                 })}
@@ -76,7 +89,14 @@ export default function ErrorDetectionExercise({
             {replacementText ? (
               <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
                 If you find the error, the strongest replacement is{" "}
-                <span className="font-semibold text-slate-900">{replacementText}</span>.
+                <span className="font-semibold text-slate-900">
+                  {renderCaptureText
+                    ? renderCaptureText({
+                        text: replacementText,
+                        contextText: sentenceSegments.map((segment) => segment.text).join(" "),
+                      })
+                    : replacementText}
+                </span>.
               </div>
             ) : null}
           </div>

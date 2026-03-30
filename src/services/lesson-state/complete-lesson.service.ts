@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getOrCreateLessonState } from "./lesson-state.service";
 import { updateSkillTrackingForAttempt } from "@/services/analytics/skill-tracking.service";
 import { runMistakeBrainForLesson } from "@/services/analytics/mistake-brain.service";
+import { ensureLessonVocabularyDrillsReady } from "@/services/vocabulary/drill-preparation.service";
 
 export async function completeLesson(studentId: string, lessonId: string) {
   const supabase = await createClient();
@@ -82,7 +83,21 @@ export async function completeLesson(studentId: string, lessonId: string) {
     console.error("Mistake Brain failed", error);
   }
 
-  return attempt;
+  let vocabularyPreparation = null;
+
+  try {
+    vocabularyPreparation = await ensureLessonVocabularyDrillsReady({
+      studentId,
+      lessonId,
+    });
+  } catch (error) {
+    console.error("Vocabulary drill preparation failed after lesson completion", error);
+  }
+
+  return {
+    ...attempt,
+    vocabularyPreparation,
+  };
 }
 
 function buildWeakSkills(

@@ -1,7 +1,5 @@
 import Link from "next/link";
 import VocabularyAudioPrefetch from "@/components/student/VocabularyAudioPrefetch";
-import PrepareVocabularyDrillsButton from "@/components/student/PrepareVocabularyDrillsButton";
-import VocabSessionPlayer from "@/components/student/VocabSessionPlayer";
 import {
   getStudentVocabularyPageData,
   normalizeVocabularyPageMode,
@@ -176,27 +174,43 @@ export default async function StudentVocabularyPage({
         <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="space-y-1">
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Prep Needed
+              Syncing
             </div>
             <p className="text-sm leading-6 text-slate-600">
               {selectedMode === "learn_new_words"
-                ? "Some captured vocabulary is fresh, but it still needs answer choices before it can become a clean first-pass learning session."
-                : "The queue already knows what matters most, but some queued words still need answer choices before they can join the session."}
+                ? "Fresh vocabulary from your reading is being prepared automatically. It should appear here as soon as processing finishes."
+                : "Your review queue is syncing answer sets automatically. If today's words are still processing, refresh in a moment."}
             </p>
-          </div>
-          <div className="mt-4">
-            <PrepareVocabularyDrillsButton studentId={student.id} />
           </div>
         </section>
       ) : null}
 
       {session ? (
-        <section>
-          <VocabSessionPlayer
-            session={session}
-            studentId={student.id}
-            accessCode={student.accessCode}
-          />
+        <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="space-y-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Ready To Start
+            </div>
+            <h2 className="text-2xl font-semibold text-slate-950">Focused drill session</h2>
+            <p className="text-sm leading-6 text-slate-600">
+              Launch a clean, full-screen practice run with just the progress bar, question, answers,
+              and action button.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href={`/s/${student.accessCode}/vocabulary/drill?mode=${selectedMode}`}
+                className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+              >
+                Start focused session
+              </Link>
+              <Link
+                href={`/s/${student.accessCode}`}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+              >
+                Back to dashboard
+              </Link>
+            </div>
+          </div>
         </section>
       ) : null}
 

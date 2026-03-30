@@ -55,6 +55,7 @@ Current modes:
 - `learn_new_words`
 - `review_weak_words`
 - `mixed_practice`
+- focused drill route at `/s/[code]/vocabulary/drill`
 
 Current foundations:
 - normalized vocab exercise model
@@ -67,6 +68,9 @@ Current foundations:
 - end-of-session results
 - vocabulary analytics summaries
 - lesson-to-vocabulary bridge through captured lesson words and source-aware session shaping
+- stored normalized drill answer sets
+- automatic drill preparation after reading completion
+- long-press capture inside drill sessions
 - audio-backed modalities:
   - `listen_match`
   - `spelling_from_audio`
@@ -88,6 +92,8 @@ Current foundations:
 - Start with transparent rule-based scheduling before heavier adaptive systems.
 - Keep a reusable exercise shell so new vocab modalities do not create new players.
 - Keep lesson-derived words connected to their original reading context when they reappear in Vocabulary Studio.
+- Keep distractor generation and correct-answer shaping reusable at the data layer, not inside individual UIs.
+- Let drill capture reuse the same storage model as lesson capture instead of creating a second vocabulary inbox.
 
 ### Analytics
 - Collect structured telemetry before adding more adaptation.
@@ -113,6 +119,7 @@ Current foundations:
 - lesson attempt creation
 - skill tracking updates
 - Mistake Brain post-processing
+- automatic vocabulary drill preparation for newly captured lesson words
 
 ### Books UX
 - Kindle-style books library
@@ -123,11 +130,13 @@ Current foundations:
 ### Vocabulary UX and architecture
 - queue-backed summary buckets
 - learn/review/mixed mode switch
+- focused full-screen drill mode
 - queue-aware session composition
 - lesson-aware session composition for fresh words from recent reading lessons
 - audio preparation and audio-aware session inclusion
 - dev exercise gallery for all exercise types
 - normalized attempt telemetry and shared debug panels
+- drill-time long-press vocabulary capture from answers, distractors, and sentence fragments
 
 ## What “Adaptive” Means Right Now
 

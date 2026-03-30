@@ -83,6 +83,7 @@ When the lesson is completed:
 - `student_lesson_state.stage` moves to `completed`
 - skill tracking is updated
 - Mistake Brain runs after completion
+- lesson-derived vocabulary is automatically generated and normalized into drill-ready items
 
 ## Current Post-Lesson AI Layer
 
@@ -147,6 +148,7 @@ The separate Vocabulary Studio is not part of the reading lesson stage machine, 
 Current bridge behavior:
 - lesson-derived words keep their lesson linkage through `lesson_id`
 - source context comes from captured passage/question/answer snippets, `context_sentence`, and `example_text`
+- answer sets for key drill types are normalized and stored before the words become session-ready
 - fresh lesson words can later reappear in Vocabulary Studio through a softer first-exposure path:
   - `meaning_match`
   - `translation_match`
@@ -165,11 +167,24 @@ Vocabulary Studio now closes the loop after a student finishes a vocab session:
 - per-exercise attempts are persisted
 - `word_progress` is updated
 - `review_queue` is regenerated
+- the focused drill route keeps the interaction full-screen and mobile-first
 - an end-of-session results summary highlights:
   - correct / incorrect totals
   - weak words from the session
   - strengthened words
   - recovery, new-lesson, and retention-check words when available
+
+## Current Drill Capture Layer
+Inside vocabulary drills:
+- long press can capture useful words from answer choices
+- long press can capture distractors
+- long press can capture sentence fragments and drill context text
+- captures reuse `vocabulary_capture_events`
+- drill captures now store source-aware metadata including:
+  - `source: vocab_drill`
+  - `drill_type`
+  - `is_distractor`
+  - `context`
 
 ## Current Vocabulary Analytics Layer
 Vocabulary work is now measurable outside the session itself.

@@ -24,6 +24,7 @@ export default function SynonymExercise({
   selectedValue,
   onSelect,
   submitted,
+  renderCaptureText,
 }: ExerciseRendererProps<SynonymExerciseData>) {
   const isAntonym = exercise.variant === "antonym" || exercise.promptStyle === "best_antonym";
 
@@ -42,7 +43,13 @@ export default function SynonymExercise({
                   ? "border border-rose-200 bg-rose-50 text-rose-800"
                   : "border border-sky-200 bg-sky-50 text-sky-800"
               }`}>
-                Target: {getExerciseTargetWord(exercise)}
+                Target:{" "}
+                {renderCaptureText
+                  ? renderCaptureText({
+                      text: getExerciseTargetWord(exercise),
+                      contextText: getExerciseSentenceText(exercise),
+                    })
+                  : getExerciseTargetWord(exercise)}
               </span>
             </div>
 
@@ -52,7 +59,12 @@ export default function SynonymExercise({
                   Target Word
                 </div>
                 <div className="mt-3 text-2xl font-semibold tracking-tight">
-                  {getExerciseTargetWord(exercise)}
+                  {renderCaptureText
+                    ? renderCaptureText({
+                        text: getExerciseTargetWord(exercise),
+                        contextText: getExerciseSentenceText(exercise),
+                      })
+                    : getExerciseTargetWord(exercise)}
                 </div>
               </div>
 
@@ -67,7 +79,13 @@ export default function SynonymExercise({
                   In Use
                 </div>
                 <div className="mt-2 text-base leading-7 text-slate-800">
-                  {getExerciseSentenceText(exercise)}
+                  {renderCaptureText
+                    ? renderCaptureText({
+                        text: getExerciseSentenceText(exercise),
+                        contextText: getExerciseSentenceText(exercise),
+                        as: "div",
+                      })
+                    : getExerciseSentenceText(exercise)}
                 </div>
               </div>
             ) : null}
@@ -88,6 +106,15 @@ export default function SynonymExercise({
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
         onSelect={onSelect}
+        renderOptionLabel={({ option, isDistractor }) =>
+          renderCaptureText
+            ? renderCaptureText({
+                text: option.label,
+                contextText: getExerciseSentenceText(exercise),
+                isDistractor,
+              })
+            : option.label
+        }
       />
     </div>
   );

@@ -31,6 +31,7 @@ export default function SentenceBuilderExercise({
   selectedValue,
   onSelect,
   submitted,
+  renderCaptureText,
 }: ExerciseRendererProps<SentenceBuilderExerciseData>) {
   const selectedTileIds = parseSelectedTileIds(selectedValue);
   const selectedOptions = selectedTileIds
@@ -84,13 +85,25 @@ export default function SentenceBuilderExercise({
                 Build the sentence
               </span>
               <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-800">
-                Target: {getExerciseTargetWord(exercise)}
+                Target:{" "}
+                {renderCaptureText
+                  ? renderCaptureText({
+                      text: getExerciseTargetWord(exercise),
+                      contextText: getExerciseSentenceText(exercise),
+                    })
+                  : getExerciseTargetWord(exercise)}
               </span>
             </div>
 
             {exercise.clue ? (
               <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
-                {exercise.clue}
+                {renderCaptureText
+                  ? renderCaptureText({
+                      text: exercise.clue,
+                      contextText: getExerciseSentenceText(exercise),
+                      as: "div",
+                    })
+                  : exercise.clue}
               </div>
             ) : null}
 
@@ -120,7 +133,12 @@ export default function SentenceBuilderExercise({
                       className="rounded-2xl border border-slate-300 bg-slate-950 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
                       aria-label={`Remove ${option.label}`}
                     >
-                      {option.label}
+                      {renderCaptureText
+                        ? renderCaptureText({
+                            text: option.label,
+                            contextText: getExerciseSentenceText(exercise),
+                          })
+                        : option.label}
                     </button>
                   ))
                 ) : (
@@ -144,7 +162,12 @@ export default function SentenceBuilderExercise({
                     disabled={submitted}
                     className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                   >
-                    {option.label}
+                    {renderCaptureText
+                      ? renderCaptureText({
+                          text: option.label,
+                          contextText: getExerciseSentenceText(exercise),
+                        })
+                      : option.label}
                   </button>
                 ))}
               </div>

@@ -25,9 +25,10 @@ export async function POST(request: Request) {
       itemType,
       sourceType,
       contextText,
+      metadata,
     } = body;
 
-    if (!studentId || !lessonId || !itemText || !itemType) {
+    if (!studentId || !itemText || !itemType) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -54,13 +55,21 @@ export async function POST(request: Request) {
       .from("vocabulary_capture_events")
       .insert({
         student_id: studentId,
-        lesson_id: lessonId,
+        lesson_id: lessonId ?? null,
         passage_id: passageId ?? null,
         item_text: itemText,
         item_type: itemType,
         context_text: resolvedContextText,
         source_type:
-          sourceType === "question" || sourceType === "answer" ? sourceType : "passage",
+          sourceType === "question" ||
+          sourceType === "answer" ||
+          sourceType === "vocab_drill"
+            ? sourceType
+            : "passage",
+        metadata:
+          metadata && typeof metadata === "object" && !Array.isArray(metadata)
+            ? metadata
+            : {},
       })
       .select()
       .single();

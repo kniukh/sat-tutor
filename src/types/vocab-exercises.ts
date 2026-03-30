@@ -3,6 +3,7 @@ import type {
   VocabModality,
   WordLifecycleState,
 } from "@/types/vocab-tracking";
+import type { VocabularyDrillAnswerSet } from "@/types/vocabulary-answer-sets";
 
 export type SupportedVocabExerciseType =
   | "meaning_match"
@@ -117,17 +118,20 @@ type VocabExerciseBase<TType extends VocabExerciseType> = {
   question_text?: string;
   sentence_text?: string | null;
   correct_answer?: string;
+  drill_correct_answer?: string;
   acceptable_answers?: string[];
   targetWord?: string;
   targetWordId?: string;
   questionText?: string;
   sentenceText?: string | null;
   correctAnswer?: string;
+  drillCorrectAnswer?: string;
   acceptableAnswers?: string[];
   difficulty?: number;
   tags?: string[];
   skill?: string;
   reviewMeta?: VocabExerciseReviewMeta;
+  answerSet?: VocabularyDrillAnswerSet;
 };
 
 type AudioBackedExerciseFields = {
@@ -294,6 +298,10 @@ export function getExerciseSentenceText(exercise: VocabExerciseBase<VocabExercis
 
 export function getExerciseCorrectAnswer(exercise: VocabExerciseBase<VocabExerciseType>) {
   return exercise.correct_answer ?? exercise.correctAnswer ?? "";
+}
+
+export function getExerciseDrillCorrectAnswer(exercise: VocabExerciseBase<VocabExerciseType>) {
+  return exercise.drill_correct_answer ?? exercise.drillCorrectAnswer ?? "";
 }
 
 export function getExerciseAcceptableAnswers(exercise: VocabExerciseBase<VocabExerciseType>) {

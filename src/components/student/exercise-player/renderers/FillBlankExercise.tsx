@@ -11,6 +11,7 @@ export default function FillBlankExercise({
   selectedValue,
   onSelect,
   submitted,
+  renderCaptureText,
 }: ExerciseRendererProps<FillBlankExerciseData>) {
   const footer =
     exercise.variant === "context_clue"
@@ -23,14 +24,30 @@ export default function FillBlankExercise({
     <div className="space-y-5">
       <ExercisePromptPanel
         eyebrow={exercise.prompt}
-        title={getExerciseSentenceText(exercise)}
+        title={
+          renderCaptureText
+            ? renderCaptureText({
+                text: getExerciseSentenceText(exercise),
+                contextText: getExerciseSentenceText(exercise),
+                as: "div",
+              })
+            : getExerciseSentenceText(exercise)
+        }
         body={
           exercise.variant === "context_clue" && exercise.contextHint ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                 Extra Context
               </div>
-              <div className="mt-2 text-base leading-7 text-slate-800">{exercise.contextHint}</div>
+              <div className="mt-2 text-base leading-7 text-slate-800">
+                {renderCaptureText
+                  ? renderCaptureText({
+                      text: exercise.contextHint,
+                      contextText: getExerciseSentenceText(exercise),
+                      as: "div",
+                    })
+                  : exercise.contextHint}
+              </div>
             </div>
           ) : undefined
         }
@@ -43,6 +60,15 @@ export default function FillBlankExercise({
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
         onSelect={onSelect}
+        renderOptionLabel={({ option, isDistractor }) =>
+          renderCaptureText
+            ? renderCaptureText({
+                text: option.label,
+                contextText: getExerciseSentenceText(exercise),
+                isDistractor,
+              })
+            : option.label
+        }
       />
     </div>
   );

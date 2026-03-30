@@ -19,10 +19,12 @@ export default function VocabSessionPlayer({
   session,
   studentId,
   accessCode,
+  focused = false,
 }: {
   session: VocabExerciseSession;
   studentId: string;
   accessCode: string;
+  focused?: boolean;
 }) {
   const router = useRouter();
   const [done, setDone] = useState(false);
@@ -117,6 +119,7 @@ export default function VocabSessionPlayer({
           progressSignals={progressSignals}
           rewardCredit={rewardCredit}
           isRewardPending={isFinalizingReward}
+          focused={focused}
         />
       </div>
     );
@@ -128,6 +131,8 @@ export default function VocabSessionPlayer({
         exercises={session.ordered_exercises}
         sessionId={session.session_id}
         sessionMetadata={{ session_mode: session.mode }}
+        focused={focused}
+        captureStudentId={studentId}
         onExerciseComplete={handleExerciseComplete}
         onComplete={handleComplete}
       />

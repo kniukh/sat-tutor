@@ -206,12 +206,20 @@ Important fields:
 - `item_type`
 - `context_text`
 - `source_type`
+- `metadata`
 - `created_at`
 
 Current capture sources:
 - `passage`
 - `question`
 - `answer`
+- `vocab_drill`
+
+Current metadata examples:
+- `source: "vocab_drill"`
+- `drill_type`
+- `is_distractor`
+- `context`
 
 ### `vocabulary_item_details`
 Enriched vocabulary cards per student and lesson.
@@ -227,6 +235,7 @@ Important fields:
 - `example_text`
 - `context_sentence`
 - `distractors`
+- `drill_answer_sets`
 - `audio_url`
 - `audio_status`
 - `is_understood`
@@ -236,6 +245,12 @@ Current role in product flow:
 - keeps the original lesson linkage through `lesson_id`
 - keeps sentence-level context through `context_sentence` and `example_text`
 - now also keeps source-aware capture context from reading passage, quiz question text, or answer text
+- stores normalized reusable answer sets for drill-specific rendering
+
+Current answer-set role:
+- `drill_answer_sets` is a JSONB map keyed by drill type
+- each entry stores `drill_correct_answer`, `distractors`, and normalization metadata
+- these answer sets are reused by `translation_match`, `synonym`, `context_meaning`, and `collocation`
 
 ## Vocab Attempts, Progress, and Scheduling
 
@@ -414,6 +429,8 @@ plus
 Current note:
 - the bridge is still rule-based
 - lesson linkage is carried mostly through `lesson_id`, context sentence fields, and service-layer source metadata on exercises
+- lesson completion now also triggers automatic vocabulary drill preparation in the backend
+- drill capture can feed the same `vocabulary_capture_events` table without introducing a separate drill-capture table
 
 ### Book progress flow
 `students`
@@ -437,3 +454,12 @@ Current note:
 - `20260328173000_add_mistake_analysis.sql`
 - `20260328190000_add_vocab_exercise_tracking.sql`
 - `20260328204000_update_word_progress_lifecycle_weak_again.sql`
+- `20260330120000_add_vocab_drill_answer_sets.sql`
+- `20260330143000_expand_vocab_drill_capture_metadata.sql`
+
+## Recent Schema Note
+The latest vocabulary drill work did not require creating brand-new tables.
+Instead, it extended existing vocab tables with:
+- `vocabulary_item_details.drill_answer_sets`
+- `vocabulary_capture_events.metadata`
+- expanded `vocabulary_capture_events.source_type` support for `vocab_drill`

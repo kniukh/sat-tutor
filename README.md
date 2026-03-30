@@ -6,6 +6,7 @@ The project currently has four major student surfaces:
 - Reading lessons at `/s/[code]/lesson/[lessonId]`
 - Books library and chapter-grouped book detail at `/s/[code]/book`
 - Vocabulary Studio at `/s/[code]/vocabulary`
+- Focused vocabulary drill mode at `/s/[code]/vocabulary/drill`
 - Student dashboard at `/s/[code]`
 
 ## Current Product Shape
@@ -20,6 +21,7 @@ The project currently has four major student surfaces:
 - Reading analytics and per-question timing
 - AI Tutor text explanation from the passage
 - Mistake Brain analysis after lesson completion
+- Automatic vocabulary drill preparation after lesson completion
 
 ### Books
 - Kindle-style library page
@@ -31,6 +33,7 @@ The project currently has four major student surfaces:
 ### Vocabulary Studio
 - Queue-backed vocabulary review
 - Lesson-connected fresh vocabulary from reading sessions
+- Dedicated focused drill route for full-screen practice
 - Three student modes:
   - `learn_new_words`
   - `review_weak_words`
@@ -52,6 +55,9 @@ The project currently has four major student surfaces:
 - Controlled mixed sequencing with rule-based modality progression
 - Rule-based adaptive difficulty with `easy`, `medium`, and `hard` session lanes
 - Source-aware session shaping for lesson-derived words
+- Stored normalized answer sets per drill type with explicit `drill_correct_answer` and distractors
+- Automatic drill preparation pipeline for new lesson captures
+- Long-press vocabulary capture inside drills from answers, distractors, and sentence fragments
 - Normalized attempt logging and local debug telemetry
 - End-of-session results with weak-word and recovery summaries
 - Vocabulary Analytics v1 on student progress and dashboard surfaces
@@ -112,6 +118,7 @@ npm run build
 - `/s/[code]/book/[sourceDocumentId]` — single book detail
 - `/s/[code]/lesson/[lessonId]` — reading lesson flow
 - `/s/[code]/vocabulary` — vocabulary studio
+- `/s/[code]/vocabulary/drill` — focused full-screen drill session
 - `/s/[code]/progress` — student progress page
 
 ## Important Dev / Test Routes
@@ -158,8 +165,11 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 - Review queue generation is rule-based for now.
 - Lesson-derived vocabulary now carries source lesson/context metadata into Vocabulary Studio sessions.
 - Reading lessons can now capture vocabulary from passage, question text, and answer text with source-aware metadata.
+- Vocabulary drills can now capture words from answer choices, distractors, and sentence fragments with `vocab_drill` source metadata.
 - Audio-backed vocab practice now includes `listen_match` and `spelling_from_audio`.
 - Matching and SAT-style language drills now include `pair_match`, `sentence_builder`, and `error_detection`.
 - Adaptive difficulty v1 is implemented as a transparent rule-based layer in the session pipeline.
 - Vocabulary Analytics v1 is implemented for exercise totals, accuracy breakdowns, weak words, lifecycle distribution, and recent vocab sessions.
+- Vocabulary drill preparation is now automatic after lesson completion and reused by the existing vocabulary APIs.
+- Recent vocab changes used migrations on existing tables rather than introducing brand-new tables.
 - Books mode is chapter-aware in the UI, but still linear in progression.

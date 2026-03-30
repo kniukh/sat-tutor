@@ -51,6 +51,7 @@ export default function PairMatchExercise({
   selectedValue,
   onSelect,
   submitted,
+  renderCaptureText,
 }: ExerciseRendererProps<PairMatchExerciseData>) {
   const [activeLeftId, setActiveLeftId] = useState<string | null>(null);
   const [activeRightId, setActiveRightId] = useState<string | null>(null);
@@ -189,7 +190,16 @@ export default function PairMatchExercise({
                         className="rounded-2xl border border-slate-300 bg-slate-950 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
                         aria-label={`Remove match ${leftLabel} to ${rightLabel}`}
                       >
-                        {leftLabel} {"->"} {rightLabel}
+                        {renderCaptureText
+                          ? renderCaptureText({
+                              text: `${leftLabel} ${rightLabel}`,
+                              contextText: `${leftLabel} ${rightLabel}`,
+                            })
+                          : (
+                              <>
+                                {leftLabel} {"->"} {rightLabel}
+                              </>
+                            )}
                       </button>
                     );
                   })
@@ -219,7 +229,12 @@ export default function PairMatchExercise({
                           : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50"
                       }`}
                     >
-                      {option.label}
+                      {renderCaptureText
+                        ? renderCaptureText({
+                            text: option.label,
+                            contextText: option.label,
+                          })
+                        : option.label}
                     </button>
                   ))}
                 </div>
@@ -242,7 +257,12 @@ export default function PairMatchExercise({
                           : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50"
                       }`}
                     >
-                      {option.label}
+                      {renderCaptureText
+                        ? renderCaptureText({
+                            text: option.label,
+                            contextText: option.label,
+                          })
+                        : option.label}
                     </button>
                   ))}
                 </div>

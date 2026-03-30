@@ -35,10 +35,15 @@ import {
   type VocabSessionMode,
 } from "@/services/vocabulary/session-builder";
 import {
+  hasReadyVocabularyDrillAnswerSets,
+  parseVocabularyDrillAnswerSets,
+} from "@/services/vocabulary/drill-answer-sets.service";
+import {
   getExerciseTargetWordId,
   type VocabExerciseSourceType,
   type SupportedVocabExercise,
 } from "@/types/vocab-exercises";
+import type { VocabularyDrillAnswerSetMap } from "@/types/vocabulary-answer-sets";
 import type { ExerciseAttemptRow } from "@/types/vocab-tracking";
 
 type VocabularyPageStudent = {
@@ -54,6 +59,7 @@ type DrillItem = {
   itemType: "word" | "phrase";
   correctAnswer: string;
   distractors: string[];
+  answerSets: VocabularyDrillAnswerSetMap;
   contextSentence: string;
   plainMeaning: string;
   translatedExplanation: string | null;
@@ -238,7 +244,8 @@ function toDrillItem(
     !detail.item_text ||
     !detail.english_explanation ||
     !Array.isArray(detail.distractors) ||
-    detail.distractors.length < 3
+    detail.distractors.length < 3 ||
+    !hasReadyVocabularyDrillAnswerSets(detail.drill_answer_sets)
   ) {
     return null;
   }
@@ -262,6 +269,7 @@ function toDrillItem(
     itemType,
     correctAnswer,
     distractors: detail.distractors,
+    answerSets: parseVocabularyDrillAnswerSets(detail.drill_answer_sets),
     contextSentence: detail.context_sentence || "",
     plainMeaning: detail.english_explanation,
     translatedExplanation: detail.translated_explanation || null,
@@ -686,6 +694,7 @@ export async function getStudentVocabularyPageData(
     if (detail.is_understood === true) return false;
     if (!detail.english_explanation) return false;
     if (!Array.isArray(detail.distractors) || detail.distractors.length < 3) return false;
+    if (!hasReadyVocabularyDrillAnswerSets(detail.drill_answer_sets)) return false;
     return true;
   });
 

@@ -1,4 +1,5 @@
 import type { ExerciseOption } from "./types";
+import type { ReactNode } from "react";
 
 type Props = {
   options: ExerciseOption[];
@@ -6,6 +7,10 @@ type Props = {
   correctOptionId: string;
   submitted: boolean;
   onSelect: (optionId: string) => void;
+  renderOptionLabel?: (params: {
+    option: ExerciseOption;
+    isDistractor: boolean;
+  }) => ReactNode;
 };
 
 export default function ExerciseOptionList({
@@ -14,6 +19,7 @@ export default function ExerciseOptionList({
   correctOptionId,
   submitted,
   onSelect,
+  renderOptionLabel,
 }: Props) {
   function moveSelection(currentId: string | null, direction: 1 | -1) {
     const currentIndex = Math.max(
@@ -84,7 +90,14 @@ export default function ExerciseOptionList({
                 {submitted ? (isCorrect ? "OK" : isWrongSelected ? "NO" : index + 1) : index + 1}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-base font-medium leading-relaxed">{option.label}</div>
+                <div className="text-base font-medium leading-relaxed">
+                  {renderOptionLabel
+                    ? renderOptionLabel({
+                        option,
+                        isDistractor: option.id !== correctOptionId,
+                      })
+                    : option.label}
+                </div>
               </div>
             </div>
           </button>
