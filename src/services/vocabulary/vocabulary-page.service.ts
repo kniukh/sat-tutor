@@ -38,9 +38,11 @@ import {
   hasReadyVocabularyDrillAnswerSets,
   parseVocabularyDrillAnswerSets,
 } from "@/services/vocabulary/drill-answer-sets.service";
+import { prepareVocabularyDrillsForStudent } from "@/services/vocabulary/drill-preparation.service";
 import {
   getExerciseTargetWordId,
   type VocabExerciseSourceType,
+  type VocabularySessionPhase,
   type SupportedVocabExercise,
 } from "@/types/vocab-exercises";
 import type { VocabularyDrillAnswerSetMap } from "@/types/vocabulary-answer-sets";
@@ -106,8 +108,10 @@ export type VocabularyPageMode = Extract<
 export type VocabularyDashboardData = {
   totals: {
     totalWordsLearned: number;
+    masteredWords: number;
     wordsInReview: number;
     weakWords: number;
+    practicedTodayWords: number;
     totalTrackedWords: number;
   };
   reviewIndicators: {
@@ -125,11 +129,17 @@ export type VocabularyDashboardData = {
 export type StudentVocabularyPageData = {
   student: VocabularyPageStudent;
   selectedMode: VocabularyPageMode;
+  selectedPhase: VocabularySessionPhase;
   dashboard: VocabularyDashboardData;
   summary: {
     totalQueueItems: number;
     dueNowCount: number;
     readyDrillsCount: number;
+    priorityReadyCount: number;
+    continuationReadyCount: number;
+    canContinueEndlessly: boolean;
+    activePhase: VocabularySessionPhase | null;
+    activePhaseLabel: string | null;
     readyPercent: number;
     newWordPoolCount: number;
     bucketCounts: QueueBucketCounts;
@@ -212,6 +222,32 @@ export function normalizeVocabularyPageMode(mode: string | undefined): Vocabular
   if (mode === "review_weak_words") return "review_weak_words";
   if (mode === "learn_new_words") return "learn_new_words";
   return "mixed_practice";
+}
+
+export function normalizeVocabularySessionPhase(
+  phase: string | undefined
+): VocabularySessionPhase | null {
+  if (phase === "endless_continuation") {
+    return "endless_continuation";
+  }
+
+  if (phase === "priority_review") {
+    return "priority_review";
+  }
+
+  return null;
+}
+
+function getSessionPhaseLabel(phase: VocabularySessionPhase | null) {
+  if (phase === "priority_review") {
+    return "Priority review";
+  }
+
+  if (phase === "endless_continuation") {
+    return "Endless continuation";
+  }
+
+  return null;
 }
 
 function inferSourceType(lessonType: string | null | undefined): VocabExerciseSourceType {
@@ -356,6 +392,78 @@ function attachNewWordReviewMeta<TExercise extends { reviewMeta?: Record<string,
         exercise.reviewMeta?.sourceLessonId ? "new_word_pool" : exercise.reviewMeta?.sourceOrigin,
     },
   }));
+}
+
+function inferContinuationQueueBucket(wordProgress: any): ReviewQueuePriorityBucket {
+  if (wordProgress?.lifecycle_state === "weak_again") {
+    return "weak_again";
+  }
+
+  if (
+    wordProgress?.lifecycle_state === "learning" ||
+    wordProgress?.lifecycle_state === "review"
+  ) {
+    return "reinforcement";
+  }
+
+  return "scheduled";
+}
+
+function inferContinuationQueueReason(wordProgress: any) {
+  if (wordProgress?.lifecycle_state === "weak_again") {
+    return "continuation_weak_recovery";
+  }
+
+  if (wordProgress?.lifecycle_state === "mastered") {
+    return "continuation_retention_check";
+  }
+
+  if (
+    wordProgress?.lifecycle_state === "learning" ||
+    wordProgress?.lifecycle_state === "review" ||
+    wordProgress?.lifecycle_state === "new"
+  ) {
+    return "continuation_learning_reinforcement";
+  }
+
+  return "continuation_mixed_practice";
+}
+
+function attachContinuationReviewMeta<TExercise extends SupportedVocabExercise>(
+  exercises: TExercise[],
+  wordProgressMap: Map<string, any>
+) {
+  return exercises.map((exercise) => {
+    const targetWordId = getExerciseTargetWordId(exercise);
+    const wordProgress = targetWordId ? wordProgressMap.get(targetWordId) : null;
+
+    return {
+      ...exercise,
+      reviewMeta: {
+        ...(exercise.reviewMeta ?? {}),
+        attemptCount: wordProgress?.total_attempts ?? exercise.reviewMeta?.attemptCount ?? 0,
+        dueAt: wordProgress?.next_review_at ?? exercise.reviewMeta?.dueAt ?? null,
+        lastReviewedAt: wordProgress?.last_seen_at ?? exercise.reviewMeta?.lastReviewedAt ?? null,
+        queueBucket: inferContinuationQueueBucket(wordProgress),
+        queueReason: inferContinuationQueueReason(wordProgress),
+        queuePriorityScore: exercise.reviewMeta?.queuePriorityScore ?? 0.15,
+        lifecycleState: wordProgress?.lifecycle_state ?? exercise.reviewMeta?.lifecycleState ?? null,
+        masteryScore: wordProgress?.mastery_score ?? exercise.reviewMeta?.masteryScore ?? null,
+        lastModality: wordProgress?.last_modality ?? exercise.reviewMeta?.lastModality ?? null,
+        recommendedModality:
+          exercise.reviewMeta?.recommendedModality ??
+          (wordProgress?.last_modality === "text" ? "context" : wordProgress?.last_modality) ??
+          null,
+        consecutiveIncorrect:
+          wordProgress?.consecutive_incorrect ?? exercise.reviewMeta?.consecutiveIncorrect ?? 0,
+        lessonFirstExposure:
+          Boolean(exercise.reviewMeta?.sourceLessonId) &&
+          (wordProgress?.lifecycle_state === "new" || wordProgress?.total_attempts <= 1),
+        sourceOrigin:
+          exercise.reviewMeta?.sourceLessonId ? "lesson_capture" : exercise.reviewMeta?.sourceOrigin,
+      },
+    };
+  });
 }
 
 function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
@@ -550,6 +658,9 @@ function attachAdaptiveSelectionMeta<TExercise extends SupportedVocabExercise>(p
         ...exercise,
         reviewMeta: {
           ...(exercise.reviewMeta ?? {}),
+          sessionPhase: summary.sessionPhase,
+          extendedPracticeMode: summary.sessionPhase === "endless_continuation",
+          continuationSourceBucket: summary.continuationSourceBucket,
           selectionBucket: summary.bucket,
           selectionReason: summary.reason,
           preferredModality: summary.preferredModality,
@@ -569,7 +680,8 @@ function attachAdaptiveSelectionMeta<TExercise extends SupportedVocabExercise>(p
 
 export async function getStudentVocabularyPageData(
   accessCode: string,
-  selectedMode: VocabularyPageMode = "mixed_practice"
+  selectedMode: VocabularyPageMode = "mixed_practice",
+  requestedPhase: VocabularySessionPhase | null = null
 ) {
   const supabase = await createServerSupabaseClient();
 
@@ -643,6 +755,27 @@ export async function getStudentVocabularyPageData(
     throw gamificationResult.error;
   }
 
+  let vocabularyDetailRows = (allVocabDetails.data ?? []) as any[];
+  const hasAnyReadyVocabularyItems = vocabularyDetailRows.some((detail: any) => {
+    if (!detail?.id || detail.is_understood === true || !detail.english_explanation) {
+      return false;
+    }
+
+    if (!Array.isArray(detail.distractors) || detail.distractors.length < 3) {
+      return false;
+    }
+
+    return hasReadyVocabularyDrillAnswerSets(detail.drill_answer_sets);
+  });
+
+  if (!hasAnyReadyVocabularyItems && vocabularyDetailRows.length > 0) {
+    const prepared = await prepareVocabularyDrillsForStudent({
+      studentId: studentData.id,
+    });
+
+    vocabularyDetailRows = prepared.items;
+  }
+
   const now = new Date();
   const bucketCounts = activeQueueCandidates.reduce<QueueBucketCounts>((acc, candidate) => {
     const bucket = classifyReviewQueueCandidate(candidate, now);
@@ -653,12 +786,23 @@ export async function getStudentVocabularyPageData(
   const queueWordIds = Array.from(
     new Set(activeQueueCandidates.map((candidate) => candidate.word_id).filter(Boolean))
   );
+  const allReadyVocabularyDetails = vocabularyDetailRows.filter((detail: any) => {
+    if (!detail?.id) return false;
+    if (detail.is_understood === true) return false;
+    if (!detail.english_explanation) return false;
+    if (!Array.isArray(detail.distractors) || detail.distractors.length < 3) return false;
+    if (!hasReadyVocabularyDrillAnswerSets(detail.drill_answer_sets)) return false;
+    return true;
+  });
+  const allReadyWordIds = Array.from(
+    new Set(allReadyVocabularyDetails.map((detail: any) => detail.id).filter(Boolean))
+  );
 
   const { data: wordProgressRows, error: wordProgressError } = await supabase
     .from("word_progress")
     .select("*")
     .eq("student_id", studentData.id)
-    .in("word_id", queueWordIds.length > 0 ? queueWordIds : [EMPTY_UUID]);
+    .in("word_id", allReadyWordIds.length > 0 ? allReadyWordIds : [EMPTY_UUID]);
 
   if (wordProgressError) {
     throw wordProgressError;
@@ -687,15 +831,17 @@ export async function getStudentVocabularyPageData(
   );
   const activeQueueWordIdSet = new Set(queueWordIds);
 
-  const recentNewWordDetails = (allVocabDetails.data ?? []).filter((detail: any) => {
+  const recentNewWordDetails = allReadyVocabularyDetails.filter((detail: any) => {
     if (!detail?.id) return false;
     if (activeQueueWordIdSet.has(detail.id)) return false;
     if (attemptedWordIdSet.has(detail.id)) return false;
-    if (detail.is_understood === true) return false;
-    if (!detail.english_explanation) return false;
-    if (!Array.isArray(detail.distractors) || detail.distractors.length < 3) return false;
-    if (!hasReadyVocabularyDrillAnswerSets(detail.drill_answer_sets)) return false;
     return true;
+  });
+  const continuationReadyDetails = allReadyVocabularyDetails.filter((detail: any) => {
+    if (!detail?.id) return false;
+    if (activeQueueWordIdSet.has(detail.id)) return false;
+    if (recentNewWordDetails.some((candidate) => candidate.id === detail.id)) return false;
+    return Boolean(wordProgressMap.get(detail.id));
   });
 
   const recentLessonIds = Array.from(
@@ -709,6 +855,7 @@ export async function getStudentVocabularyPageData(
   const audioCandidateDetails = [
     ...(queueVocabDetails ?? []),
     ...recentNewWordDetails,
+    ...continuationReadyDetails,
   ].filter((detail: any) => Boolean(detail?.id));
   const audioLessonIds = Array.from(
     new Set(
@@ -745,6 +892,7 @@ export async function getStudentVocabularyPageData(
     new Set([
       ...(queueVocabDetails ?? []).map((detail: any) => detail.lesson_id).filter(Boolean),
       ...recentNewWordDetails.map((detail: any) => detail.lesson_id).filter(Boolean),
+      ...continuationReadyDetails.map((detail: any) => detail.lesson_id).filter(Boolean),
     ])
   );
 
@@ -814,6 +962,17 @@ export async function getStudentVocabularyPageData(
   const newWordDrillItems = recentNewWordDetails
     .map((detail: any) => toDrillItem(detail, `new:${detail.id}`, recentLessonMetaMap, sourceCaptureMap))
     .filter(Boolean) as DrillItem[];
+  const continuationDrillItems = continuationReadyDetails
+    .map((detail: any) => {
+      const wordProgress = wordProgressMap.get(detail.id);
+      return toDrillItem(
+        detail,
+        wordProgress?.id ?? `continuation:${detail.id}`,
+        recentLessonMetaMap,
+        sourceCaptureMap
+      );
+    })
+    .filter(Boolean) as DrillItem[];
 
   const queueExercisePool = buildExercisePoolFromDrillItems(queueDrillItems);
   const queueExercises = [
@@ -848,11 +1007,17 @@ export async function getStudentVocabularyPageData(
 
   const newWordExercisePool = buildExercisePoolFromDrillItems(newWordDrillItems);
   const newWordExercises = attachNewWordReviewMeta(newWordExercisePool.exercises);
+  const continuationExercisePool = buildExercisePoolFromDrillItems(continuationDrillItems);
+  const continuationExercises = attachContinuationReviewMeta(
+    continuationExercisePool.exercises,
+    wordProgressMap
+  );
 
   const adaptiveWordIds = Array.from(
     new Set([
       ...queueDrillItems.map((item) => item.vocabularyItemId),
       ...newWordDrillItems.map((item) => item.vocabularyItemId),
+      ...continuationDrillItems.map((item) => item.vocabularyItemId),
     ])
   );
 
@@ -884,45 +1049,95 @@ export async function getStudentVocabularyPageData(
     recentAttemptsByWordId,
     isNewWord: true,
   });
-  const adaptiveCandidates =
+  const adaptiveContinuationCandidates = buildAdaptiveWordCandidates({
+    exercises: continuationExercises,
+    recentAttemptsByWordId,
+    wordProgressMap,
+    isNewWord: false,
+  });
+  const priorityCandidates =
     selectedMode === "learn_new_words"
       ? adaptiveNewWordCandidates
       : [...adaptiveQueueCandidates, ...adaptiveNewWordCandidates];
-  const adaptiveTargetSize = Math.min(
+  const continuationCandidates =
+    selectedMode === "learn_new_words"
+      ? [...adaptiveNewWordCandidates, ...adaptiveContinuationCandidates]
+      : [...adaptiveQueueCandidates, ...adaptiveNewWordCandidates, ...adaptiveContinuationCandidates];
+  const priorityTargetSize = Math.min(
     selectedMode === "learn_new_words" ? 6 : 8,
-    Math.max(adaptiveCandidates.length, 0)
+    Math.max(priorityCandidates.length, 0)
+  );
+  const continuationTargetSize = Math.min(
+    selectedMode === "learn_new_words" ? 6 : 8,
+    Math.max(continuationCandidates.length, 0)
   );
   const today = new Date().toISOString().slice(0, 10);
-  const adaptiveSelection =
-    adaptiveTargetSize > 0
+  const prioritySelection =
+    priorityTargetSize > 0
       ? selectAdaptiveSessionExercises({
           mode: selectedMode,
-          candidates: adaptiveCandidates,
-          targetSize: adaptiveTargetSize,
-          seed: `${studentData.id}:${today}:${selectedMode}:adaptive:${bucketCounts.recently_failed}:${bucketCounts.weak_again}:${bucketCounts.overdue}:${newWordExercises.length}`,
+          phase: "priority_review",
+          candidates: priorityCandidates,
+          targetSize: priorityTargetSize,
+          seed: `${studentData.id}:${today}:${selectedMode}:priority:${bucketCounts.recently_failed}:${bucketCounts.weak_again}:${bucketCounts.overdue}:${newWordExercises.length}`,
         })
       : null;
+  const continuationSelection =
+    continuationTargetSize > 0
+      ? selectAdaptiveSessionExercises({
+          mode: selectedMode,
+          phase: "endless_continuation",
+          candidates: continuationCandidates,
+          targetSize: continuationTargetSize,
+          seed: `${studentData.id}:${today}:${selectedMode}:continuation:${bucketCounts.recently_failed}:${bucketCounts.weak_again}:${bucketCounts.overdue}:${continuationExercises.length}:${newWordExercises.length}`,
+        })
+      : null;
+  const activePhase =
+    requestedPhase === "endless_continuation"
+      ? continuationSelection
+        ? "endless_continuation"
+        : prioritySelection
+          ? "priority_review"
+          : null
+      : requestedPhase === "priority_review"
+        ? prioritySelection
+          ? "priority_review"
+          : continuationSelection
+            ? "endless_continuation"
+            : null
+        : prioritySelection
+          ? "priority_review"
+          : continuationSelection
+            ? "endless_continuation"
+            : null;
+  const adaptiveSelection =
+    activePhase === "endless_continuation" ? continuationSelection : prioritySelection;
+  const allSelectableExercises =
+    selectedMode === "learn_new_words"
+      ? [...newWordExercises, ...continuationExercises]
+      : [...queueExercises, ...newWordExercises, ...continuationExercises];
   const selectedExercisePool = adaptiveSelection
     ? attachAdaptiveSelectionMeta({
-        exercises:
-          selectedMode === "learn_new_words"
-            ? newWordExercises
-            : [...queueExercises, ...newWordExercises],
+        exercises: allSelectableExercises,
         selectedWords: adaptiveSelection.summary.selectedWords,
       })
     : [];
   const selectedDrillCounts =
-    selectedMode === "learn_new_words"
-      ? newWordExercisePool
-      : queueExercisePool;
+    activePhase === "endless_continuation"
+      ? continuationExercisePool
+      : selectedMode === "learn_new_words"
+        ? newWordExercisePool
+        : queueExercisePool;
 
   const session =
     selectedExercisePool.length > 0
       ? buildVocabExerciseSession({
           exercises: selectedExercisePool,
           mode: selectedMode,
-          targetSize: adaptiveTargetSize,
-          seed: `${studentData.id}:${today}:${selectedMode}:${bucketCounts.recently_failed}:${bucketCounts.weak_again}:${bucketCounts.overdue}:${newWordExercises.length}`,
+          phase: activePhase ?? "priority_review",
+          continuationAvailable: continuationSelection !== null,
+          targetSize: adaptiveSelection?.summary.targetSize,
+          seed: `${studentData.id}:${today}:${selectedMode}:${activePhase ?? "priority_review"}:${bucketCounts.recently_failed}:${bucketCounts.weak_again}:${bucketCounts.overdue}:${continuationExercises.length}:${newWordExercises.length}`,
         })
       : null;
 
@@ -948,10 +1163,11 @@ export async function getStudentVocabularyPageData(
     return bucket === "recently_failed" || bucket === "weak_again";
   }).length;
   const masteryDistribution = vocabularyAnalytics.masteryDistribution;
-  const totalTrackedWords = masteryDistribution.reduce((sum, item) => sum + item.count, 0);
-  const totalWordsLearned =
-    totalTrackedWords - getLifecycleCount(masteryDistribution, "new");
+  const totalTrackedWords = vocabularyAnalytics.summary.capturedWordsCount;
+  const totalWordsLearned = totalTrackedWords - getLifecycleCount(masteryDistribution, "new");
+  const masteredWords = vocabularyAnalytics.summary.masteredWordsCount;
   const wordsInReview = getLifecycleCount(masteryDistribution, "review");
+  const practicedTodayWords = vocabularyAnalytics.summary.practicedTodayWordsCount;
   const currentStreak = Number(gamificationResult.data?.streak_days ?? 0);
   const longestStreakCandidate = Number(
     (gamificationResult.data as Record<string, unknown> | null)?.longest_streak_days ??
@@ -964,11 +1180,14 @@ export async function getStudentVocabularyPageData(
   return {
     student: studentData,
     selectedMode,
+    selectedPhase: activePhase ?? "priority_review",
     dashboard: {
       totals: {
         totalWordsLearned,
+        masteredWords,
         wordsInReview,
         weakWords: vocabularyAnalytics.summary.weakWordCount,
+        practicedTodayWords,
         totalTrackedWords,
       },
       reviewIndicators: {
@@ -986,6 +1205,11 @@ export async function getStudentVocabularyPageData(
       totalQueueItems,
       dueNowCount,
       readyDrillsCount,
+      priorityReadyCount: priorityCandidates.length,
+      continuationReadyCount: continuationCandidates.length,
+      canContinueEndlessly: continuationSelection !== null,
+      activePhase,
+      activePhaseLabel: getSessionPhaseLabel(activePhase),
       readyPercent: totalQueueItems > 0 ? Math.round((readyDrillsCount / totalQueueItems) * 100) : 0,
       newWordPoolCount: newWordExercises.length,
       bucketCounts,
@@ -1011,9 +1235,9 @@ export async function getStudentVocabularyPageData(
       cloze: selectedDrillCounts.clozeDrills.length,
     },
     session,
-    preparationNeeded:
-      selectedMode === "learn_new_words"
-        ? newWordExercises.length === 0 && (allVocabDetails.data ?? []).length > 0
-        : readyDrillsCount < totalQueueItems,
+    preparationNeeded: !session &&
+      (selectedMode === "learn_new_words"
+        ? newWordExercises.length === 0 && vocabularyDetailRows.length > 0
+        : readyDrillsCount < totalQueueItems),
   } satisfies StudentVocabularyPageData;
 }

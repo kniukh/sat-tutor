@@ -37,7 +37,8 @@ export default async function StudentDashboardPage({
 
         <StudentDashboardOverview
           weakestSkills={dashboard?.weakestSkills ?? []}
-          dueVocabulary={dashboard?.dueVocabulary ?? []}
+          readyVocabularyCount={dashboard?.readyVocabularyCount ?? 0}
+          readyVocabulary={dashboard?.readyVocabulary ?? []}
           recentLessons={dashboard?.recentLessons ?? []}
           currentBooks={dashboard?.currentBooks ?? []}
           gamification={dashboard?.gamification ?? null}

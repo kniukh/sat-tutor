@@ -26,6 +26,7 @@ export async function ensureVocabularySessionForAttempt(params: {
   studentId: string;
   sessionId: string;
   sessionMode?: VocabularySessionMode | null;
+  sessionMetadata?: Record<string, unknown> | null;
   attemptCreatedAt: string;
   isCorrect: boolean;
 }) {
@@ -42,6 +43,11 @@ export async function ensureVocabularySessionForAttempt(params: {
     throw existingError;
   }
 
+  const incomingSessionMetadata =
+    params.sessionMetadata && typeof params.sessionMetadata === "object"
+      ? params.sessionMetadata
+      : {};
+
   if (existing) {
     const { data, error } = await supabase
       .from("vocab_sessions")
@@ -52,6 +58,7 @@ export async function ensureVocabularySessionForAttempt(params: {
         correct_count: Number(existing.correct_count ?? 0) + (params.isCorrect ? 1 : 0),
         metadata: {
           ...(existing.metadata ?? {}),
+          ...incomingSessionMetadata,
           latest_attempt_at: params.attemptCreatedAt,
         },
       })
@@ -81,6 +88,7 @@ export async function ensureVocabularySessionForAttempt(params: {
       exercise_count: 1,
       correct_count: params.isCorrect ? 1 : 0,
       metadata: {
+        ...incomingSessionMetadata,
         latest_attempt_at: params.attemptCreatedAt,
       },
     })

@@ -36,6 +36,8 @@ export default function VocabularySessionResults({
     progressSignals,
     rewardCredit,
   });
+  const continueHref = `/s/${accessCode}/vocabulary/drill?mode=${session.mode}&phase=endless_continuation`;
+  const weakWordsHref = `/s/${accessCode}/vocabulary?mode=review_weak_words&phase=endless_continuation`;
 
   const sessionHighlights = [
     {
@@ -109,10 +111,10 @@ export default function VocabularySessionResults({
       <div className="mx-auto flex min-h-[100svh] w-full max-w-xl flex-col justify-center gap-6 bg-white px-4 py-6 text-center sm:px-6">
         <div className="space-y-3">
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Session Complete
+            {summary.sessionPhase === "priority_review" ? "Checkpoint" : "Practice Checkpoint"}
           </div>
-          <h2 className="text-3xl font-semibold text-slate-950">Finished.</h2>
-          <p className="text-base leading-7 text-slate-600">{summary.accuracyTone}</p>
+          <h2 className="text-3xl font-semibold text-slate-950">{summary.completionTitle}</h2>
+          <p className="text-base leading-7 text-slate-600">{summary.completionSubtitle}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -132,13 +134,19 @@ export default function VocabularySessionResults({
 
         <div className="space-y-3 pt-2">
           <Link
-            href={`/s/${accessCode}/vocabulary/drill?mode=mixed_practice`}
+            href={continueHref}
             className="block rounded-2xl bg-slate-950 px-5 py-4 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
           >
-            Start another session
+            {summary.continueLabel}
           </Link>
           <Link
-            href={`/s/${accessCode}/vocabulary`}
+            href={weakWordsHref}
+            className="block rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
+          >
+            Review Weak Words
+          </Link>
+          <Link
+            href={`/s/${accessCode}/vocabulary?mode=${session.mode}`}
             className="block rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
           >
             Back to vocabulary
@@ -152,10 +160,12 @@ export default function VocabularySessionResults({
     <div className="mx-auto max-w-3xl space-y-5 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="space-y-3 text-center sm:text-left">
         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-          Session Complete
+          {summary.sessionPhase === "priority_review" ? "Checkpoint" : "Practice Checkpoint"}
         </div>
-        <h2 className="text-2xl font-semibold text-slate-950">Nice work. Session finished.</h2>
-        <p className="text-sm leading-6 text-slate-600">{summary.accuracyTone}</p>
+        <h2 className="text-2xl font-semibold text-slate-950">{summary.completionTitle}</h2>
+        <p className="text-sm leading-6 text-slate-600">
+          {summary.completionSubtitle} {summary.accuracyTone}
+        </p>
         <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
             {summary.completedCount} exercises
@@ -271,27 +281,27 @@ export default function VocabularySessionResults({
           <div className="mt-1 text-sm text-slate-600">
             {isRewardPending
               ? "Saving your session credit..."
-              : "Keep the momentum going with the next focused session."}
+              : "Keep the momentum going with another adaptive checkpoint instead of stopping after today's priority words."}
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
           <Link
-            href={`/s/${accessCode}/vocabulary?mode=review_weak_words`}
+            href={continueHref}
             className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+          >
+            {summary.continueLabel}
+          </Link>
+          <Link
+            href={weakWordsHref}
+            className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
           >
             Review weak words
           </Link>
           <Link
-            href={`/s/${accessCode}/vocabulary?mode=mixed_practice`}
-            className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
-          >
-            Start another mixed practice session
-          </Link>
-          <Link
-            href={`/s/${accessCode}`}
+            href={`/s/${accessCode}/vocabulary?mode=${session.mode}`}
             className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
           >
-            Return to dashboard
+            Back to vocabulary
           </Link>
         </div>
       </div>

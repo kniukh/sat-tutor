@@ -13,10 +13,16 @@ export async function applyExerciseAttemptToProgress(params: {
     typeof params.attempt.metadata?.session_mode === "string"
       ? params.attempt.metadata.session_mode
       : null;
+  const clientAttemptMetadata =
+    params.attempt.metadata?.client_attempt_metadata &&
+    typeof params.attempt.metadata.client_attempt_metadata === "object"
+      ? (params.attempt.metadata.client_attempt_metadata as Record<string, unknown>)
+      : null;
   const session = await ensureVocabularySessionForAttempt({
     studentId: params.studentId,
     sessionId: params.attempt.session_id,
     sessionMode: sessionMode as any,
+    sessionMetadata: clientAttemptMetadata,
     attemptCreatedAt: params.attempt.created_at,
     isCorrect: params.attempt.is_correct,
   });

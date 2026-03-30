@@ -3,6 +3,7 @@ import VocabSessionPlayer from "@/components/student/VocabSessionPlayer";
 import {
   getStudentVocabularyPageData,
   normalizeVocabularyPageMode,
+  normalizeVocabularySessionPhase,
 } from "@/services/vocabulary/vocabulary-page.service";
 
 export default async function FocusedVocabularyDrillPage({
@@ -10,11 +11,12 @@ export default async function FocusedVocabularyDrillPage({
   searchParams,
 }: {
   params: Promise<{ code: string }>;
-  searchParams: Promise<{ mode?: string }>;
+  searchParams: Promise<{ mode?: string; phase?: string }>;
 }) {
   const [{ code }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const selectedMode = normalizeVocabularyPageMode(resolvedSearchParams.mode);
-  const data = await getStudentVocabularyPageData(code, selectedMode);
+  const selectedPhase = normalizeVocabularySessionPhase(resolvedSearchParams.phase);
+  const data = await getStudentVocabularyPageData(code, selectedMode, selectedPhase);
 
   if (data.session) {
     return (
@@ -40,13 +42,15 @@ export default async function FocusedVocabularyDrillPage({
           <p className="text-sm leading-6 text-slate-600">
             {data.preparationNeeded
               ? "Your next drill is still being prepared. Give it a moment, then open the focused session again."
-              : "There is no active drill session ready right now. Start from the vocabulary studio when new words are available."}
+              : "There is no active drill session ready right now. Open Vocabulary Studio to let the next priority or continuation phase assemble."}
           </p>
         </div>
 
         <div className="space-y-3">
           <Link
-            href={`/s/${data.student.accessCode}/vocabulary?mode=${selectedMode}`}
+            href={`/s/${data.student.accessCode}/vocabulary?mode=${selectedMode}${
+              resolvedSearchParams.phase ? `&phase=${resolvedSearchParams.phase}` : ""
+            }`}
             className="block rounded-2xl bg-slate-950 px-5 py-4 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
           >
             Back to vocabulary

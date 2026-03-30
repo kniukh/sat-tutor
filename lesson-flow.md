@@ -168,6 +168,9 @@ Vocabulary Studio now closes the loop after a student finishes a vocab session:
 - `word_progress` is updated
 - `review_queue` is regenerated
 - the focused drill route keeps the interaction full-screen and mobile-first
+- the main Vocabulary Studio page can also render the live drill player inline
+- the session is no longer framed as “finish your due count”
+- the first checkpoint can roll into endless continuation without rebuilding a parallel session system
 - an end-of-session results summary highlights:
   - correct / incorrect totals
   - weak words from the session
@@ -202,6 +205,10 @@ Current summaries include:
 - recent vocab session counts
 - most frequently missed words
 - recently improved words
+- progress-first student metrics:
+  - `Captured`
+  - `Mastered`
+  - `Practiced today`
 
 That makes the lesson flow and vocabulary flow connected, but still separate products.
 

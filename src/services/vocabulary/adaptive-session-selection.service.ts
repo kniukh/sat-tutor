@@ -3,6 +3,8 @@ import {
   getExerciseTargetWord,
   getExerciseTargetWordId,
   type SupportedVocabExercise,
+  type VocabularyContinuationSourceBucket,
+  type VocabularySessionPhase,
 } from "@/types/vocab-exercises";
 import {
   applyDifficultyToPreferredModality,
@@ -24,7 +26,6 @@ export type AdaptiveVocabularyMode =
   | "learn_new_words"
   | "review_weak_words"
   | "mixed_practice";
-
 export type AdaptiveSelectionBucket =
   | "weak_recent"
   | "reinforcement"
@@ -61,7 +62,9 @@ export type AdaptiveWordCandidate = {
 export type AdaptiveSelectionWordSummary = {
   wordId: string;
   word: string;
+  sessionPhase: VocabularySessionPhase;
   bucket: AdaptiveSelectionBucket;
+  continuationSourceBucket: VocabularyContinuationSourceBucket;
   preferredModality: VocabModality;
   selectionRule: string;
   reason: string;
@@ -91,6 +94,7 @@ export type AdaptiveSelectionWordSummary = {
 };
 
 export type AdaptiveSessionSelectionSummary = {
+  sessionPhase: VocabularySessionPhase;
   targetSize: number;
   targetMix: Record<AdaptiveSelectionBucket, number>;
   countsByBucket: Partial<Record<AdaptiveSelectionBucket, number>>;
@@ -105,27 +109,49 @@ export type AdaptiveSessionSelectionResult = {
   summary: AdaptiveSessionSelectionSummary;
 };
 
-const MODE_BUCKET_TARGETS: Record<
-  AdaptiveVocabularyMode,
-  Record<AdaptiveSelectionBucket, number>
+const MODE_BUCKET_TARGETS_BY_PHASE: Record<
+  VocabularySessionPhase,
+  Record<AdaptiveVocabularyMode, Record<AdaptiveSelectionBucket, number>>
 > = {
-  mixed_practice: {
-    weak_recent: 0.4,
-    reinforcement: 0.25,
-    newer_words: 0.2,
-    retention_check: 0.15,
+  priority_review: {
+    mixed_practice: {
+      weak_recent: 0.45,
+      reinforcement: 0.35,
+      newer_words: 0.15,
+      retention_check: 0.05,
+    },
+    review_weak_words: {
+      weak_recent: 0.65,
+      reinforcement: 0.25,
+      newer_words: 0.05,
+      retention_check: 0.05,
+    },
+    learn_new_words: {
+      weak_recent: 0.05,
+      reinforcement: 0.2,
+      newer_words: 0.7,
+      retention_check: 0.05,
+    },
   },
-  review_weak_words: {
-    weak_recent: 0.55,
-    reinforcement: 0.25,
-    newer_words: 0.05,
-    retention_check: 0.15,
-  },
-  learn_new_words: {
-    weak_recent: 0.05,
-    reinforcement: 0.2,
-    newer_words: 0.6,
-    retention_check: 0.15,
+  endless_continuation: {
+    mixed_practice: {
+      weak_recent: 0.25,
+      reinforcement: 0.3,
+      newer_words: 0.25,
+      retention_check: 0.2,
+    },
+    review_weak_words: {
+      weak_recent: 0.45,
+      reinforcement: 0.3,
+      newer_words: 0.1,
+      retention_check: 0.15,
+    },
+    learn_new_words: {
+      weak_recent: 0.15,
+      reinforcement: 0.25,
+      newer_words: 0.45,
+      retention_check: 0.15,
+    },
   },
 };
 
@@ -297,12 +323,64 @@ function getSelectionRule(params: {
   return "retention_check";
 }
 
+function getContinuationSourceBucket(params: {
+  candidate: AdaptiveWordCandidate;
+  bucket: AdaptiveSelectionBucket;
+  phase: VocabularySessionPhase;
+  now: Date;
+}) {
+  const { candidate, bucket, phase, now } = params;
+  const isDueNow = candidate.nextReviewAt
+    ? new Date(candidate.nextReviewAt).getTime() <= now.getTime()
+    : false;
+
+  if (bucket === "retention_check") {
+    return "retention_check";
+  }
+
+  if (
+    phase === "priority_review" &&
+    candidate.queueBucket !== null &&
+    (candidate.queueBucket === "recently_failed" ||
+      candidate.queueBucket === "weak_again" ||
+      candidate.queueBucket === "overdue" ||
+      isDueNow)
+  ) {
+    return "due_review";
+  }
+
+  if (bucket === "weak_recent" || candidate.lifecycleState === "weak_again") {
+    return "weak_reinforcement";
+  }
+
+  if (
+    bucket === "reinforcement" &&
+    (candidate.lifecycleState === "learning" ||
+      candidate.lifecycleState === "review" ||
+      candidate.lifecycleState === "new" ||
+      candidate.lessonFirstExposure ||
+      candidate.isNewWord)
+  ) {
+    return "learning_reinforcement";
+  }
+
+  if (bucket === "newer_words" && phase === "priority_review") {
+    return "learning_reinforcement";
+  }
+
+  return "mixed_continuation";
+}
+
 function clampBucketTarget(total: number, ratio: number) {
   return Math.max(0, Math.round(total * ratio));
 }
 
-function buildTargetMix(mode: AdaptiveVocabularyMode, targetSize: number) {
-  const ratios = MODE_BUCKET_TARGETS[mode];
+function buildTargetMix(
+  mode: AdaptiveVocabularyMode,
+  targetSize: number,
+  phase: VocabularySessionPhase
+) {
+  const ratios = MODE_BUCKET_TARGETS_BY_PHASE[phase][mode];
   const mix = {
     weak_recent: clampBucketTarget(targetSize, ratios.weak_recent),
     reinforcement: clampBucketTarget(targetSize, ratios.reinforcement),
@@ -339,9 +417,23 @@ function buildTargetMix(mode: AdaptiveVocabularyMode, targetSize: number) {
   return mix;
 }
 
+function getLastAttemptAgeMs(candidate: AdaptiveWordCandidate, now: Date) {
+  const referenceTimestamp =
+    candidate.recentAttempts[0]?.created_at ??
+    candidate.lastSeenAt ??
+    null;
+
+  if (!referenceTimestamp) {
+    return null;
+  }
+
+  return Math.max(0, now.getTime() - new Date(referenceTimestamp).getTime());
+}
+
 function scoreWordCandidate(params: {
   candidate: AdaptiveWordCandidate;
   bucket: AdaptiveSelectionBucket;
+  phase: VocabularySessionPhase;
   preferredModality: VocabModality;
   adaptiveDifficultyBand: VocabDifficultyBand;
   sessionDifficultyBias: SessionDifficultyBias;
@@ -351,6 +443,7 @@ function scoreWordCandidate(params: {
   const {
     candidate,
     bucket,
+    phase,
     preferredModality,
     adaptiveDifficultyBand,
     sessionDifficultyBias,
@@ -360,6 +453,7 @@ function scoreWordCandidate(params: {
   const recentIncorrectCount = countRecentIncorrectAttempts(candidate.recentAttempts, now);
   let score = 0;
   const recentLessonEncounter = isRecentLessonEncounter(candidate, now);
+  const lastAttemptAgeMs = getLastAttemptAgeMs(candidate, now);
 
   if (bucket === "weak_recent") {
     score += 20;
@@ -395,6 +489,22 @@ function scoreWordCandidate(params: {
     score += 2;
   }
 
+  if (lastAttemptAgeMs !== null) {
+    const touchedVeryRecently = lastAttemptAgeMs <= 1000 * 60 * 12;
+    const touchedRecently = lastAttemptAgeMs <= 1000 * 60 * 45;
+    const touchedSameDay = lastAttemptAgeMs <= 1000 * 60 * 60 * 6;
+    const shouldProtectAgainstLoop =
+      recentIncorrectCount === 0 && bucket !== "weak_recent" && candidate.consecutiveIncorrect === 0;
+
+    if (shouldProtectAgainstLoop && touchedVeryRecently) {
+      score -= phase === "endless_continuation" ? 20 : 14;
+    } else if (shouldProtectAgainstLoop && touchedRecently) {
+      score -= phase === "endless_continuation" ? 12 : 8;
+    } else if (shouldProtectAgainstLoop && touchedSameDay && bucket === "retention_check") {
+      score -= 5;
+    }
+  }
+
   score += deterministicWeight(seed, candidate.wordId);
   return Number(score.toFixed(4));
 }
@@ -409,13 +519,15 @@ function addSummaryCount<T extends string>(
 
 export function selectAdaptiveSessionExercises(params: {
   mode: AdaptiveVocabularyMode;
+  phase?: VocabularySessionPhase;
   candidates: AdaptiveWordCandidate[];
   targetSize: number;
   seed: string;
   now?: Date;
 }): AdaptiveSessionSelectionResult {
   const now = params.now ?? new Date();
-  const targetMix = buildTargetMix(params.mode, params.targetSize);
+  const phase = params.phase ?? "priority_review";
+  const targetMix = buildTargetMix(params.mode, params.targetSize, phase);
   const availableByBucket = new Map<AdaptiveSelectionBucket, AdaptiveWordCandidate[]>();
 
   for (const candidate of params.candidates) {
@@ -429,6 +541,7 @@ export function selectAdaptiveSessionExercises(params: {
   const selectedWords = new Set<string>();
   const difficultyProfile = buildAdaptiveDifficultyProfile(params.candidates);
   const summary: AdaptiveSessionSelectionSummary = {
+    sessionPhase: phase,
     targetSize: params.targetSize,
     targetMix,
     countsByBucket: {},
@@ -469,6 +582,7 @@ export function selectAdaptiveSessionExercises(params: {
           score: scoreWordCandidate({
             candidate,
             bucket,
+            phase,
             preferredModality,
             adaptiveDifficultyBand: difficultyDecision.difficultyBand,
             sessionDifficultyBias: difficultyProfile.bias,
@@ -509,6 +623,12 @@ export function selectAdaptiveSessionExercises(params: {
         candidate: entry.candidate,
         bucket,
       });
+      const continuationSourceBucket = getContinuationSourceBucket({
+        candidate: entry.candidate,
+        bucket,
+        phase,
+        now,
+      });
 
       selectedWordIds.push(entry.candidate.wordId);
       selectedWords.add(entry.candidate.wordId);
@@ -518,7 +638,9 @@ export function selectAdaptiveSessionExercises(params: {
       summary.selectedWords.push({
         wordId: entry.candidate.wordId,
         word: entry.candidate.word,
+        sessionPhase: phase,
         bucket,
+        continuationSourceBucket,
         preferredModality: entry.preferredModality,
         selectionRule,
         reason,
@@ -576,6 +698,7 @@ export function selectAdaptiveSessionExercises(params: {
           score: scoreWordCandidate({
             candidate,
             bucket,
+            phase,
             preferredModality,
             adaptiveDifficultyBand: difficultyDecision.difficultyBand,
             sessionDifficultyBias: difficultyProfile.bias,
@@ -602,6 +725,12 @@ export function selectAdaptiveSessionExercises(params: {
         candidate: entry.candidate,
         bucket: entry.bucket,
       });
+      const continuationSourceBucket = getContinuationSourceBucket({
+        candidate: entry.candidate,
+        bucket: entry.bucket,
+        phase,
+        now,
+      });
 
       selectedWordIds.push(entry.candidate.wordId);
       selectedWords.add(entry.candidate.wordId);
@@ -611,7 +740,9 @@ export function selectAdaptiveSessionExercises(params: {
       summary.selectedWords.push({
         wordId: entry.candidate.wordId,
         word: entry.candidate.word,
+        sessionPhase: phase,
         bucket: entry.bucket,
+        continuationSourceBucket,
         preferredModality: entry.preferredModality,
         selectionRule,
         reason,

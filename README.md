@@ -34,6 +34,7 @@ The project currently has four major student surfaces:
 - Queue-backed vocabulary review
 - Lesson-connected fresh vocabulary from reading sessions
 - Dedicated focused drill route for full-screen practice
+- Inline drill player on the main Vocabulary Studio page
 - Three student modes:
   - `learn_new_words`
   - `review_weak_words`
@@ -57,10 +58,19 @@ The project currently has four major student surfaces:
 - Source-aware session shaping for lesson-derived words
 - Stored normalized answer sets per drill type with explicit `drill_correct_answer` and distractors
 - Automatic drill preparation pipeline for new lesson captures
+- Auto-backfill drill preparation for older vocabulary rows when a student opens Vocabulary Studio with legacy items that are not drill-ready yet
 - Long-press vocabulary capture inside drills from answers, distractors, and sentence fragments
 - Normalized attempt logging and local debug telemetry
 - End-of-session results with weak-word and recovery summaries
 - Vocabulary Analytics v1 on student progress and dashboard surfaces
+- Two-phase endless vocab flow:
+  - `priority_review`
+  - `endless_continuation`
+- Progress-first student metrics:
+  - `Captured`
+  - `Mastered`
+  - `Practiced today`
+- Review queue stays internal, while UI emphasizes `words ready now`, `Start Practice`, `Continue Practice`, and `Review Weak Words`
 
 ## Tech Stack
 - Next.js 16
@@ -171,5 +181,8 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 - Adaptive difficulty v1 is implemented as a transparent rule-based layer in the session pipeline.
 - Vocabulary Analytics v1 is implemented for exercise totals, accuracy breakdowns, weak words, lifecycle distribution, and recent vocab sessions.
 - Vocabulary drill preparation is now automatic after lesson completion and reused by the existing vocabulary APIs.
+- Vocabulary Studio now auto-prepares older non-ready vocab rows when needed, so existing students can still get a drill session without a manual prepare step.
+- Vocabulary Studio and dashboard metrics now lead with progress rather than due counts, while review queue logic remains active internally.
+- Endless vocab practice now continues past the initial priority review phase using the same adaptive/session pipeline instead of a separate system.
 - Recent vocab changes used migrations on existing tables rather than introducing brand-new tables.
 - Books mode is chapter-aware in the UI, but still linear in progression.

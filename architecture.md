@@ -68,6 +68,7 @@ Current patterns:
 - thin server page
 - dashboard aggregation through progress services
 - current reading and vocabulary blocks use service-shaped data
+- vocabulary summary now uses review-queue-backed `ready to practice` shaping instead of surfacing legacy due-date counts as the primary student signal
 
 ### `/s/[code]/book`
 Books library page.
@@ -112,9 +113,14 @@ Vocabulary Studio page.
 Current shape:
 - thin page
 - data from [vocabulary-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/vocabulary-page.service.ts)
-- queue-backed summary
+- queue-backed summary with progress-first metrics
 - three explicit modes
 - focused drill launcher
+- inline drill player fallback on the same page
+- automatic drill-preparation backfill for legacy vocab rows with missing normalized answer sets
+- two conceptual phases in the same flow:
+  - `priority_review`
+  - `endless_continuation`
 
 ### `/s/[code]/vocabulary/drill`
 Focused full-screen drill page.
@@ -237,6 +243,9 @@ Current vocab session shaping also includes:
 - end-of-session results and reusable analytics surfaces built from normalized attempt/session metadata
 - stored per-drill answer sets reused across `translation_match`, `synonym`, `context_meaning`, and `collocation`
 - automatic generation + normalization of new lesson vocabulary before it enters session building
+- automatic backfill normalization of old vocabulary rows when a student opens Vocabulary Studio and otherwise would have `0 words ready now`
+- endless continuation reuses the same adaptive selection + session builder pipeline rather than a separate practice system
+- debug-friendly session metadata now carries session phase and continuation source buckets through the live session flow
 
 ## Service Architecture By Domain
 

@@ -64,6 +64,9 @@ export type VocabularyRecentSessionItem = {
 
 export type StudentVocabularyAnalytics = {
   summary: {
+    capturedWordsCount: number;
+    masteredWordsCount: number;
+    practicedTodayWordsCount: number;
     totalExercisesCompleted: number;
     overallAccuracy: number;
     averageResponseTimeMs: number | null;
@@ -394,6 +397,8 @@ export async function getStudentVocabularyAnalytics(
 ): Promise<StudentVocabularyAnalytics> {
   const supabase = await createServerSupabaseClient();
   const now = new Date();
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
   const sevenDaysAgo = now.getTime() - 1000 * 60 * 60 * 24 * 7;
   const thirtyDaysAgo = now.getTime() - 1000 * 60 * 60 * 24 * 30;
 
@@ -441,9 +446,22 @@ export async function getStudentVocabularyAnalytics(
   const allWeakWords = buildWeakWords(wordProgressRows);
   const recentWeakWords = allWeakWords.slice(0, 8);
   const improvedWords7d = buildImprovedWords(attempts, now);
+  const capturedWordsCount = wordProgressRows.length;
+  const masteredWordsCount = wordProgressRows.filter(
+    (row) => row.lifecycle_state === "mastered"
+  ).length;
+  const practicedTodayWordsCount = new Set(
+    attempts
+      .filter((attempt) => new Date(attempt.created_at).getTime() >= startOfToday.getTime())
+      .map((attempt) => attempt.target_word_id ?? attempt.target_word)
+      .filter(Boolean)
+  ).size;
 
   return {
     summary: {
+      capturedWordsCount,
+      masteredWordsCount,
+      practicedTodayWordsCount,
       totalExercisesCompleted,
       overallAccuracy,
       averageResponseTimeMs,

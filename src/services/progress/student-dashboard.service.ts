@@ -1,14 +1,22 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getStudentVocabularyAnalytics } from "@/services/analytics/vocabulary-analytics.service";
+import {
+  generateReviewQueueForStudent,
+  getNextReviewQueueCandidates,
+  listActiveReviewQueueCandidates,
+} from "@/services/vocabulary/review-queue.service";
 
 export async function getStudentDashboardData(studentId: string) {
   const supabase = await createServerSupabaseClient();
-
-  const today = new Date().toISOString().slice(0, 10);
+  await generateReviewQueueForStudent({
+    studentId,
+    limit: 100,
+  });
 
   const [
     skillResult,
-    vocabResult,
+    activePracticeQueueResult,
+    practiceQueueResult,
     lessonAttemptsResult,
     bookProgressResult,
     gamificationResult,
@@ -19,12 +27,16 @@ export async function getStudentDashboardData(studentId: string) {
       .eq("student_id", studentId)
       .order("accuracy", { ascending: true }),
 
-    supabase
-      .from("word_progress")
-      .select("*")
-      .eq("student_id", studentId)
-      .lte("next_review_date", today)
-      .order("next_review_date", { ascending: true }),
+    listActiveReviewQueueCandidates({
+      studentId,
+      limit: 100,
+    }),
+
+    getNextReviewQueueCandidates({
+      studentId,
+      limit: 8,
+      dueOnly: false,
+    }),
 
     supabase
       .from("lesson_attempts")
@@ -67,7 +79,6 @@ export async function getStudentDashboardData(studentId: string) {
   ]);
 
   if (skillResult.error) throw new Error(skillResult.error.message);
-  if (vocabResult.error) throw new Error(vocabResult.error.message);
   if (lessonAttemptsResult.error) throw new Error(lessonAttemptsResult.error.message);
   if (bookProgressResult.error) throw new Error(bookProgressResult.error.message);
   if (gamificationResult.error) throw new Error(gamificationResult.error.message);
@@ -92,7 +103,8 @@ export async function getStudentDashboardData(studentId: string) {
 
   return {
     weakestSkills: (skillResult.data ?? []).slice(0, 3),
-    dueVocabulary: vocabResult.data ?? [],
+    readyVocabularyCount: activePracticeQueueResult.length,
+    readyVocabulary: practiceQueueResult ?? [],
     recentLessons: normalizedRecentLessons,
     currentBooks: bookProgressResult.data ?? [],
     gamification: gamificationResult.data ?? null,

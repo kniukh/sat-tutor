@@ -15,7 +15,7 @@ Student home with:
 - current reading
 - recent lessons
 - weakest skills
-- due vocabulary
+- ready-to-practice vocabulary
 - XP / level / streak
 
 ### 2. Books
@@ -71,6 +71,13 @@ Current foundations:
 - stored normalized drill answer sets
 - automatic drill preparation after reading completion
 - long-press capture inside drill sessions
+- two-phase endless practice:
+  - `priority_review`
+  - `endless_continuation`
+- progress-first top metrics:
+  - `Captured`
+  - `Mastered`
+  - `Practiced today`
 - audio-backed modalities:
   - `listen_match`
   - `spelling_from_audio`
@@ -94,6 +101,8 @@ Current foundations:
 - Keep lesson-derived words connected to their original reading context when they reappear in Vocabulary Studio.
 - Keep distractor generation and correct-answer shaping reusable at the data layer, not inside individual UIs.
 - Let drill capture reuse the same storage model as lesson capture instead of creating a second vocabulary inbox.
+- Keep due logic internal and important for prioritization, but do not make it the dominant student-facing goal.
+- Let practice continue through the same adaptive pipeline after the first priority checkpoint rather than ending at the due boundary.
 
 ### Analytics
 - Collect structured telemetry before adding more adaptation.
@@ -131,12 +140,14 @@ Current foundations:
 - queue-backed summary buckets
 - learn/review/mixed mode switch
 - focused full-screen drill mode
+- inline drill player on the main Vocabulary Studio page
 - queue-aware session composition
 - lesson-aware session composition for fresh words from recent reading lessons
 - audio preparation and audio-aware session inclusion
 - dev exercise gallery for all exercise types
 - normalized attempt telemetry and shared debug panels
 - drill-time long-press vocabulary capture from answers, distractors, and sentence fragments
+- progress-first student dashboard and Vocabulary Studio entry points built around `Start Practice`, `Continue Practice`, and `Review Weak Words`
 
 ## What “Adaptive” Means Right Now
 
@@ -147,6 +158,7 @@ Implemented today:
 - `review_queue` generation
 - queue bucket prioritization
 - bucket-aware session building
+- endless continuation using the same adaptive selection + session builder pipeline
 - rule-based adaptive difficulty using mastery, streaks, modality history, and response time
 - lesson-connected source metadata and beginner-friendly lesson word progression
 - audio modalities inside the same reusable exercise player

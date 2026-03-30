@@ -246,6 +246,7 @@ Current role in product flow:
 - keeps sentence-level context through `context_sentence` and `example_text`
 - now also keeps source-aware capture context from reading passage, quiz question text, or answer text
 - stores normalized reusable answer sets for drill-specific rendering
+- older rows can be backfilled through the shared drill-preparation service when a student opens Vocabulary Studio and otherwise has no drill-ready items
 
 Current answer-set role:
 - `drill_answer_sets` is a JSONB map keyed by drill type
@@ -342,6 +343,10 @@ Current queue priorities favor:
 - overdue review words
 - reinforcement words
 
+Current product note:
+- `review_queue` remains the internal priority source for review and continuation shaping
+- student-facing UI now reframes this as `ready to practice` / `words ready now` instead of a hard due-task counter
+
 ## Book Progress
 
 ### `student_book_progress`
@@ -412,6 +417,11 @@ Main sources:
 -> `word_progress`
 -> `review_queue`
 
+Current runtime note:
+- Vocabulary Studio first assembles a `priority_review` checkpoint from queue-backed and fresh-word candidates
+- then it can continue into `endless_continuation` using the same adaptive/session pipeline
+- if older `vocabulary_item_details` rows are missing normalized drill data, the shared prep service can backfill them on page load before session assembly
+
 ### Vocabulary analytics flow
 `exercise_attempts`
 plus
@@ -463,3 +473,5 @@ Instead, it extended existing vocab tables with:
 - `vocabulary_item_details.drill_answer_sets`
 - `vocabulary_capture_events.metadata`
 - expanded `vocabulary_capture_events.source_type` support for `vocab_drill`
+
+No new Supabase migration was required for the latest endless-practice and progress-first Vocabulary Studio updates because they reused the existing `exercise_attempts`, `word_progress`, `review_queue`, `vocab_sessions`, and `vocabulary_item_details` schema.

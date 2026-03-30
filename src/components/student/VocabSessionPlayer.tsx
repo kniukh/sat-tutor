@@ -130,7 +130,14 @@ export default function VocabSessionPlayer({
       <ExercisePlayer
         exercises={session.ordered_exercises}
         sessionId={session.session_id}
-        sessionMetadata={{ session_mode: session.mode }}
+        sessionMetadata={{
+          session_mode: session.mode,
+          session_phase: session.metadata.session_phase,
+          extended_practice_mode: session.metadata.extended_practice_mode,
+          session_checkpoint_index: session.metadata.checkpoint_index,
+          continuation_available: session.metadata.continuation_available,
+          continuation_source_counts: session.metadata.continuation_source_counts,
+        }}
         focused={focused}
         captureStudentId={studentId}
         onExerciseComplete={handleExerciseComplete}

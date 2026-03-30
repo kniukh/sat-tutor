@@ -63,6 +63,15 @@ export type VocabExerciseSourceType =
   | "generated_lesson"
   | "other";
 
+export type VocabularySessionPhase = "priority_review" | "endless_continuation";
+
+export type VocabularyContinuationSourceBucket =
+  | "due_review"
+  | "weak_reinforcement"
+  | "learning_reinforcement"
+  | "mixed_continuation"
+  | "retention_check";
+
 export type VocabExerciseReviewMeta = {
   attemptCount?: number;
   streak?: number;
@@ -93,6 +102,9 @@ export type VocabExerciseReviewMeta = {
   adaptiveDifficultyBand?: VocabDifficultyBand | null;
   adaptiveDifficultyReason?: string | null;
   sessionDifficultyBias?: "supportive" | "balanced" | "stretch";
+  sessionPhase?: VocabularySessionPhase;
+  extendedPracticeMode?: boolean;
+  continuationSourceBucket?: VocabularyContinuationSourceBucket | null;
   recentAccuracy?: number | null;
   averageResponseTimeMs?: number | null;
   strongestModality?: VocabModality | null;

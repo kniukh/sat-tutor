@@ -27,11 +27,17 @@ export type VocabularySessionRewardCredit = {
 };
 
 export type VocabularySessionResultsSummary = {
+  sessionPhase: VocabExerciseSession["metadata"]["session_phase"];
+  extendedPracticeMode: boolean;
+  continuationAvailable: boolean;
   completedCount: number;
   correctCount: number;
   incorrectCount: number;
   accuracy: number;
   accuracyTone: string;
+  completionTitle: string;
+  completionSubtitle: string;
+  continueLabel: string;
   wordsReviewedCount: number;
   weakWords: string[];
   strengthenedWords: string[];
@@ -63,6 +69,29 @@ function getAccuracyTone(accuracy: number) {
   }
 
   return "Useful reset. This run showed exactly where supportive repetition should focus next.";
+}
+
+function getCompletionCopy(params: {
+  session: VocabExerciseSession;
+  accuracy: number;
+}) {
+  const { session } = params;
+
+  if (session.metadata.session_phase === "priority_review") {
+    return {
+      title: "Priority review cleared.",
+      subtitle:
+        "The highest-priority words are done. You can roll straight into adaptive continuation without rebuilding your practice.",
+      continueLabel: "Continue Practice",
+    };
+  }
+
+  return {
+    title: "Practice checkpoint.",
+    subtitle:
+      "You can keep going for another adaptive mix of weak words, learning reinforcement, and light retention checks.",
+    continueLabel: "Keep Going",
+  };
 }
 
 export function calculateVocabularySessionReward(params: {
@@ -163,13 +192,23 @@ export function buildVocabularySessionResultsSummary(params: {
       )
       .map((signal) => signal.targetWord)
   );
+  const completionCopy = getCompletionCopy({
+    session: params.session,
+    accuracy,
+  });
 
   return {
+    sessionPhase: params.session.metadata.session_phase,
+    extendedPracticeMode: params.session.metadata.extended_practice_mode,
+    continuationAvailable: params.session.metadata.continuation_available,
     completedCount,
     correctCount,
     incorrectCount,
     accuracy,
     accuracyTone: getAccuracyTone(accuracy),
+    completionTitle: completionCopy.title,
+    completionSubtitle: completionCopy.subtitle,
+    continueLabel: completionCopy.continueLabel,
     wordsReviewedCount,
     weakWords,
     strengthenedWords,

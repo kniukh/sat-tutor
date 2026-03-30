@@ -6,6 +6,8 @@ import {
   getExerciseTargetWordId as readTargetWordId,
   type SupportedVocabExercise,
   type SupportedVocabExerciseType,
+  type VocabularyContinuationSourceBucket,
+  type VocabularySessionPhase,
   type VocabExerciseSourceType,
   type VocabExerciseQueueBucket,
 } from "@/types/vocab-exercises";
@@ -45,6 +47,11 @@ export type VocabExerciseSession = {
     unique_target_words: number;
     repeated_target_words: number;
     dominant_bucket: VocabExerciseQueueBucket | null;
+    session_phase: VocabularySessionPhase;
+    extended_practice_mode: boolean;
+    continuation_available: boolean;
+    checkpoint_index: number;
+    continuation_source_counts: Partial<Record<VocabularyContinuationSourceBucket, number>>;
     sequence_debug: Array<{
       index: number;
       exercise_id: string;
@@ -52,6 +59,8 @@ export type VocabExerciseSession = {
       target_word: string;
       exercise_type: SupportedVocabExerciseType;
       queue_bucket: VocabExerciseQueueBucket;
+      continuation_source_bucket: VocabularyContinuationSourceBucket | null;
+      session_phase: VocabularySessionPhase;
       lifecycle_state: WordLifecycleState | null;
       preferred_modality: VocabModality | null;
       selection_rule: string | null;
@@ -72,6 +81,8 @@ export type VocabExerciseSession = {
 type BuildSessionParams = {
   exercises: SupportedVocabExercise[];
   mode: VocabSessionMode;
+  phase?: VocabularySessionPhase;
+  continuationAvailable?: boolean;
   targetSize?: number;
   seed?: string;
 };
@@ -525,9 +536,26 @@ function countByRule(
   }, {});
 }
 
+function countByContinuationSource(
+  items: Array<{
+    continuation_source_bucket: VocabularyContinuationSourceBucket | null;
+  }>
+) {
+  return items.reduce<Partial<Record<VocabularyContinuationSourceBucket, number>>>((acc, item) => {
+    if (!item.continuation_source_bucket) {
+      return acc;
+    }
+
+    acc[item.continuation_source_bucket] = (acc[item.continuation_source_bucket] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
 export function buildVocabExerciseSession({
   exercises,
   mode,
+  phase = "priority_review",
+  continuationAvailable = false,
   targetSize,
   seed = "default-seed",
 }: BuildSessionParams): VocabExerciseSession {
@@ -564,6 +592,8 @@ export function buildVocabExerciseSession({
       target_word: getExerciseTargetWord(next.candidate),
       exercise_type: next.candidate.type,
       queue_bucket: getQueueBucket(next.candidate),
+      continuation_source_bucket: next.candidate.reviewMeta?.continuationSourceBucket ?? null,
+      session_phase: next.candidate.reviewMeta?.sessionPhase ?? phase,
       lifecycle_state: getLifecycleState(next.candidate),
       preferred_modality: getPreferredModality(next.candidate),
       selection_rule: getSelectionRule(next.candidate),
@@ -608,6 +638,11 @@ export function buildVocabExerciseSession({
       unique_target_words: uniqueTargetWords,
       repeated_target_words: chosen.length - uniqueTargetWords,
       dominant_bucket: dominantBucket(chosen),
+      session_phase: phase,
+      extended_practice_mode: phase === "endless_continuation",
+      continuation_available: continuationAvailable,
+      checkpoint_index: phase === "priority_review" ? 1 : 2,
+      continuation_source_counts: countByContinuationSource(sequenceDebug),
       sequence_debug: sequenceDebug,
     },
   };

@@ -9,11 +9,11 @@ type SkillItem = {
   accuracy: number;
 };
 
-type DueWord = {
+type ReadyWord = {
   id: string;
-  word: string;
+  word: string | null;
   status: string;
-  next_review_date: string;
+  lifecycle_state?: string | null;
 };
 
 type RecentLesson = {
@@ -44,7 +44,8 @@ type CurrentBook = {
 
 type Props = {
   weakestSkills: SkillItem[];
-  dueVocabulary: DueWord[];
+  readyVocabularyCount: number;
+  readyVocabulary: ReadyWord[];
   recentLessons: RecentLesson[];
   currentBooks: CurrentBook[];
   gamification?: {
@@ -58,7 +59,8 @@ type Props = {
 
 export default function StudentDashboardOverview({
   weakestSkills,
-  dueVocabulary,
+  readyVocabularyCount,
+  readyVocabulary,
   recentLessons,
   currentBooks,
   gamification,
@@ -111,23 +113,47 @@ export default function StudentDashboardOverview({
         </div>
 
         <div className="rounded-2xl border bg-white p-5 space-y-4">
-          <div className="text-xl font-semibold">Due Vocabulary</div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xl font-semibold">Ready to Practice</div>
+            <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+              {readyVocabularyCount} ready now
+            </div>
+          </div>
 
-          {dueVocabulary.length === 0 ? (
-            <div className="text-slate-500">No words due today.</div>
+          {readyVocabulary.length === 0 ? (
+            <div className="text-slate-500">
+              Vocabulary Studio will keep practice flowing as soon as words are available.
+            </div>
           ) : (
             <div className="space-y-3">
-              {dueVocabulary.slice(0, 8).map((item) => (
+              {readyVocabulary.slice(0, 8).map((item) => (
                 <div
                   key={item.id}
                   className="flex items-center justify-between border rounded-xl px-4 py-3"
                 >
-                  <div className="font-medium">{item.word}</div>
-                  <div className="text-slate-600">{item.status}</div>
+                  <div className="font-medium">{item.word ?? "Vocabulary word"}</div>
+                  <div className="text-slate-600 capitalize">
+                    {(item.lifecycle_state ?? item.status).replace(/_/g, " ")}
+                  </div>
                 </div>
               ))}
             </div>
           )}
+
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href={`/s/${accessCode}/vocabulary?mode=mixed_practice`}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Start Practice
+            </Link>
+            <Link
+              href={`/s/${accessCode}/vocabulary?mode=review_weak_words&phase=endless_continuation`}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+            >
+              Review Weak Words
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -322,37 +348,37 @@ export default function StudentDashboardOverview({
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
-                    Exercises
+                    Captured
                   </div>
                   <div className="mt-2 text-2xl font-semibold text-slate-950">
-                    {vocabularyAnalytics.summary.totalExercisesCompleted}
+                    {vocabularyAnalytics.summary.capturedWordsCount}
                   </div>
                 </div>
 
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
-                    Accuracy
+                    Mastered
                   </div>
                   <div className="mt-2 text-2xl font-semibold text-slate-950">
-                    {Math.round(vocabularyAnalytics.summary.overallAccuracy * 100)}%
+                    {vocabularyAnalytics.summary.masteredWordsCount}
                   </div>
                 </div>
 
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
-                    Weak Words
+                    Practiced today
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+                    {vocabularyAnalytics.summary.practicedTodayWordsCount}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
+                    Weak words
                   </div>
                   <div className="mt-2 text-2xl font-semibold text-slate-950">
                     {vocabularyAnalytics.summary.weakWordCount}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-slate-500">
-                    Sessions / 7d
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-slate-950">
-                    {vocabularyAnalytics.summary.recentSessionCount7d}
                   </div>
                 </div>
               </div>
@@ -387,8 +413,20 @@ export default function StudentDashboardOverview({
 
               <div className="flex flex-wrap gap-3">
                 <Link
-                  href={`/s/${accessCode}/vocabulary?mode=review_weak_words`}
+                  href={`/s/${accessCode}/vocabulary?mode=mixed_practice`}
                   className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Start Practice
+                </Link>
+                <Link
+                  href={`/s/${accessCode}/vocabulary/drill?mode=mixed_practice&phase=endless_continuation`}
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+                >
+                  Continue Practice
+                </Link>
+                <Link
+                  href={`/s/${accessCode}/vocabulary?mode=review_weak_words&phase=endless_continuation`}
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
                 >
                   Review Weak Words
                 </Link>

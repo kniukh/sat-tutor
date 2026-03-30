@@ -1,8 +1,10 @@
 import Link from "next/link";
+import VocabSessionPlayer from "@/components/student/VocabSessionPlayer";
 import VocabularyAudioPrefetch from "@/components/student/VocabularyAudioPrefetch";
 import {
   getStudentVocabularyPageData,
   normalizeVocabularyPageMode,
+  normalizeVocabularySessionPhase,
   type VocabularyPageMode,
 } from "@/services/vocabulary/vocabulary-page.service";
 
@@ -29,11 +31,12 @@ export default async function StudentVocabularyPage({
   searchParams,
 }: {
   params: Promise<{ code: string }>;
-  searchParams: Promise<{ mode?: string }>;
+  searchParams: Promise<{ mode?: string; phase?: string }>;
 }) {
   const [{ code }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const selectedMode = normalizeVocabularyPageMode(resolvedSearchParams.mode);
-  const data = await getStudentVocabularyPageData(code, selectedMode);
+  const selectedPhase = normalizeVocabularySessionPhase(resolvedSearchParams.phase);
+  const data = await getStudentVocabularyPageData(code, selectedMode, selectedPhase);
 
   const {
     student,
@@ -45,20 +48,19 @@ export default async function StudentVocabularyPage({
 
   const topMetrics = [
     {
-      label: "Due now",
-      value: dashboard.reviewIndicators.dueNow,
+      label: "Captured",
+      value: dashboard.totals.totalTrackedWords,
+      hint: "Lifetime words in practice",
     },
     {
-      label: "Overdue",
-      value: dashboard.reviewIndicators.overdueRetentionChecks,
+      label: "Mastered",
+      value: dashboard.totals.masteredWords,
+      hint: "Stable long-term words",
     },
     {
-      label: "Weak words",
-      value: dashboard.reviewIndicators.weakReinforcement,
-    },
-    {
-      label: "New words",
-      value: summary.newWordPoolCount,
+      label: "Practiced today",
+      value: dashboard.totals.practicedTodayWords,
+      hint: "Words touched in today's sessions",
     },
   ];
 
@@ -79,34 +81,50 @@ export default async function StudentVocabularyPage({
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               Vocabulary Studio
             </div>
-            <h1 className="text-2xl font-semibold text-slate-950">Ready now</h1>
+            <h1 className="text-2xl font-semibold text-slate-950">Practice anytime</h1>
             <p className="text-sm leading-6 text-slate-600">
               {selectedMode === "learn_new_words"
-                ? `${summary.newWordPoolCount} fresh words are ready to start.`
-                : `${summary.readyDrillsCount} exercises are ready, led by ${
-                    summary.topPriorityLabel?.toLowerCase() ?? "today's due words"
-                  }.`}
+                ? `${summary.newWordPoolCount} fresh words are ready, and the studio can keep going with adaptive review after that.`
+                : summary.activePhase === "priority_review"
+                  ? `${summary.priorityReadyCount} words are ready to practice first, then the session can continue with an adaptive mix instead of stopping at an internal due line.`
+                  : `${summary.continuationReadyCount} words are ready now for endless adaptive continuation with weak-word reinforcement, recent lesson carryover, and light retention checks.`}
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-3">
             {topMetrics.map((item) => (
               <div key={item.label} className="rounded-[18px] border border-slate-200 bg-slate-50 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                   {item.label}
                 </div>
                 <div className="mt-2 text-2xl font-semibold text-slate-950">{item.value}</div>
+                <div className="mt-1 text-sm text-slate-500">{item.hint}</div>
               </div>
             ))}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-600">
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800">
+              {summary.activePhase === "endless_continuation"
+                ? `${summary.continuationReadyCount} words ready now`
+                : `${summary.priorityReadyCount} words ready now`}
+            </span>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
-              {dashboard.totals.totalTrackedWords} tracked
+              {dashboard.totals.weakWords} weak words to revisit
             </span>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
               streak {dashboard.streak.current}
             </span>
+            {summary.dueNowCount > 0 ? (
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-500">
+                priority review active
+              </span>
+            ) : null}
+            {summary.activePhaseLabel ? (
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800">
+                {summary.activePhaseLabel}
+              </span>
+            ) : null}
             {masteryChips.map((item) => (
               <span
                 key={item.label}
@@ -189,20 +207,43 @@ export default async function StudentVocabularyPage({
         <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="space-y-3">
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Ready To Start
+              Ready To Practice
             </div>
             <h2 className="text-2xl font-semibold text-slate-950">Focused drill session</h2>
             <p className="text-sm leading-6 text-slate-600">
-              Launch a clean, full-screen practice run with just the progress bar, question, answers,
-              and action button.
+              Launch a clean, full-screen run that starts with the most useful words first and keeps
+              continuation ready, so practice can flow from priority review into open-ended repetition.
+              You can also keep practicing прямо на этой странице.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link
-                href={`/s/${student.accessCode}/vocabulary/drill?mode=${selectedMode}`}
+                href={`/s/${student.accessCode}/vocabulary/drill?mode=${selectedMode}${
+                  summary.activePhase ? `&phase=${summary.activePhase}` : ""
+                }`}
                 className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
               >
-                Start focused session
+                {selectedMode === "review_weak_words"
+                  ? "Review Weak Words"
+                  : summary.activePhase === "endless_continuation"
+                    ? "Continue Practice"
+                    : "Start Practice"}
               </Link>
+              {summary.canContinueEndlessly && summary.activePhase !== "endless_continuation" ? (
+                <Link
+                  href={`/s/${student.accessCode}/vocabulary/drill?mode=${selectedMode}&phase=endless_continuation`}
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
+                >
+                  Continue Practice
+                </Link>
+              ) : null}
+              {selectedMode !== "review_weak_words" ? (
+                <Link
+                  href={`/s/${student.accessCode}/vocabulary?mode=review_weak_words&phase=endless_continuation`}
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
+                >
+                  Review Weak Words
+                </Link>
+              ) : null}
               <Link
                 href={`/s/${student.accessCode}`}
                 className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
@@ -211,6 +252,16 @@ export default async function StudentVocabularyPage({
               </Link>
             </div>
           </div>
+        </section>
+      ) : null}
+
+      {session ? (
+        <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+          <VocabSessionPlayer
+            session={session}
+            studentId={student.id}
+            accessCode={student.accessCode}
+          />
         </section>
       ) : null}
 
