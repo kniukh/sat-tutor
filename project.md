@@ -13,10 +13,9 @@ The current implementation focus is still SAT Reading. Writing exists as a lesso
 ### 1. Dashboard
 Student home with:
 - current reading
-- recent lessons
-- weakest skills
-- ready-to-practice vocabulary
-- XP / level / streak
+- vocabulary launchpad
+- XP / level / streak / leaderboard rank
+- subtle links into Insights and replay
 
 ### 2. Books
 Books are now a distinct student experience:
@@ -43,10 +42,11 @@ Key current capabilities:
 - vocabulary card review
 - second-read double-tap audio replay on saved words
 - AI Tutor explanation on text selection
-- question explanations
+- optional coaching-style question explanations in a bottom sheet
 - reading speed telemetry
 - per-question timing
 - post-lesson Mistake Brain analysis
+- Mistake Replay entry point after completion
 
 ### 4. Vocabulary Studio
 Separate review surface from lesson runtime.
@@ -56,6 +56,7 @@ Current modes:
 - `review_weak_words`
 - `mixed_practice`
 - focused drill route at `/s/[code]/vocabulary/drill`
+- Mistake Replay route at `/s/[code]/mistake-replay`
 
 Current foundations:
 - normalized vocab exercise model
@@ -78,6 +79,9 @@ Current foundations:
   - `Captured`
   - `Mastered`
   - `Practiced today`
+- replay-oriented results actions:
+  - `Replay Mistakes`
+  - `View your weak areas`
 - audio-backed modalities:
   - `listen_match`
   - `spelling_from_audio`
@@ -111,6 +115,7 @@ Current foundations:
   - question timing
   - per-exercise vocab attempts
   - mistake analysis
+- Use that telemetry to build short repair loops, not static mistake lists.
 
 ## Current Implemented Highlights
 
@@ -129,6 +134,7 @@ Current foundations:
 - skill tracking updates
 - Mistake Brain post-processing
 - automatic vocabulary drill preparation for newly captured lesson words
+- Mistake Replay can later pull recent incorrect reading questions back into a short retry session
 
 ### Books UX
 - Kindle-style books library
@@ -148,6 +154,24 @@ Current foundations:
 - normalized attempt telemetry and shared debug panels
 - drill-time long-press vocabulary capture from answers, distractors, and sentence fragments
 - progress-first student dashboard and Vocabulary Studio entry points built around `Start Practice`, `Continue Practice`, and `Review Weak Words`
+- short Mistake Replay repair sessions built from recent incorrect reading and vocabulary attempts
+
+### Gamification
+- XP rewards reading answers, vocab attempts, and session completion
+- anti-abuse guardrails reduce farming from repeated words and micro-sessions
+- weekly leaderboard uses small competitive groups with weekly reset
+
+### Admin content system
+- Admin is split into structured sections:
+  - `Students`
+  - `Insights`
+  - `Content`
+  - `Sources`
+- Source creation is unified for:
+  - books
+  - articles
+  - poems
+- Lesson review is inline and chunk-based rather than modal/JSON-based
 
 ## What “Adaptive” Means Right Now
 

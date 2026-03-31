@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { saveExerciseAttempt } from "@/services/vocabulary/exercise-attempts.service";
 import { applyExerciseAttemptToProgress } from "@/services/vocabulary/exercise-progress.service";
+import { awardVocabularyExerciseXp } from "@/services/gamification/xp-awards.service";
 import type { ExerciseResult } from "@/components/student/exercise-player/types";
 import type { SupportedVocabExercise } from "@/types/vocab-exercises";
 
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
 
     let progress = null;
     let progressError: string | null = null;
+    let xpReward = null;
 
     try {
       progress = await applyExerciseAttemptToProgress({
@@ -47,7 +49,19 @@ export async function POST(request: Request) {
       console.error("Word progress update failed after saving exercise attempt", error);
     }
 
-    return NextResponse.json({ ok: true, data: saved, progress, progressError });
+    try {
+      xpReward = await awardVocabularyExerciseXp({
+        studentId,
+        attempt: saved,
+        exercise,
+        sameSessionCreditCapped: Boolean((progress as any)?.sameSessionCreditCapped),
+        resultingLifecycleState: (progress as any)?.progressRow?.lifecycle_state ?? null,
+      });
+    } catch (error) {
+      console.error("Vocabulary XP reward failed after saving exercise attempt", error);
+    }
+
+    return NextResponse.json({ ok: true, data: saved, progress, progressError, xpReward });
   } catch (error: any) {
     console.error("POST /api/vocabulary/exercise-attempt error", error);
     return NextResponse.json(

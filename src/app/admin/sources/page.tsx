@@ -21,8 +21,8 @@ export default async function AdminSourcesPage() {
 
   return (
     <AdminShell
-      title="Source Documents"
-      subtitle="Upload raw text and PDF books for AI content generation"
+      title="Sources"
+      subtitle="Create books, articles, and poems, then run the existing chunking and AI lesson review flow."
     >
       <div className="grid gap-6 lg:grid-cols-2">
         <CreateSourceForm />

@@ -13,6 +13,7 @@ import type {
   VocabularyDrillAnswerSet,
   VocabularyDrillAnswerSetKey,
   VocabularyDrillAnswerSetMap,
+  VocabularyDrillAnswerNormalization,
 } from "@/types/vocabulary-answer-sets";
 
 export type MeaningDrillItem = {
@@ -216,6 +217,172 @@ function buildStoredAnswerSetOptions(
       label,
     })),
   ]);
+}
+
+function inferAnswerStyle(text: string): VocabularyDrillAnswerNormalization["style"] {
+  const normalized = text.trim().toLowerCase();
+  const tokenCount = countTokens(normalized);
+
+  if (normalized.startsWith("to ") && tokenCount <= 3) {
+    return "infinitive";
+  }
+
+  if (tokenCount <= 1) {
+    return "single_word";
+  }
+
+  if (tokenCount <= 4) {
+    return "short_phrase";
+  }
+
+  return "clause_like";
+}
+
+function inferScriptProfile(text: string) {
+  const hasLatin = /[A-Za-z]/.test(text);
+  const hasCyrillic = /[А-Яа-яЁё]/.test(text);
+
+  if (hasLatin && !hasCyrillic) {
+    return "latin";
+  }
+
+  if (hasCyrillic && !hasLatin) {
+    return "cyrillic";
+  }
+
+  if (hasLatin && hasCyrillic) {
+    return "mixed";
+  }
+
+  return "other";
+}
+
+function inferNormalization(text: string): VocabularyDrillAnswerNormalization {
+  return {
+    part_of_speech: "unknown",
+    difficulty_band: "medium",
+    style: inferAnswerStyle(text),
+    token_count: countTokens(text),
+    character_length: text.trim().length,
+  };
+}
+
+function rankCandidatesByNormalization(
+  correctAnswer: string,
+  candidates: Array<string | null | undefined>,
+  preferredNormalization?: VocabularyDrillAnswerNormalization | null
+) {
+  const targetNormalization = preferredNormalization ?? inferNormalization(correctAnswer);
+  const targetScript = inferScriptProfile(correctAnswer);
+
+  return uniqueNonEmpty(candidates)
+    .filter((candidate) => candidate.toLowerCase() !== correctAnswer.toLowerCase())
+    .map((candidate) => {
+      const candidateNormalization = inferNormalization(candidate);
+      const candidateScript = inferScriptProfile(candidate);
+      let score = 0;
+
+      if (candidateNormalization.style === targetNormalization.style) {
+        score += 5;
+      }
+
+      const tokenDistance = Math.abs(
+        candidateNormalization.token_count - targetNormalization.token_count
+      );
+      if (tokenDistance === 0) {
+        score += 4;
+      } else if (tokenDistance === 1) {
+        score += 2;
+      }
+
+      const characterDistance = Math.abs(
+        candidateNormalization.character_length - targetNormalization.character_length
+      );
+      if (
+        characterDistance <=
+        Math.max(4, Math.round(targetNormalization.character_length * 0.28))
+      ) {
+        score += 4;
+      } else if (
+        characterDistance <=
+        Math.max(8, Math.round(targetNormalization.character_length * 0.55))
+      ) {
+        score += 2;
+      }
+
+      if (candidateScript === targetScript) {
+        score += 3;
+      }
+
+      if (
+        targetNormalization.style === "infinitive" &&
+        candidateNormalization.style === "infinitive"
+      ) {
+        score += 2;
+      }
+
+      return {
+        candidate,
+        score,
+      };
+    })
+    .sort((left, right) => right.score - left.score)
+    .map((entry) => entry.candidate);
+}
+
+function buildListenAnswerOptions(params: {
+  correctAnswer: string;
+  storedAnswerSet?: VocabularyDrillAnswerSet | null;
+  poolCandidates: Array<string | null | undefined>;
+  fallbackCandidates?: Array<string | null | undefined>;
+  optionPrefix: string;
+}) {
+  const rankedCandidates = rankCandidatesByNormalization(
+    params.correctAnswer,
+    [
+      ...(params.storedAnswerSet?.distractors ?? []),
+      ...params.poolCandidates,
+      ...(params.fallbackCandidates ?? []),
+    ],
+    params.storedAnswerSet?.normalization ?? null
+  );
+  const distractors = rankedCandidates.slice(0, 3);
+
+  return {
+    distractors,
+    options: shuffle([
+      { id: "correct", label: params.correctAnswer },
+      ...distractors.map((label, index) => ({
+        id: `${params.optionPrefix}-${index}`,
+        label,
+      })),
+    ]),
+  };
+}
+
+function getMeaningCandidatePool(
+  item: MeaningDrillItem | ClozeDrillItem,
+  allItems: Array<MeaningDrillItem | ClozeDrillItem>
+) {
+  return allItems
+    .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
+    .flatMap((candidate) => [
+      getStoredAnswerSet(candidate, "context_meaning")?.drill_correct_answer,
+      getStoredAnswerSet(candidate, "synonym")?.drill_correct_answer,
+      getPlainMeaning(candidate),
+    ]);
+}
+
+function getTranslationCandidatePool(
+  item: MeaningDrillItem | ClozeDrillItem,
+  allItems: Array<MeaningDrillItem | ClozeDrillItem>
+) {
+  return allItems
+    .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
+    .flatMap((candidate) => [
+      getStoredAnswerSet(candidate, "translation_english_to_native")?.drill_correct_answer,
+      getTranslatedMeaning(candidate),
+    ]);
 }
 
 function buildTranslationOptions(
@@ -513,8 +680,8 @@ export function adaptTranslationDrillToExercises(
       target_word_id: item.vocabularyItemId,
       targetWord: item.itemText,
       targetWordId: item.vocabularyItemId,
-      question_text: "Which English word matches this translation?",
-      questionText: "Which English word matches this translation?",
+      question_text: `Which English word matches "${translatedMeaning}"?`,
+      questionText: `Which English word matches "${translatedMeaning}"?`,
       options: nativeToEnglishOptions,
       correct_answer: "correct",
       correctAnswer: "correct",
@@ -738,38 +905,112 @@ export function adaptListenMatchDrillToExercise(
 ): SupportedVocabExercise {
   const sourceSentence = getSourceSentence(item);
   const plainMeaning = getPlainMeaning(item);
+  const translatedMeaning = getTranslatedMeaning(item);
+  const translationAnswerSet = getStoredAnswerSet(item, "translation_english_to_native");
+  const meaningAnswerSet = getStoredAnswerSet(item, "context_meaning");
+  const translationPayload = translatedMeaning
+    ? buildListenAnswerOptions({
+        correctAnswer: translationAnswerSet?.drill_correct_answer ?? translatedMeaning,
+        storedAnswerSet: translationAnswerSet,
+        poolCandidates: getTranslationCandidatePool(item, allItems),
+        fallbackCandidates: translatedMeaning ? [translatedMeaning] : [],
+        optionPrefix: `listen-translation-${item.wordProgressId}`,
+      })
+    : null;
+  const meaningPayload = buildListenAnswerOptions({
+    correctAnswer: meaningAnswerSet?.drill_correct_answer ?? plainMeaning,
+    storedAnswerSet: meaningAnswerSet,
+    poolCandidates: getMeaningCandidatePool(item, allItems),
+    fallbackCandidates: item.distractors,
+    optionPrefix: `listen-meaning-${item.wordProgressId}`,
+  });
+  const translationReady = Boolean(
+    translationPayload && translationPayload.distractors.length >= 2
+  );
+  const meaningReady = meaningPayload.distractors.length >= 2;
+  const preferTranslation =
+    translationReady &&
+    (!meaningReady ||
+      (Boolean(translationAnswerSet) && !meaningAnswerSet) ||
+      item.wordProgressId.length % 2 === 0);
+  const variant = preferTranslation ? "translation" : "meaning";
+  const prompt =
+    variant === "translation"
+      ? "Listen and choose the translation."
+      : "Listen and choose the meaning.";
+  const instructions =
+    variant === "translation"
+      ? "Play the audio, then choose the best translation for the word you hear."
+      : "Play the audio, then choose the best meaning for the word you hear.";
+  const questionText =
+    variant === "translation"
+      ? `Which ${item.translationLanguage?.toUpperCase() ?? "translation"} best matches the audio?`
+      : "Which meaning best matches the audio?";
+  const selectedPayload =
+    variant === "translation" && translationPayload ? translationPayload : meaningPayload;
+  const drillCorrectAnswer =
+    variant === "translation"
+      ? translationAnswerSet?.drill_correct_answer ?? translatedMeaning ?? plainMeaning
+      : meaningAnswerSet?.drill_correct_answer ?? plainMeaning;
+  const explanation =
+    variant === "translation"
+      ? `The audio matches the translation ${drillCorrectAnswer}.`
+      : `The audio matches the meaning ${drillCorrectAnswer}.`;
+  const distractors = selectedPayload.distractors;
+  const difficultyBand =
+    variant === "translation"
+      ? translationAnswerSet?.normalization.difficulty_band ?? "medium"
+      : meaningAnswerSet?.normalization.difficulty_band ?? "medium";
 
   return {
     id: `${item.wordProgressId}:listen_match`,
     type: "listen_match",
-    prompt: "Listen and match the word.",
-    instructions:
-      "Play the audio, then choose the word or phrase you heard from the answer bank.",
+    prompt,
+    instructions,
     target_word: item.itemText,
     target_word_id: item.vocabularyItemId,
     targetWord: item.itemText,
     targetWordId: item.vocabularyItemId,
-    question_text: "Which option matches the audio?",
-    questionText: "Which option matches the audio?",
+    question_text: questionText,
+    questionText,
     sentence_text: sourceSentence || null,
     sentenceText: sourceSentence || null,
-    options: buildLexicalOptions(item, allItems, `listen-${item.wordProgressId}`),
+    options: selectedPayload.options,
     correct_answer: "correct",
     correctAnswer: "correct",
+    drill_correct_answer: drillCorrectAnswer,
+    drillCorrectAnswer: drillCorrectAnswer,
     acceptable_answers: ["correct"],
     acceptableAnswers: ["correct"],
-    distractors: item.distractors,
-    explanation: `You heard "${item.itemText}", which means ${plainMeaning}.`,
+    distractors,
+    explanation,
     modality: "audio",
-    difficulty_band: "easy",
+    difficulty_band: difficultyBand,
+    variant,
+    promptStyle: variant === "translation" ? "best_translation" : "best_meaning",
+    answerSet:
+      variant === "translation"
+        ? translationAnswerSet ?? undefined
+        : meaningAnswerSet ?? undefined,
+    translationLanguageLabel: item.translationLanguage ?? null,
     metadata: {
       source_drill_id: item.wordProgressId,
       source_item_type: item.itemType,
       source_sentence: sourceSentence || null,
       audio_url: item.audioUrl ?? null,
       audio_status: item.audioStatus ?? "missing",
+      listen_variant: variant,
+      listens_for_meaning: true,
+      answer_source: variant === "translation" && translationAnswerSet
+        ? "normalized_translation_set"
+        : variant === "meaning" && meaningAnswerSet
+          ? "normalized_meaning_set"
+          : "ranked_candidate_pool",
     },
-    tags: [item.itemType, "audio", "recognition"],
+    tags:
+      variant === "translation"
+        ? [item.itemType, "audio", "translation", "comprehension"]
+        : [item.itemType, "audio", "meaning", "comprehension"],
     skill: "listen_match",
     audio_url: item.audioUrl ?? null,
     audioUrl: item.audioUrl ?? null,

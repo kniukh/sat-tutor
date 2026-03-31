@@ -2,6 +2,7 @@ import Link from "next/link";
 import VocabSessionPlayer from "@/components/student/VocabSessionPlayer";
 import {
   getStudentVocabularyPageData,
+  normalizeVocabularyLessonId,
   normalizeVocabularyPageMode,
   normalizeVocabularySessionPhase,
 } from "@/services/vocabulary/vocabulary-page.service";
@@ -11,12 +12,18 @@ export default async function FocusedVocabularyDrillPage({
   searchParams,
 }: {
   params: Promise<{ code: string }>;
-  searchParams: Promise<{ mode?: string; phase?: string }>;
+  searchParams: Promise<{ mode?: string; phase?: string; lesson?: string }>;
 }) {
   const [{ code }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const selectedMode = normalizeVocabularyPageMode(resolvedSearchParams.mode);
   const selectedPhase = normalizeVocabularySessionPhase(resolvedSearchParams.phase);
-  const data = await getStudentVocabularyPageData(code, selectedMode, selectedPhase);
+  const preferredLessonId = normalizeVocabularyLessonId(resolvedSearchParams.lesson);
+  const data = await getStudentVocabularyPageData(
+    code,
+    selectedMode,
+    selectedPhase,
+    preferredLessonId
+  );
 
   if (data.session) {
     return (
@@ -41,8 +48,12 @@ export default async function FocusedVocabularyDrillPage({
           <h1 className="text-3xl font-semibold text-slate-950">Nothing ready yet</h1>
           <p className="text-sm leading-6 text-slate-600">
             {data.preparationNeeded
-              ? "Your next drill is still being prepared. Give it a moment, then open the focused session again."
-              : "There is no active drill session ready right now. Open Vocabulary Studio to let the next priority or continuation phase assemble."}
+              ? data.summary.lessonFocus
+                ? `Words from ${data.summary.lessonFocus.lessonName} are still being prepared. Give it a moment, then jump back in.`
+                : "Your next drill is still being prepared. Give it a moment, then open the focused session again."
+              : data.summary.lessonFocus
+                ? `There is no lesson-focused drill ready right now. Open Vocabulary Studio to let ${data.summary.lessonFocus.lessonName} flow into the next adaptive session.`
+                : "There is no active drill session ready right now. Open Vocabulary Studio to let the next priority or continuation phase assemble."}
           </p>
         </div>
 
@@ -50,8 +61,8 @@ export default async function FocusedVocabularyDrillPage({
           <Link
             href={`/s/${data.student.accessCode}/vocabulary?mode=${selectedMode}${
               resolvedSearchParams.phase ? `&phase=${resolvedSearchParams.phase}` : ""
-            }`}
-            className="block rounded-2xl bg-slate-950 px-5 py-4 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+            }${preferredLessonId ? `&lesson=${preferredLessonId}` : ""}`}
+            className="primary-button w-full"
           >
             Back to vocabulary
           </Link>

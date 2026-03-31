@@ -8,10 +8,13 @@ type Props = {
 };
 
 export default function ExercisePromptPanel({ eyebrow, title, body, footer }: Props) {
-  void eyebrow;
-
   return (
     <div className="space-y-4 px-1">
+        {eyebrow ? (
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            {eyebrow}
+          </div>
+        ) : null}
         {title ? (
           <div className="text-2xl font-semibold leading-tight text-slate-950 sm:text-3xl">
             {title}

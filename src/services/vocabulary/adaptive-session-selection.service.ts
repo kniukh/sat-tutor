@@ -437,6 +437,7 @@ function scoreWordCandidate(params: {
   preferredModality: VocabModality;
   adaptiveDifficultyBand: VocabDifficultyBand;
   sessionDifficultyBias: SessionDifficultyBias;
+  preferredLessonId?: string | null;
   seed: string;
   now: Date;
 }) {
@@ -447,6 +448,7 @@ function scoreWordCandidate(params: {
     preferredModality,
     adaptiveDifficultyBand,
     sessionDifficultyBias,
+    preferredLessonId,
     seed,
     now,
   } = params;
@@ -478,6 +480,16 @@ function scoreWordCandidate(params: {
   if (candidate.sourceType === "reading_lesson") score += 2;
   if (candidate.lessonFirstExposure) score += 3;
   if (recentLessonEncounter) score += 5;
+  if (preferredLessonId && candidate.sourceLessonId === preferredLessonId) {
+    score +=
+      bucket === "newer_words"
+        ? 16
+        : bucket === "reinforcement"
+          ? 11
+          : bucket === "weak_recent"
+            ? 8
+            : 7;
+  }
   if (bucket === "newer_words" && candidate.sourceContextSnippet) score += 2;
   if (bucket === "newer_words" && candidate.sourcePassageTitle) score += 1;
   if (adaptiveDifficultyBand === "easy" && bucket !== "retention_check") score += 2;
@@ -522,6 +534,7 @@ export function selectAdaptiveSessionExercises(params: {
   phase?: VocabularySessionPhase;
   candidates: AdaptiveWordCandidate[];
   targetSize: number;
+  preferredLessonId?: string | null;
   seed: string;
   now?: Date;
 }): AdaptiveSessionSelectionResult {
@@ -586,6 +599,7 @@ export function selectAdaptiveSessionExercises(params: {
             preferredModality,
             adaptiveDifficultyBand: difficultyDecision.difficultyBand,
             sessionDifficultyBias: difficultyProfile.bias,
+            preferredLessonId: params.preferredLessonId,
             seed: params.seed,
             now,
           }),
@@ -702,6 +716,7 @@ export function selectAdaptiveSessionExercises(params: {
             preferredModality,
             adaptiveDifficultyBand: difficultyDecision.difficultyBand,
             sessionDifficultyBias: difficultyProfile.bias,
+            preferredLessonId: params.preferredLessonId,
             seed: `${params.seed}:fallback`,
             now,
           }),

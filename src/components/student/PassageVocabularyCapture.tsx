@@ -27,6 +27,7 @@ type Props = {
   onSubmitted?: (items: VocabItem[]) => void;
   compact?: boolean;
   hideManualInput?: boolean;
+  immersive?: boolean;
 };
 
 export default function PassageVocabularyCapture({
@@ -38,6 +39,7 @@ export default function PassageVocabularyCapture({
   onSubmitted,
   compact = false,
   hideManualInput = false,
+  immersive = false,
 }: Props) {
   const [items, setItems] = useState<CapturedVocabularyItem[]>(presetItems);
   const [value, setValue] = useState("");
@@ -113,6 +115,37 @@ export default function PassageVocabularyCapture({
     } finally {
       setSaving(false);
     }
+  }
+
+  if (immersive) {
+    const latestItem = items[items.length - 1]?.itemText ?? null;
+
+    return (
+      <div className="reading-action-bar">
+        <div className="reading-action-bar__inner flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-slate-900">
+              {items.length > 0
+                ? `${items.length} word${items.length === 1 ? "" : "s"} saved for review`
+                : "Long press any word to save it"}
+            </div>
+            {latestItem ? (
+              <div className="mt-0.5 truncate text-sm text-slate-500">
+                Latest: {latestItem}
+              </div>
+            ) : null}
+          </div>
+
+          <button
+            onClick={submitVocabulary}
+            disabled={saving}
+            className="primary-button min-h-14 shrink-0 disabled:opacity-50"
+          >
+            {saving ? "Preparing..." : "Continue"}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

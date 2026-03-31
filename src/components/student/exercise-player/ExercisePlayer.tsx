@@ -36,12 +36,18 @@ type Props = {
   title?: string;
   sessionId?: string;
   sessionMetadata?: Record<string, unknown>;
-  modeLabel?: string;
-  headerHelperText?: string;
   focused?: boolean;
   captureStudentId?: string;
   onExerciseComplete?: (result: ExerciseResult) => void;
   onComplete?: (results: ExerciseResult[]) => void;
+};
+
+type ExerciseFeedbackState = {
+  isCorrect: boolean;
+  explanation?: string;
+  selectedAnswer?: string;
+  correctAnswer?: string;
+  answerLabel?: string;
 };
 
 function parseSentenceBuilderResponse(value: string) {
@@ -98,17 +104,12 @@ export default function ExercisePlayer({
   const [submitted, setSubmitted] = useState(false);
   const [results, setResults] = useState<ExerciseResult[]>([]);
   const [captureToast, setCaptureToast] = useState<string | null>(null);
-  const [currentFeedback, setCurrentFeedback] = useState<{
-    isCorrect: boolean;
-    explanation?: string;
-    selectedAnswer?: string;
-    correctAnswer?: string;
-    answerLabel?: string;
-  } | null>(null);
+  const [currentFeedback, setCurrentFeedback] = useState<ExerciseFeedbackState | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const startedAtRef = useRef<number>(Date.now());
 
   const currentExercise = exercises[currentIndex] ?? null;
+  const questionText = getExerciseQuestionText(currentExercise);
 
   useEffect(() => {
     startedAtRef.current = Date.now();
@@ -142,8 +143,69 @@ export default function ExercisePlayer({
       ? selectedTileIds.length > 0
       : Boolean(responseValue.trim());
 
+  useEffect(() => {
+    function handleSessionKeyDown(event: KeyboardEvent) {
+      if (!currentExercise || event.defaultPrevented || event.isComposing) {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName ?? "";
+      const isInputLike =
+        tagName === "INPUT" ||
+        tagName === "TEXTAREA" ||
+        target?.getAttribute("contenteditable") === "true";
+      const isButton = tagName === "BUTTON";
+
+      if (submitted) {
+        if ((event.key === "Enter" || (!isInputLike && event.key === " ")) && !isButton) {
+          event.preventDefault();
+          handleContinue();
+        }
+        return;
+      }
+
+      if (
+        !isInputLike &&
+        !isButton &&
+        !isTypedResponse &&
+        !isPairMatch &&
+        !isSentenceBuilder &&
+        /^[1-9]$/.test(event.key)
+      ) {
+        const optionIndex = Number(event.key) - 1;
+        const option = currentExercise.options[optionIndex];
+
+        if (option) {
+          event.preventDefault();
+          setResponseValue(option.id);
+        }
+        return;
+      }
+
+      if (event.key === "Enter" && canSubmit && !isButton) {
+        event.preventDefault();
+        handleCheck();
+      }
+    }
+
+    window.addEventListener("keydown", handleSessionKeyDown);
+    return () => window.removeEventListener("keydown", handleSessionKeyDown);
+  }, [
+    canSubmit,
+    currentExercise,
+    isPairMatch,
+    isSentenceBuilder,
+    isTypedResponse,
+    submitted,
+    responseValue,
+    currentIndex,
+    results,
+    currentFeedback,
+  ]);
+
   function handleCheck() {
-    if (!canSubmit) return;
+    if (!canSubmit || isAdvancing) return;
 
     const timeSpentMs = Math.max(1, Date.now() - startedAtRef.current);
     const correctAnswerId = getExerciseCorrectAnswer(currentExercise);
@@ -302,6 +364,10 @@ export default function ExercisePlayer({
   }
 
   function handleContinue() {
+    if (isAdvancing) {
+      return;
+    }
+
     if (currentIndex >= exercises.length - 1) {
       onComplete?.(
         [...results.filter((item) => item.exercise_id !== currentExercise.id), currentResult].filter(
@@ -317,7 +383,7 @@ export default function ExercisePlayer({
       setResponseValue("");
       setSubmitted(false);
       setCurrentFeedback(null);
-    }, 180);
+    }, 120);
   }
 
   function renderExercise() {
@@ -364,6 +430,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            focused={focused}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -374,6 +441,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            focused={focused}
           />
         );
       case "pair_match":
@@ -383,6 +451,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            focused={focused}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -393,6 +462,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            focused={focused}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -403,6 +473,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            focused={focused}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -413,6 +484,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            focused={focused}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -423,6 +495,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            focused={focused}
           />
         );
       case "context_meaning":
@@ -432,6 +505,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            focused={focused}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -442,6 +516,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            focused={focused}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -452,6 +527,7 @@ export default function ExercisePlayer({
             selectedValue={responseValue}
             onSelect={setResponseValue}
             submitted={submitted}
+            focused={focused}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -464,33 +540,25 @@ export default function ExercisePlayer({
     <div
       className={`mx-auto flex w-full flex-col ${
         focused
-          ? "min-h-[100svh] max-w-xl gap-5 bg-white px-4 py-4 sm:px-6 sm:py-6"
-          : "min-h-[70vh] max-w-2xl gap-6 rounded-[28px] bg-white px-4 py-5 sm:px-6 sm:py-6"
+          ? "min-h-[100svh] max-w-xl gap-2 overflow-hidden bg-white px-4 pb-0 pt-3 sm:px-6 sm:pt-4"
+          : "min-h-[70vh] max-w-2xl gap-4 rounded-[28px] bg-white px-4 py-5 sm:px-6 sm:py-6"
       }`}
     >
-      <ExerciseProgressHeader
-        currentIndex={currentIndex}
-        total={exercises.length}
-        focused={focused}
-      />
+      <ExerciseProgressHeader currentIndex={currentIndex} total={exercises.length} />
 
-      <div className={focused ? "space-y-1 pt-1" : "space-y-2"}>
-        {getExerciseQuestionText(currentExercise) ? (
-          <div
-            className={`font-semibold leading-tight text-slate-950 ${
-              focused ? "text-[1.75rem] sm:text-[2rem]" : "text-2xl sm:text-3xl"
-            }`}
-          >
-            {getExerciseQuestionText(currentExercise)}
+      <div className={focused ? "space-y-1 pt-0.5" : "space-y-1"}>
+        {questionText ? (
+          <div className={focused ? "drill-question" : "text-[1.6rem] font-semibold leading-[1.18] text-slate-950 sm:text-[1.9rem]"}>
+            {questionText}
           </div>
         ) : null}
       </div>
 
       <div
         key={currentExercise.id}
-        className={`flex-1 space-y-5 transition-all duration-200 ease-out ${
+        className={`flex-1 space-y-3 transition-all duration-200 ease-out ${
           isAdvancing ? "translate-y-1 opacity-0 blur-[1px]" : "translate-y-0 opacity-100 blur-0"
-        }`}
+        } ${focused ? "min-h-0 overflow-y-auto overscroll-contain pb-28 pt-0.5 sm:pb-32" : ""}`}
       >
         {renderExercise()}
       </div>
@@ -499,6 +567,7 @@ export default function ExercisePlayer({
         submitted={submitted}
         canSubmit={canSubmit}
         isLast={currentIndex >= exercises.length - 1}
+        isAdvancing={isAdvancing}
         feedback={currentFeedback}
         focused={focused}
         onCheck={handleCheck}
@@ -506,7 +575,11 @@ export default function ExercisePlayer({
       />
 
       {captureToast ? (
-        <div className="pointer-events-none fixed inset-x-4 bottom-4 z-40 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white shadow-xl sm:left-auto sm:right-6 sm:max-w-sm">
+        <div
+          className={`pointer-events-none fixed inset-x-4 z-40 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white shadow-xl sm:left-auto sm:max-w-sm ${
+            focused ? "bottom-24 right-4 sm:right-6" : "bottom-4 right-4 sm:right-6"
+          }`}
+        >
           Added "{captureToast}" to your vocabulary list.
         </div>
       ) : null}

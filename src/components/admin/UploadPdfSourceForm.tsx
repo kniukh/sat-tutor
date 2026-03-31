@@ -49,28 +49,34 @@ export default function UploadPdfSourceForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border bg-white p-6">
-      <h2 className="text-xl font-semibold text-slate-900">Upload PDF Book</h2>
+    <form onSubmit={onSubmit} className="card-surface space-y-4 p-6">
+      <div>
+        <div className="app-kicker">Upload Book PDF</div>
+        <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-slate-950">Import a full book</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Extract pages first, then use the existing structure and chunk pipeline before generating AI lessons.
+        </p>
+      </div>
 
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Book title"
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-slate-900"
       />
 
       <input
         value={author}
         onChange={(e) => setAuthor(e.target.value)}
         placeholder="Author"
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-slate-900"
       />
 
       <input
         type="file"
         accept="application/pdf"
         onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-slate-900"
       />
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -79,7 +85,7 @@ export default function UploadPdfSourceForm() {
       <button
         type="submit"
         disabled={isPending || !title || !file}
-        className="rounded-xl bg-slate-900 px-5 py-3 text-white disabled:opacity-50"
+        className="primary-button disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isPending ? 'Uploading...' : 'Upload PDF'}
       </button>

@@ -113,7 +113,7 @@ export default function GeneratedPassageActions({
           <select
             value={unitId}
             onChange={(e) => setUnitId(e.target.value)}
-            className="rounded-xl border px-3 py-2 text-slate-900"
+            className="rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-slate-900"
           >
             {units.map((unit) => (
               <option key={unit.id} value={unit.id}>
@@ -126,17 +126,17 @@ export default function GeneratedPassageActions({
             type="button"
             disabled={isPending || !unitId}
             onClick={createLesson}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
+            className="primary-button disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Create Lesson
+            Create AI Lesson
           </button>
         </div>
       ) : (
         <a
           href={`/admin/lessons/${lessonId}`}
-          className="inline-block rounded-xl border border-slate-300 bg-white px-4 py-2 text-slate-900"
+          className="secondary-button"
         >
-          Open Lesson
+          Open Review
         </a>
       )}
 

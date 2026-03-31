@@ -1,5 +1,6 @@
 import type { ExerciseResult } from "@/components/student/exercise-player";
 import type { VocabExerciseSession } from "@/services/vocabulary/session-builder";
+import { calculateVocabularySessionReward as calculateVocabularySessionRewardFromPolicy } from "@/services/gamification/xp-policy.service";
 
 export type VocabularySessionProgressSignal = {
   exerciseId: string;
@@ -13,6 +14,7 @@ export type VocabularySessionRewardBreakdown = {
   baseXp: number;
   accuracyBonusXp: number;
   dueReviewBonusXp: number;
+  antiAbuseAdjustmentXp?: number;
   totalXp: number;
 };
 
@@ -38,6 +40,7 @@ export type VocabularySessionResultsSummary = {
   completionTitle: string;
   completionSubtitle: string;
   continueLabel: string;
+  rewardNote: string;
   wordsReviewedCount: number;
   weakWords: string[];
   strengthenedWords: string[];
@@ -75,7 +78,7 @@ function getCompletionCopy(params: {
   session: VocabExerciseSession;
   accuracy: number;
 }) {
-  const { session } = params;
+  const { session, accuracy } = params;
 
   if (session.metadata.session_phase === "priority_review") {
     return {
@@ -83,6 +86,10 @@ function getCompletionCopy(params: {
       subtitle:
         "The highest-priority words are done. You can roll straight into adaptive continuation without rebuilding your practice.",
       continueLabel: "Continue Practice",
+      rewardNote:
+        accuracy >= 85
+          ? "Clean checkpoint. You earned a strong handoff into continuation."
+          : "Checkpoint saved. A few more reps will smooth out the weaker spots.",
     };
   }
 
@@ -91,6 +98,10 @@ function getCompletionCopy(params: {
     subtitle:
       "You can keep going for another adaptive mix of weak words, learning reinforcement, and light retention checks.",
     continueLabel: "Keep Going",
+    rewardNote:
+      accuracy >= 85
+        ? "Momentum is on your side. Keep the run alive."
+        : "The session is still doing useful work. Another quick set should feel smoother.",
   };
 }
 
@@ -98,18 +109,16 @@ export function calculateVocabularySessionReward(params: {
   completedCount: number;
   accuracy: number;
   sessionMode: VocabExerciseSession["mode"];
+  sessionPhase?: VocabExerciseSession["metadata"]["session_phase"];
+  recentMicroSessionCount?: number;
 }) {
-  const baseXp = params.completedCount * 3;
-  const accuracyBonusXp =
-    params.accuracy >= 90 ? 8 : params.accuracy >= 80 ? 5 : params.accuracy >= 70 ? 3 : 0;
-  const dueReviewBonusXp = params.sessionMode === "review_weak_words" ? 3 : 0;
-
-  return {
-    baseXp,
-    accuracyBonusXp,
-    dueReviewBonusXp,
-    totalXp: baseXp + accuracyBonusXp + dueReviewBonusXp,
-  } satisfies VocabularySessionRewardBreakdown;
+  return calculateVocabularySessionRewardFromPolicy({
+    completedCount: params.completedCount,
+    accuracy: params.accuracy,
+    sessionMode: params.sessionMode,
+    sessionPhase: params.sessionPhase,
+    recentMicroSessionCount: params.recentMicroSessionCount,
+  }) satisfies VocabularySessionRewardBreakdown;
 }
 
 function buildStreakMessage(
@@ -209,6 +218,7 @@ export function buildVocabularySessionResultsSummary(params: {
     completionTitle: completionCopy.title,
     completionSubtitle: completionCopy.subtitle,
     continueLabel: completionCopy.continueLabel,
+    rewardNote: completionCopy.rewardNote,
     wordsReviewedCount,
     weakWords,
     strengthenedWords,
@@ -224,6 +234,7 @@ export function buildVocabularySessionResultsSummary(params: {
         completedCount,
         accuracy,
         sessionMode: params.session.mode,
+        sessionPhase: params.session.metadata.session_phase,
       }),
     streakMessage: buildStreakMessage(params.rewardCredit),
   } satisfies VocabularySessionResultsSummary;

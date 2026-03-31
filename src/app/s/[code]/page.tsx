@@ -24,24 +24,20 @@ export default async function StudentDashboardPage({
   const dashboard = await getStudentDashboardData(student.id);
 
   return (
-    <div className="px-6 py-8">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="content-shell">
+      <div className="space-y-5">
         <div>
-          <h1 className="text-3xl font-semibold text-slate-900">
+          <h1 className="app-heading-xl">
             Welcome, {student.full_name}
           </h1>
-          <p className="mt-2 text-slate-600">
-            SAT Reading dashboard
-          </p>
+          <p className="app-copy mt-2">Pick up where you left off.</p>
         </div>
 
         <StudentDashboardOverview
-          weakestSkills={dashboard?.weakestSkills ?? []}
-          readyVocabularyCount={dashboard?.readyVocabularyCount ?? 0}
-          readyVocabulary={dashboard?.readyVocabulary ?? []}
-          recentLessons={dashboard?.recentLessons ?? []}
           currentBooks={dashboard?.currentBooks ?? []}
+          readyVocabularyCount={dashboard?.readyVocabularyCount ?? 0}
           gamification={dashboard?.gamification ?? null}
+          leaderboard={dashboard?.leaderboard ?? null}
           vocabularyAnalytics={dashboard?.vocabularyAnalytics ?? null}
           accessCode={code}
         />

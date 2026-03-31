@@ -10,24 +10,10 @@ export default function ListenMatchExercise({
   submitted,
 }: ExerciseRendererProps<ListenMatchExerciseData>) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <AudioExercisePrompt
         exercise={exercise}
-        title="Listen, then choose the matching word."
-        description="Play the audio and pick the word you hear from the bank below."
-        readyHint="Use the audio first. The written answer stays hidden until you make your choice."
-        fallbackContent={
-          <>
-            Fallback prompt: match the word <span className="font-semibold">{exercise.target_word}</span>.
-          </>
-        }
-        footer={
-          exercise.explanation ? (
-            <>Audio-based recognition with word-bank matching and immediate feedback.</>
-          ) : (
-            <>Listen first, then choose from the options.</>
-          )
-        }
+        fallbackContent={<>Audio is unavailable for this listening exercise right now.</>}
       />
 
       <ExerciseOptionList

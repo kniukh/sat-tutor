@@ -14,6 +14,16 @@ export async function POST(request: Request) {
 
   const supabase = await createServerSupabaseClient();
 
+  const { data: source, error: sourceError } = await supabase
+    .from('source_documents')
+    .select('id, source_type')
+    .eq('id', sourceDocumentId)
+    .single();
+
+  if (sourceError || !source) {
+    return NextResponse.json({ error: 'Source not found' }, { status: 404 });
+  }
+
   const { data: cleanRows, error: cleanError } = await supabase
     .from('source_document_clean_text')
     .select('*')
@@ -28,13 +38,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No clean text found' }, { status: 400 });
   }
 
-  const allChunks = cleanRows.flatMap((row: any) =>
-    chunkCleanChapterText({
-      chapterIndex: row.chapter_index,
-      chapterTitle: row.chapter_title,
-      cleanText: row.clean_text,
-    }),
-  );
+  const allChunks =
+    source.source_type === 'poem'
+      ? cleanRows.map((row: any, index: number) => ({
+          chapterIndex: row.chapter_index,
+          chapterTitle: row.chapter_title,
+          passageText: row.clean_text,
+          wordCount: String(row.clean_text ?? '').split(/\s+/).filter(Boolean).length,
+          chunkIndexWithinChapter: index,
+        }))
+      : cleanRows.flatMap((row: any) =>
+          chunkCleanChapterText({
+            chapterIndex: row.chapter_index,
+            chapterTitle: row.chapter_title,
+            cleanText: row.clean_text,
+          }),
+        );
 
   const { error: deleteError } = await supabase
     .from('generated_passages')

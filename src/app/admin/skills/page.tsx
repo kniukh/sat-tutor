@@ -1,4 +1,5 @@
 import { requireAdmin } from "@/lib/auth/admin";
+import { AdminShell } from "@/components/admin/AdminShell";
 import { getAllStudentsSkillDashboard } from "@/services/analytics/skill-dashboard.service";
 
 export default async function AdminSkillsPage() {
@@ -7,31 +8,27 @@ export default async function AdminSkillsPage() {
   const items = await getAllStudentsSkillDashboard();
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold">Skill Tracking</h1>
-        <p className="text-slate-600">
-          Accuracy by reading area for all students
-        </p>
-      </div>
-
-      <div className="overflow-x-auto border rounded-xl bg-white">
+    <AdminShell
+      title="Skill Tracking"
+      subtitle="Accuracy by reading area for all students."
+    >
+      <div className="overflow-x-auto rounded-[1.5rem] border border-[var(--color-border)] bg-white">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50">
+          <thead className="bg-[var(--color-surface-muted)]">
             <tr>
-              <th className="text-left px-4 py-3">Student</th>
-              <th className="text-left px-4 py-3">Access Code</th>
-              <th className="text-left px-4 py-3">Skill</th>
-              <th className="text-left px-4 py-3">Attempts</th>
-              <th className="text-left px-4 py-3">Correct</th>
-              <th className="text-left px-4 py-3">Accuracy</th>
-              <th className="text-left px-4 py-3">Updated</th>
+              <th className="px-4 py-3 text-left">Student</th>
+              <th className="px-4 py-3 text-left">Access Code</th>
+              <th className="px-4 py-3 text-left">Skill</th>
+              <th className="px-4 py-3 text-left">Attempts</th>
+              <th className="px-4 py-3 text-left">Correct</th>
+              <th className="px-4 py-3 text-left">Accuracy</th>
+              <th className="px-4 py-3 text-left">Updated</th>
             </tr>
           </thead>
 
           <tbody>
             {items.map((item: any) => (
-              <tr key={item.id} className="border-t">
+              <tr key={item.id} className="border-t border-[var(--color-border)]">
                 <td className="px-4 py-3">{item.students?.full_name ?? "-"}</td>
                 <td className="px-4 py-3">{item.students?.access_code ?? "-"}</td>
                 <td className="px-4 py-3 font-medium">{item.skill}</td>
@@ -48,6 +45,6 @@ export default async function AdminSkillsPage() {
           </tbody>
         </table>
       </div>
-    </div>
+    </AdminShell>
   );
 }

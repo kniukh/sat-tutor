@@ -8,6 +8,8 @@ The project currently has four major student surfaces:
 - Vocabulary Studio at `/s/[code]/vocabulary`
 - Focused vocabulary drill mode at `/s/[code]/vocabulary/drill`
 - Student dashboard at `/s/[code]`
+- Insights at `/s/[code]/mistake-brain`
+- Mistake Replay at `/s/[code]/mistake-replay`
 
 ## Current Product Shape
 
@@ -18,9 +20,11 @@ The project currently has four major student surfaces:
 - Vocabulary cards with audio and explanations
 - Second-read audio replay on saved words
 - Question-by-question SAT practice with passage recall
+- Optional post-answer reasoning explanations in a bottom sheet during quiz
 - Reading analytics and per-question timing
 - AI Tutor text explanation from the passage
 - Mistake Brain analysis after lesson completion
+- Mistake Replay repair sessions built from recent reading and vocabulary mistakes
 - Automatic vocabulary drill preparation after lesson completion
 
 ### Books
@@ -62,6 +66,7 @@ The project currently has four major student surfaces:
 - Long-press vocabulary capture inside drills from answers, distractors, and sentence fragments
 - Normalized attempt logging and local debug telemetry
 - End-of-session results with weak-word and recovery summaries
+- Replay Mistakes entry points from session results and Insights
 - Vocabulary Analytics v1 on student progress and dashboard surfaces
 - Two-phase endless vocab flow:
   - `priority_review`
@@ -71,6 +76,25 @@ The project currently has four major student surfaces:
   - `Mastered`
   - `Practiced today`
 - Review queue stays internal, while UI emphasizes `words ready now`, `Start Practice`, `Continue Practice`, and `Review Weak Words`
+- Weekly XP leaderboard in small groups with XP, level, streak, and rank
+- Mistake Replay sessions that repair recent reading and vocabulary mistakes in short runs
+
+### Progress, competition, and insights
+- XP for reading questions, vocab exercises, and session completion
+- Anti-abuse XP policy with per-word/session caps and moderated bonuses
+- Weekly leaderboard groups that reset each week
+- Mistake Brain as the deep insight layer for weak skills, review lists, patterns, and recommendations
+- Mistake Replay as a short repair mode built from recent mistakes
+
+### Admin surfaces
+- Admin overview at `/admin`
+- Structured admin sections:
+  - `/admin/students`
+  - `/admin/insights`
+  - `/admin/content` via lessons/content review
+  - `/admin/sources`
+- Unified source creation for books, articles, and poems
+- Inline lesson review for generated chunks and questions
 
 ## Tech Stack
 - Next.js 16
@@ -130,6 +154,8 @@ npm run build
 - `/s/[code]/vocabulary` — vocabulary studio
 - `/s/[code]/vocabulary/drill` — focused full-screen drill session
 - `/s/[code]/progress` — student progress page
+- `/s/[code]/mistake-brain` — insights and weak-area analysis
+- `/s/[code]/mistake-replay` — focused repair session for recent mistakes
 
 ## Important Dev / Test Routes
 - `/test`
@@ -150,6 +176,7 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
   - skill tracking
   - question timing
   - Mistake Brain
+  - Mistake Replay
 - `src/services/vocabulary`
   - adapters
   - session building
@@ -171,6 +198,7 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 
 ## Current State Notes
 - Reading analytics, question timing, Mistake Brain, and vocab telemetry are implemented.
+- Mistake Replay now turns recent reading and vocabulary mistakes into short repair sessions.
 - Vocab attempt persistence and word progress updates are live.
 - Review queue generation is rule-based for now.
 - Lesson-derived vocabulary now carries source lesson/context metadata into Vocabulary Studio sessions.
@@ -184,5 +212,7 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 - Vocabulary Studio now auto-prepares older non-ready vocab rows when needed, so existing students can still get a drill session without a manual prepare step.
 - Vocabulary Studio and dashboard metrics now lead with progress rather than due counts, while review queue logic remains active internally.
 - Endless vocab practice now continues past the initial priority review phase using the same adaptive/session pipeline instead of a separate system.
+- XP and weekly leaderboard groups now sit on top of the existing attempt/session flows.
+- Admin content creation now supports books, articles, and poems in one source pipeline with inline lesson review.
 - Recent vocab changes used migrations on existing tables rather than introducing brand-new tables.
 - Books mode is chapter-aware in the UI, but still linear in progression.

@@ -1,0 +1,625 @@
+'use client';
+
+import { useMemo, useState, useTransition } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import GenerateQuestionsButton from '@/components/admin/GenerateQuestionsButton';
+
+type PassageItem = {
+  id: string;
+  title: string | null;
+  passage_text: string;
+  display_order: number;
+};
+
+type QuestionItem = {
+  id: string;
+  question_type: string;
+  question_text: string;
+  option_a: string;
+  option_b: string;
+  option_c: string;
+  option_d: string;
+  correct_option: 'A' | 'B' | 'C' | 'D';
+  explanation?: string | null;
+  display_order: number;
+  review_status?: 'draft' | 'approved' | 'rejected' | null;
+  generation_source?: string | null;
+  generation_version?: number | null;
+};
+
+type Props = {
+  lessonId: string;
+  lessonStatus: string;
+  lessonType: string;
+  passages: PassageItem[];
+  questions: QuestionItem[];
+};
+
+function formatLabel(value: string) {
+  return value.replace(/_/g, ' ');
+}
+
+function isVocabularyQuestion(questionType: string) {
+  return questionType.toLowerCase().includes('vocab');
+}
+
+function groupQuestionsByPassage(passages: PassageItem[], questions: QuestionItem[]) {
+  if (passages.length <= 1) {
+    return passages.map((passage, index) => ({
+      passage,
+      questions: index === 0 ? questions : [],
+    }));
+  }
+
+  const size = Math.ceil(questions.length / passages.length);
+  return passages.map((passage, index) => ({
+    passage,
+    questions: questions.slice(index * size, index * size + size),
+  }));
+}
+
+function QuestionPreview({ question }: { question: QuestionItem }) {
+  const options = [
+    { key: 'A', text: question.option_a },
+    { key: 'B', text: question.option_b },
+    { key: 'C', text: question.option_c },
+    { key: 'D', text: question.option_d },
+  ] as const;
+
+  return (
+    <div className="space-y-3">
+      <div className="text-base font-semibold leading-7 text-slate-950">
+        {question.question_text}
+      </div>
+      <div className="space-y-2">
+        {options.map((option) => (
+          <div
+            key={option.key}
+            className={`rounded-[1rem] border px-3 py-3 text-sm leading-6 ${
+              question.correct_option === option.key
+                ? 'border-emerald-200 bg-emerald-50 text-slate-950'
+                : 'border-[var(--color-border)] bg-white text-slate-700'
+            }`}
+          >
+            <span className="font-semibold">{option.key}.</span> {option.text}
+          </div>
+        ))}
+      </div>
+      {question.explanation ? (
+        <div className="text-sm leading-6 text-slate-600">{question.explanation}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function InlineQuestionCard({ question }: { question: QuestionItem }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [editOpen, setEditOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState('');
+  const [form, setForm] = useState({
+    questionType: question.question_type,
+    questionText: question.question_text,
+    optionA: question.option_a,
+    optionB: question.option_b,
+    optionC: question.option_c,
+    optionD: question.option_d,
+    correctOption: question.correct_option,
+    explanation: question.explanation ?? '',
+    displayOrder: question.display_order,
+  });
+
+  function runAction(action: () => Promise<void>) {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await action();
+        router.refresh();
+      } catch (nextError) {
+        setError(nextError instanceof Error ? nextError.message : 'Action failed');
+      }
+    });
+  }
+
+  function updateReviewStatus(nextStatus: 'approved' | 'draft' | 'rejected') {
+    runAction(async () => {
+      const response = await fetch('/api/admin/questions/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId: question.id,
+          reviewStatus: nextStatus,
+        }),
+      });
+
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(json?.error ?? 'Failed to update question');
+      }
+    });
+  }
+
+  function saveInlineEdit() {
+    runAction(async () => {
+      const response = await fetch('/api/admin/questions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId: question.id,
+          ...form,
+        }),
+      });
+
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(json?.error ?? 'Failed to save question');
+      }
+
+      setEditOpen(false);
+    });
+  }
+
+  function regenerateQuestion() {
+    runAction(async () => {
+      const response = await fetch('/api/admin/questions/regenerate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionId: question.id }),
+      });
+
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(json?.error ?? 'Failed to regenerate question');
+      }
+    });
+  }
+
+  function regenerateDistractors() {
+    runAction(async () => {
+      const response = await fetch('/api/admin/questions/regenerate-with-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId: question.id,
+          feedback:
+            'Keep the question stem and the correct answer, but replace the wrong answer choices with stronger SAT-style distractors of similar length and difficulty.',
+        }),
+      });
+
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(json?.error ?? 'Failed to regenerate distractors');
+      }
+    });
+  }
+
+  function submitFeedbackRegeneration() {
+    if (!feedback.trim()) {
+      setError('Feedback is required.');
+      return;
+    }
+
+    runAction(async () => {
+      const response = await fetch('/api/admin/questions/regenerate-with-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId: question.id,
+          feedback,
+        }),
+      });
+
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(json?.error ?? 'Failed to regenerate question');
+      }
+
+      setFeedback('');
+      setFeedbackOpen(false);
+    });
+  }
+
+  return (
+    <div className="rounded-[1.4rem] border border-[var(--color-border)] bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <span className="app-chip">{formatLabel(question.question_type)}</span>
+          <span
+            className={`app-chip ${
+              question.review_status === 'approved'
+                ? 'app-chip-success'
+                : question.review_status === 'rejected'
+                  ? 'app-chip-error'
+                  : ''
+            }`}
+          >
+            {question.review_status ?? 'draft'}
+          </span>
+        </div>
+
+        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+          {question.generation_source ?? 'manual'} · v{question.generation_version ?? 1}
+        </div>
+      </div>
+
+      <div className="mt-4">
+        {editOpen ? (
+          <div className="space-y-3">
+            <select
+              value={form.questionType}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, questionType: event.target.value }))
+              }
+              className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+            >
+              <option value="main_idea">main_idea</option>
+              <option value="detail">detail</option>
+              <option value="inference">inference</option>
+              <option value="vocabulary">vocabulary</option>
+              <option value="tone">tone</option>
+            </select>
+
+            <textarea
+              value={form.questionText}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, questionText: event.target.value }))
+              }
+              rows={3}
+              className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+            />
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input value={form.optionA} onChange={(event) => setForm((current) => ({ ...current, optionA: event.target.value }))} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900" placeholder="Option A" />
+              <input value={form.optionB} onChange={(event) => setForm((current) => ({ ...current, optionB: event.target.value }))} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900" placeholder="Option B" />
+              <input value={form.optionC} onChange={(event) => setForm((current) => ({ ...current, optionC: event.target.value }))} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900" placeholder="Option C" />
+              <input value={form.optionD} onChange={(event) => setForm((current) => ({ ...current, optionD: event.target.value }))} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900" placeholder="Option D" />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
+              <select
+                value={form.correctOption}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    correctOption: event.target.value as 'A' | 'B' | 'C' | 'D',
+                  }))
+                }
+                className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+              >
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+                <option value="D">D</option>
+              </select>
+              <input
+                type="number"
+                value={form.displayOrder}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, displayOrder: Number(event.target.value) }))
+                }
+                className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+              />
+            </div>
+
+            <textarea
+              value={form.explanation}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, explanation: event.target.value }))
+              }
+              rows={3}
+              className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+              placeholder="Explanation"
+            />
+          </div>
+        ) : (
+          <QuestionPreview question={question} />
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {editOpen ? (
+          <>
+            <button type="button" onClick={saveInlineEdit} disabled={isPending} className="primary-button">
+              {isPending ? 'Saving...' : 'Save'}
+            </button>
+            <button type="button" onClick={() => setEditOpen(false)} className="secondary-button">
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={() => setEditOpen(true)} className="secondary-button">
+              Edit Inline
+            </button>
+            <button type="button" onClick={() => updateReviewStatus('approved')} disabled={isPending} className="primary-button">
+              Approve
+            </button>
+            <button type="button" onClick={regenerateQuestion} disabled={isPending} className="secondary-button">
+              Regenerate
+            </button>
+            <button type="button" onClick={regenerateDistractors} disabled={isPending} className="secondary-button">
+              Regenerate Distractors
+            </button>
+            <button type="button" onClick={() => setFeedbackOpen((current) => !current)} className="secondary-button">
+              {feedbackOpen ? 'Close Feedback' : 'Regenerate with Feedback'}
+            </button>
+          </>
+        )}
+      </div>
+
+      {feedbackOpen ? (
+        <div className="mt-4 space-y-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
+          <textarea
+            value={feedback}
+            onChange={(event) => setFeedback(event.target.value)}
+            rows={4}
+            placeholder="Explain what should change."
+            className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+          />
+          <button type="button" onClick={submitFeedbackRegeneration} disabled={isPending || !feedback.trim()} className="primary-button">
+            {isPending ? 'Regenerating...' : 'Submit Feedback'}
+          </button>
+        </div>
+      ) : null}
+
+      {error ? <div className="mt-3 text-sm text-rose-600">{error}</div> : null}
+    </div>
+  );
+}
+
+function InlinePassageCard({ passage }: { passage: PassageItem }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [editOpen, setEditOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    title: passage.title ?? '',
+    passageText: passage.passage_text,
+    displayOrder: passage.display_order,
+  });
+
+  function savePassage() {
+    setError(null);
+    startTransition(async () => {
+      const response = await fetch('/api/admin/passages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          passageId: passage.id,
+          title: form.title,
+          passageText: form.passageText,
+          displayOrder: form.displayOrder,
+        }),
+      });
+
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        setError(json?.error ?? 'Failed to save chunk');
+        return;
+      }
+
+      setEditOpen(false);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-4 rounded-[1.4rem] border border-[var(--color-border)] bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="app-kicker text-slate-500">Chunk</div>
+          <div className="mt-1 text-lg font-semibold text-slate-950">
+            {passage.title || `Chunk ${passage.display_order}`}
+          </div>
+        </div>
+
+        <button type="button" onClick={editOpen ? savePassage : () => setEditOpen(true)} disabled={isPending} className={editOpen ? 'primary-button' : 'secondary-button'}>
+          {editOpen ? (isPending ? 'Saving...' : 'Save Chunk') : 'Edit Chunk'}
+        </button>
+      </div>
+
+      {editOpen ? (
+        <div className="space-y-3">
+          <input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900" placeholder="Chunk title" />
+          <textarea value={form.passageText} onChange={(event) => setForm((current) => ({ ...current, passageText: event.target.value }))} rows={18} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-3 text-sm leading-7 text-slate-900" />
+        </div>
+      ) : (
+        <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
+          {passage.passage_text}
+        </div>
+      )}
+
+      {editOpen ? (
+        <button type="button" onClick={() => setEditOpen(false)} className="secondary-button">
+          Cancel
+        </button>
+      ) : null}
+
+      {error ? <div className="text-sm text-rose-600">{error}</div> : null}
+    </div>
+  );
+}
+
+export default function InlineLessonReview({
+  lessonId,
+  lessonStatus,
+  lessonType,
+  passages,
+  questions,
+}: Props) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const chunkGroups = useMemo(() => groupQuestionsByPassage(passages, questions), [passages, questions]);
+  const approvedQuestionsCount = questions.filter((question) => question.review_status === 'approved').length;
+  const allApproved = questions.length > 0 && approvedQuestionsCount === questions.length;
+  const approvedChunks = chunkGroups.filter((group) => group.questions.length > 0 && group.questions.every((question) => question.review_status === 'approved')).length;
+
+  function runAction(action: () => Promise<void>) {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await action();
+        router.refresh();
+      } catch (nextError) {
+        setError(nextError instanceof Error ? nextError.message : 'Action failed');
+      }
+    });
+  }
+
+  function updateQuestionStatus(questionId: string, reviewStatus: 'approved' | 'draft' | 'rejected') {
+    return fetch('/api/admin/questions/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionId, reviewStatus }),
+    }).then(async (response) => {
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(json?.error ?? 'Failed to update question');
+      }
+    });
+  }
+
+  function approveChunk(questionIds: string[]) {
+    if (questionIds.length === 0) return;
+    runAction(async () => {
+      await Promise.all(questionIds.map((questionId) => updateQuestionStatus(questionId, 'approved')));
+    });
+  }
+
+  function approveAll() {
+    if (questions.length === 0) return;
+    runAction(async () => {
+      await Promise.all(questions.map((question) => updateQuestionStatus(question.id, 'approved')));
+    });
+  }
+
+  function publishApproved() {
+    runAction(async () => {
+      const response = await fetch('/api/admin/lesson-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lessonId, status: 'published' }),
+      });
+
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(json?.error ?? 'Failed to publish lesson');
+      }
+    });
+  }
+
+  return (
+    <div className="space-y-5">
+      <section className="card-surface p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="app-kicker">Lesson Review</div>
+            <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-slate-950">
+              Scan, fix, approve, publish
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Review each chunk inline, edit questions without leaving the page, and publish only when the lesson is ready.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <span className="app-chip">{lessonType}</span>
+            <span className={`app-chip ${lessonStatus === 'published' ? 'app-chip-success' : ''}`}>
+              {lessonStatus}
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="app-card-soft p-4"><div className="app-kicker text-slate-500">Chunks</div><div className="mt-2 text-3xl font-semibold text-slate-950">{passages.length}</div></div>
+          <div className="app-card-soft p-4"><div className="app-kicker text-slate-500">Questions</div><div className="mt-2 text-3xl font-semibold text-slate-950">{questions.length}</div></div>
+          <div className="app-card-soft p-4"><div className="app-kicker text-slate-500">Approved</div><div className="mt-2 text-3xl font-semibold text-slate-950">{approvedQuestionsCount}</div></div>
+          <div className="app-card-soft p-4"><div className="app-kicker text-slate-500">Approved Chunks</div><div className="mt-2 text-3xl font-semibold text-slate-950">{approvedChunks}</div></div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <GenerateQuestionsButton lessonId={lessonId} />
+          <button type="button" onClick={approveAll} disabled={isPending || questions.length === 0} className="secondary-button">
+            {isPending ? 'Updating...' : 'Approve All'}
+          </button>
+          <button type="button" onClick={publishApproved} disabled={isPending || !allApproved} className="primary-button disabled:cursor-not-allowed disabled:opacity-50">
+            {isPending ? 'Publishing...' : 'Publish Approved'}
+          </button>
+          <Link href={`/s/demo123/lesson/${lessonId}`} target="_blank" rel="noreferrer" className="secondary-button">
+            Preview Lesson
+          </Link>
+        </div>
+
+        {error ? <div className="mt-3 text-sm text-rose-600">{error}</div> : null}
+      </section>
+
+      <section className="space-y-4">
+        {chunkGroups.map((group, index) => {
+          const satQuestions = group.questions.filter((question) => !isVocabularyQuestion(question.question_type));
+          const vocabQuestions = group.questions.filter((question) => isVocabularyQuestion(question.question_type));
+          const chunkApproved = group.questions.length > 0 && group.questions.every((question) => question.review_status === 'approved');
+
+          return (
+            <section key={group.passage.id} className="card-surface p-4 sm:p-5">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="app-chip">Chunk {index + 1}</span>
+                  <span className={`app-chip ${chunkApproved ? 'app-chip-success' : ''}`}>
+                    {chunkApproved ? 'approved' : 'pending'}
+                  </span>
+                </div>
+
+                <button type="button" onClick={() => approveChunk(group.questions.map((question) => question.id))} disabled={isPending || group.questions.length === 0} className="secondary-button">
+                  Approve Chunk
+                </button>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                <InlinePassageCard passage={group.passage} />
+
+                <div className="space-y-4">
+                  <div className="space-y-3 rounded-[1.4rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="app-kicker text-slate-500">SAT Questions</div>
+                      <div className="text-sm font-semibold text-slate-500">{satQuestions.length}</div>
+                    </div>
+                    {satQuestions.length === 0 ? (
+                      <div className="text-sm text-slate-500">No SAT questions in this chunk yet.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {satQuestions.map((question) => (
+                          <InlineQuestionCard key={question.id} question={question} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-3 rounded-[1.4rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="app-kicker text-slate-500">Vocab Questions</div>
+                      <div className="text-sm font-semibold text-slate-500">{vocabQuestions.length}</div>
+                    </div>
+                    {vocabQuestions.length === 0 ? (
+                      <div className="text-sm text-slate-500">No vocabulary questions in this chunk yet.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {vocabQuestions.map((question) => (
+                          <InlineQuestionCard key={question.id} question={question} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+          );
+        })}
+      </section>
+    </div>
+  );
+}

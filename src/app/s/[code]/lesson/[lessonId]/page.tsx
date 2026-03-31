@@ -4,8 +4,7 @@ import ReadingProgressTracker from "@/components/student/ReadingProgressTracker"
 import { getPublishedLessonById } from "@/services/content/content.service";
 import { getLessonSequenceByCurrentLessonId } from "@/services/reading/reading.service";
 import { getOrCreateLessonState } from "@/services/lesson-state/lesson-state.service";
-import ResetLessonButton from "@/components/student/ResetLessonButton";
-import RegenerateAudioButton from "@/components/student/RegenerateAudioButton";
+import { classifyReviewQueueCandidate } from "@/services/vocabulary/review-queue.service";
 import Link from "next/link";
 
 export default async function StudentLessonPage({
@@ -56,49 +55,93 @@ export default async function StudentLessonPage({
     .eq("lesson_id", lesson.id)
     .order("created_at", { ascending: true });
 
+  const vocabItemIds = (vocabItems ?? []).map((item: any) => item.id).filter(Boolean);
+  const [{ data: wordProgressRows }, { data: reviewQueueRows }] = await Promise.all([
+    vocabItemIds.length > 0
+      ? supabase
+          .from("word_progress")
+          .select("word_id, lifecycle_state, next_review_at")
+          .eq("student_id", student.id)
+          .in("word_id", vocabItemIds)
+      : Promise.resolve({ data: [] as any[] }),
+    vocabItemIds.length > 0
+      ? supabase
+          .from("review_queue")
+          .select("word_id, reason, lifecycle_state, scheduled_for, status, created_at")
+          .eq("student_id", student.id)
+          .in("word_id", vocabItemIds)
+          .in("status", ["pending", "scheduled"])
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+
+  const wordProgressMap = new Map(
+    (wordProgressRows ?? []).map((row: any) => [row.word_id, row])
+  );
+  const reviewQueueMap = new Map<string, any>();
+
+  for (const row of reviewQueueRows ?? []) {
+    if (!row?.word_id || reviewQueueMap.has(row.word_id)) {
+      continue;
+    }
+
+    reviewQueueMap.set(row.word_id, row);
+  }
+
+  const enrichedVocabItems = (vocabItems ?? []).map((item: any) => {
+    const wordProgress = wordProgressMap.get(item.id) ?? null;
+    const reviewQueue = reviewQueueMap.get(item.id) ?? null;
+    const reviewBucket = reviewQueue
+      ? classifyReviewQueueCandidate(reviewQueue, new Date())
+      : null;
+
+    return {
+      ...item,
+      lifecycle_state: wordProgress?.lifecycle_state ?? null,
+      review_bucket: reviewBucket,
+      review_ready:
+        reviewBucket === "recently_failed" ||
+        reviewBucket === "weak_again" ||
+        reviewBucket === "overdue",
+    };
+  });
+
   return (
-    <div className="px-3 py-4 sm:px-6 sm:py-8">
+    <div className="reading-stage-shell">
       <ReadingProgressTracker studentId={student.id} lessonId={lesson.id} />
 
-      <div className="mx-auto max-w-5xl space-y-4 sm:space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl">{lesson.name}</h1>
-            <p className="mt-1 text-sm text-slate-600 sm:mt-2">
-              {lesson.lesson_type} · {lessonState.stage.replace("_", " ")}
-            </p>
-          </div>
+      <div className="reading-topbar">
+        <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <Link
+            href={`/s/${code}`}
+            className="secondary-button min-h-10 px-3 py-2 text-xs sm:text-sm"
+          >
+            Back
+          </Link>
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <RegenerateAudioButton
-              studentId={student.id}
-              lessonId={lesson.id}
-            />
-            <ResetLessonButton
-              studentId={student.id}
-              lessonId={lesson.id}
-            />
+          <div className="min-w-0 text-right">
+            <div className="truncate text-sm font-semibold text-slate-900 sm:text-base">
+              {lesson.name}
+            </div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+              Reading
+            </div>
           </div>
         </div>
+      </div>
 
+      <div className="pb-6">
         <LessonStagePanel
+          accessCode={code}
           studentId={student.id}
           lessonId={lesson.id}
+          lessonName={lesson.name}
           passageId={mainPassage?.id}
           passageText={mainPassage?.passage_text ?? ""}
           state={{ stage: lessonState.stage }}
           questions={(questions ?? []) as any}
-          vocabItems={(vocabItems ?? []) as any}
+          vocabItems={enrichedVocabItems as any}
         />
-
-        <div>
-          <Link
-            href={`/s/${code}`}
-            className="text-sm text-slate-600 underline"
-          >
-            Back to dashboard
-          </Link>
-        </div>
       </div>
     </div>
   );

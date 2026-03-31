@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/admin";
+import { AdminShell } from "@/components/admin/AdminShell";
 import { getWeeklyVocabularyForAllStudents } from "@/services/vocabulary/weekly-vocabulary.service";
 
 export default async function AdminVocabularyPage() {
@@ -8,31 +9,27 @@ export default async function AdminVocabularyPage() {
   const items = await getWeeklyVocabularyForAllStudents();
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold">Weekly Vocabulary</h1>
-        <p className="text-slate-600">
-          Words captured in the last 7 days
-        </p>
-      </div>
-
-      <div className="overflow-x-auto border rounded-xl bg-white">
+    <AdminShell
+      title="Weekly Vocabulary"
+      subtitle="Words captured in the last 7 days."
+    >
+      <div className="overflow-x-auto rounded-[1.5rem] border border-[var(--color-border)] bg-white">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50">
+          <thead className="bg-[var(--color-surface-muted)]">
             <tr>
-              <th className="text-left px-4 py-3">Student</th>
-              <th className="text-left px-4 py-3">Access Code</th>
-              <th className="text-left px-4 py-3">Word</th>
-              <th className="text-left px-4 py-3">Type</th>
-              <th className="text-left px-4 py-3">Lesson</th>
-              <th className="text-left px-4 py-3">Open</th>
-              <th className="text-left px-4 py-3">Created</th>
+              <th className="px-4 py-3 text-left">Student</th>
+              <th className="px-4 py-3 text-left">Access Code</th>
+              <th className="px-4 py-3 text-left">Word</th>
+              <th className="px-4 py-3 text-left">Type</th>
+              <th className="px-4 py-3 text-left">Lesson</th>
+              <th className="px-4 py-3 text-left">Open</th>
+              <th className="px-4 py-3 text-left">Created</th>
             </tr>
           </thead>
 
           <tbody>
             {items.map((item: any) => (
-              <tr key={item.id} className="border-t">
+              <tr key={item.id} className="border-t border-[var(--color-border)]">
                 <td className="px-4 py-3">
                   {item.students?.full_name ?? "-"}
                 </td>
@@ -57,7 +54,7 @@ export default async function AdminVocabularyPage() {
                   {item.students?.access_code ? (
                     <Link
                       href={`/s/${item.students.access_code}/lesson/${item.lesson_id}`}
-                      className="text-blue-600 underline"
+                      className="font-semibold text-slate-900 underline underline-offset-4"
                     >
                       Open
                     </Link>
@@ -74,6 +71,6 @@ export default async function AdminVocabularyPage() {
           </tbody>
         </table>
       </div>
-    </div>
+    </AdminShell>
   );
 }

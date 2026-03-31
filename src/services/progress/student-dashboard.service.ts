@@ -1,5 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getStudentVocabularyAnalytics } from "@/services/analytics/vocabulary-analytics.service";
+import { getStudentGamificationSnapshot } from "@/services/gamification/gamification.service";
+import { getWeeklyLeaderboardForStudent } from "@/services/gamification/leaderboards.service";
 import {
   generateReviewQueueForStudent,
   getNextReviewQueueCandidates,
@@ -13,6 +15,14 @@ export async function getStudentDashboardData(studentId: string) {
     limit: 100,
   });
 
+  const leaderboardPromise = getWeeklyLeaderboardForStudent(studentId).catch((error) => {
+    console.warn(
+      "Weekly leaderboard unavailable on dashboard:",
+      error instanceof Error ? error.message : "Unknown leaderboard error"
+    );
+    return null;
+  });
+
   const [
     skillResult,
     activePracticeQueueResult,
@@ -20,6 +30,7 @@ export async function getStudentDashboardData(studentId: string) {
     lessonAttemptsResult,
     bookProgressResult,
     gamificationResult,
+    leaderboardResult,
   ] = await Promise.all([
     supabase
       .from("skill_mastery")
@@ -71,18 +82,13 @@ export async function getStudentDashboardData(studentId: string) {
       .order("last_opened_at", { ascending: false })
       .limit(3),
 
-    supabase
-      .from("student_gamification")
-      .select("*")
-      .eq("student_id", studentId)
-      .maybeSingle(),
+    getStudentGamificationSnapshot(studentId),
+    leaderboardPromise,
   ]);
 
   if (skillResult.error) throw new Error(skillResult.error.message);
   if (lessonAttemptsResult.error) throw new Error(lessonAttemptsResult.error.message);
   if (bookProgressResult.error) throw new Error(bookProgressResult.error.message);
-  if (gamificationResult.error) throw new Error(gamificationResult.error.message);
-
   const vocabularyAnalytics = await getStudentVocabularyAnalytics(studentId);
 
   const normalizedRecentLessons = (lessonAttemptsResult.data ?? []).map((item: any) => {
@@ -107,7 +113,8 @@ export async function getStudentDashboardData(studentId: string) {
     readyVocabulary: practiceQueueResult ?? [],
     recentLessons: normalizedRecentLessons,
     currentBooks: bookProgressResult.data ?? [],
-    gamification: gamificationResult.data ?? null,
+    gamification: gamificationResult ?? null,
+    leaderboard: leaderboardResult ?? null,
     vocabularyAnalytics,
   };
 }

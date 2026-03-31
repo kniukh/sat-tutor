@@ -1,11 +1,38 @@
-import type { ReactNode } from 'react';
-import Link from 'next/link';
+"use client";
+
+import type { ReactNode } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const navItems = [
-  { href: '/admin', label: 'Dashboard' },
-  { href: '/admin/lessons', label: 'Lessons' },
-  { href: '/admin/sources', label: 'Sources' },
-  { href: '/admin/students', label: 'Students' },
+  {
+    href: "/admin",
+    label: "Overview",
+    match: (pathname: string) => pathname === "/admin",
+  },
+  {
+    href: "/admin/students",
+    label: "Students",
+    match: (pathname: string) => pathname.startsWith("/admin/students"),
+  },
+  {
+    href: "/admin/insights",
+    label: "Insights",
+    match: (pathname: string) =>
+      pathname.startsWith("/admin/insights") ||
+      pathname.startsWith("/admin/skills") ||
+      pathname.startsWith("/admin/vocabulary"),
+  },
+  {
+    href: "/admin/lessons",
+    label: "Content",
+    match: (pathname: string) => pathname.startsWith("/admin/lessons"),
+  },
+  {
+    href: "/admin/sources",
+    label: "Sources",
+    match: (pathname: string) => pathname.startsWith("/admin/sources"),
+  },
 ];
 
 export function AdminShell({
@@ -17,21 +44,27 @@ export function AdminShell({
   subtitle?: string;
   children: ReactNode;
 }) {
+  const pathname = usePathname();
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+    <div className="min-h-screen bg-[var(--background)]">
+      <header className="border-b border-[var(--color-border)] bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-lg font-semibold text-slate-900">SAT Tutor Admin</div>
-            <div className="text-sm text-slate-500">Content and student management</div>
+            <div className="text-lg font-semibold text-slate-950">SAT Tutor Admin</div>
+            <div className="text-sm text-slate-500">Structured control for students, insights, content, and sources.</div>
           </div>
 
-          <nav className="flex flex-wrap gap-3">
+          <nav className="flex flex-wrap gap-2">
             {navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 hover:bg-slate-50"
+                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                  item.match(pathname)
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-[var(--color-border-strong)] bg-white text-slate-900 hover:bg-[var(--color-surface-muted)]"
+                }`}
               >
                 {item.label}
               </Link>
@@ -40,11 +73,12 @@ export function AdminShell({
         </div>
       </header>
 
-      <main className="px-6 py-8">
+      <main className="px-4 py-6 sm:px-6 sm:py-8">
         <div className="mx-auto max-w-7xl space-y-6">
           <div>
-            <h1 className="text-3xl font-semibold text-slate-900">{title}</h1>
-            {subtitle ? <p className="mt-2 text-slate-600">{subtitle}</p> : null}
+            <div className="app-kicker">Admin</div>
+            <h1 className="mt-1 text-3xl font-semibold tracking-[-0.02em] text-slate-950">{title}</h1>
+            {subtitle ? <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{subtitle}</p> : null}
           </div>
 
           {children}

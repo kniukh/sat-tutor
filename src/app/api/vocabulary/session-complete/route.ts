@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { awardStudentActivity } from "@/services/gamification/gamification.service";
-import { calculateVocabularySessionReward } from "@/services/vocabulary/session-results.service";
+import { awardVocabularySessionCompletionXp } from "@/services/gamification/xp-awards.service";
 import type { VocabularySessionRow } from "@/types/vocab-tracking";
 
 export async function POST(request: Request) {
@@ -74,21 +73,20 @@ export async function POST(request: Request) {
     const safeCorrectCount = Math.max(0, Math.round(correctCount));
     const safeAccuracy =
       Number.isFinite(accuracy) && accuracy >= 0 ? Math.round(accuracy) : 0;
-    const xpBreakdown = calculateVocabularySessionReward({
-      completedCount: safeCompletedCount,
-      accuracy: safeAccuracy,
-      sessionMode,
-    });
-    const gamification = await awardStudentActivity({
+    const xpReward = await awardVocabularySessionCompletionXp({
       studentId,
-      xpToAdd: xpBreakdown.totalXp,
+      session: existingSession,
+      accuracy: safeAccuracy,
+      completedCount: safeCompletedCount,
     });
+    const finalizedXpBreakdown = xpReward.breakdown;
+    const gamification = xpReward.gamification;
 
     const completionTimestamp = new Date().toISOString();
     const updatedMetadata = {
       ...existingMetadata,
       reward_credited_at: completionTimestamp,
-      xp_breakdown: xpBreakdown,
+      xp_breakdown: finalizedXpBreakdown,
       rewarded_total_xp: Number(gamification?.xp ?? 0),
       rewarded_level: Number(gamification?.level ?? 1),
       rewarded_streak_days: Number(gamification?.streak_days ?? 0),
@@ -119,7 +117,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       data: {
-        xp: xpBreakdown,
+        xp: finalizedXpBreakdown,
+        xpAwarded: xpReward.xpAwarded,
         gamification: {
           xp: Number(gamification?.xp ?? 0),
           level: Number(gamification?.level ?? 1),

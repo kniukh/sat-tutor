@@ -1,5 +1,4 @@
 import ExerciseOptionList from "../ExerciseOptionList";
-import ExercisePromptPanel from "../ExercisePromptPanel";
 import {
   getExerciseCorrectAnswer,
   getExerciseSentenceText,
@@ -11,48 +10,26 @@ export default function FillBlankExercise({
   selectedValue,
   onSelect,
   submitted,
+  focused = false,
   renderCaptureText,
 }: ExerciseRendererProps<FillBlankExerciseData>) {
-  const footer =
-    exercise.variant === "context_clue"
-      ? "Use both the blanked sentence and the extra context clue before you choose."
-      : exercise.clue
-        ? `Use the clue if you need it: ${exercise.clue}`
-        : "Choose the word that makes the sentence feel natural and meaningful.";
-
   return (
-    <div className="space-y-5">
-      <ExercisePromptPanel
-        eyebrow={exercise.prompt}
-        title={
-          renderCaptureText
+    <div className="space-y-3">
+      {exercise.variant === "context_clue" && exercise.contextHint ? (
+        <div
+          className={`text-[0.96rem] leading-7 text-slate-800 sm:text-base ${
+            focused ? "drill-context-inline" : "drill-context-surface"
+          }`}
+        >
+          {renderCaptureText
             ? renderCaptureText({
-                text: getExerciseSentenceText(exercise),
+                text: exercise.contextHint,
                 contextText: getExerciseSentenceText(exercise),
                 as: "div",
               })
-            : getExerciseSentenceText(exercise)
-        }
-        body={
-          exercise.variant === "context_clue" && exercise.contextHint ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                Extra Context
-              </div>
-              <div className="mt-2 text-base leading-7 text-slate-800">
-                {renderCaptureText
-                  ? renderCaptureText({
-                      text: exercise.contextHint,
-                      contextText: getExerciseSentenceText(exercise),
-                      as: "div",
-                    })
-                  : exercise.contextHint}
-              </div>
-            </div>
-          ) : undefined
-        }
-        footer={<>{footer}</>}
-      />
+            : exercise.contextHint}
+        </div>
+      ) : null}
 
       <ExerciseOptionList
         options={exercise.options}

@@ -1,9 +1,7 @@
 import ExerciseOptionList from "../ExerciseOptionList";
-import ExercisePromptPanel from "../ExercisePromptPanel";
 import {
   getExerciseCorrectAnswer,
   getExerciseSentenceText,
-  getExerciseTargetWord,
 } from "@/types/vocab-exercises";
 import type { CollocationExerciseData, ExerciseRendererProps } from "../types";
 
@@ -12,85 +10,38 @@ export default function CollocationExercise({
   selectedValue,
   onSelect,
   submitted,
+  focused = false,
   renderCaptureText,
 }: ExerciseRendererProps<CollocationExerciseData>) {
   const isPairSelection = exercise.variant === "pair_selection";
+  const contextText = exercise.exampleSentence ?? getExerciseSentenceText(exercise);
+  const stemText =
+    isPairSelection && exercise.pairLead ? `${exercise.pairLead} ____` : exercise.stem;
 
   return (
-    <div className="space-y-5">
-      <ExercisePromptPanel
-        eyebrow={exercise.prompt}
-        body={
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                {isPairSelection ? "Complete the pair" : "Build the phrase"}
-              </span>
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-800">
-                Target:{" "}
-                {renderCaptureText
-                  ? renderCaptureText({
-                      text: getExerciseTargetWord(exercise),
-                      contextText: exercise.exampleSentence ?? getExerciseSentenceText(exercise),
-                    })
-                  : getExerciseTargetWord(exercise)}
-              </span>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-[0.85fr_1.15fr]">
-              <div className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-5 text-white shadow-[0_18px_35px_-24px_rgba(15,23,42,0.8)]">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
-                  {isPairSelection ? "Pair Lead" : "Phrase Stem"}
-                </div>
-                <div className="mt-3 text-2xl font-semibold tracking-tight">
-                  {renderCaptureText
-                    ? renderCaptureText({
-                        text:
-                          isPairSelection && exercise.pairLead
-                            ? `${exercise.pairLead} ____`
-                            : exercise.stem,
-                        contextText: exercise.exampleSentence ?? getExerciseSentenceText(exercise),
-                        as: "div",
-                      })
-                    : isPairSelection && exercise.pairLead
-                      ? `${exercise.pairLead} ____`
-                      : exercise.stem}
-                </div>
-              </div>
-
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-                {isPairSelection
-                  ? "Choose the option that completes the strongest natural pair, then confirm it against the sentence."
-                  : "Choose the option that forms the most natural English pairing, not just a word that fits grammatically."}
-              </div>
-            </div>
-
-            {exercise.exampleSentence || getExerciseSentenceText(exercise) ? (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  In Use
-                </div>
-                <div className="mt-2 text-base leading-7 text-slate-800">
-                  {renderCaptureText
-                    ? renderCaptureText({
-                        text: exercise.exampleSentence ?? getExerciseSentenceText(exercise),
-                        contextText: exercise.exampleSentence ?? getExerciseSentenceText(exercise),
-                        as: "div",
-                      })
-                    : exercise.exampleSentence ?? getExerciseSentenceText(exercise)}
-                </div>
-              </div>
-            ) : null}
+    <div className="space-y-3">
+      <div className={focused ? "space-y-1 px-0.5" : "drill-context-surface"}>
+        <div className="text-[1.15rem] font-semibold leading-[1.2] text-slate-950 sm:text-[1.35rem]">
+          {renderCaptureText
+            ? renderCaptureText({
+                text: stemText,
+                contextText,
+                as: "div",
+              })
+            : stemText}
+        </div>
+        {contextText ? (
+          <div className={`${focused ? "" : "mt-2"} text-sm leading-6 text-slate-600`}>
+            {renderCaptureText
+              ? renderCaptureText({
+                  text: contextText,
+                  contextText,
+                  as: "div",
+                })
+              : contextText}
           </div>
-        }
-        footer={
-          <>
-            {isPairSelection
-              ? "Natural collocations feel like established pairs, not just possible combinations."
-              : "Natural collocations sound right to fluent readers, not just grammatically possible."}
-          </>
-        }
-      />
+        ) : null}
+      </div>
 
       <ExerciseOptionList
         options={exercise.options}
@@ -102,7 +53,7 @@ export default function CollocationExercise({
           renderCaptureText
             ? renderCaptureText({
                 text: option.label,
-                contextText: exercise.exampleSentence ?? getExerciseSentenceText(exercise),
+                contextText,
                 isDistractor,
               })
             : option.label

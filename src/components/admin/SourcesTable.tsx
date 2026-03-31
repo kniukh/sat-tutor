@@ -37,15 +37,16 @@ export function SourcesTable({ sources }: { sources: SourceItem[] }) {
   }
 
   return (
-    <section className="rounded-2xl border bg-white p-6">
-      <h2 className="mb-4 text-xl font-semibold text-slate-900">Saved sources</h2>
+    <section className="card-surface p-6">
+      <div className="app-kicker">Saved Sources</div>
+      <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-slate-950">Content library</h2>
 
       {!sources || sources.length === 0 ? (
         <p className="text-slate-600">No source documents yet.</p>
       ) : (
         <div className="space-y-3">
           {sources.map((source) => (
-            <div key={source.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-4 hover:bg-slate-50">
+            <div key={source.id} className="flex items-center justify-between rounded-[1.25rem] border border-[var(--color-border)] p-4 hover:bg-[var(--color-surface-muted)]">
               <Link
                 href={`/admin/sources/${source.id}`}
                 className="flex-1"
@@ -63,7 +64,7 @@ export function SourcesTable({ sources }: { sources: SourceItem[] }) {
                 type="button"
                 disabled={isPending}
                 onClick={() => deleteSource(source.id)}
-                className="ml-4 rounded-xl bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-700 disabled:opacity-50"
+                className="ml-4 rounded-[1rem] bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-700 disabled:opacity-50"
               >
                 Delete
               </button>

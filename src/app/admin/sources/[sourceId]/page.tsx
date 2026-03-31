@@ -7,6 +7,7 @@ import DetectStructureButton from '@/components/admin/DetectStructureButton';
 import BuildCleanTextButton from '@/components/admin/BuildCleanTextButton';
 import GeneratePassagesFromCleanTextButton from '@/components/admin/GeneratePassagesFromCleanTextButton';
 import AnalyzePassageV2Button from '@/components/admin/AnalyzePassageV2Button';
+import GenerateLessonsFromSourceButton from '@/components/admin/GenerateLessonsFromSourceButton';
 
 export default async function AdminSourceDetailPage({
   params,
@@ -60,11 +61,85 @@ export default async function AdminSourceDetailPage({
     throw new Error(passagesError.message);
   }
 
+  const metadata = source.metadata && typeof source.metadata === 'object' ? source.metadata : {};
+  const coverImagePath =
+    typeof metadata.cover_image_path === 'string' ? metadata.cover_image_path : null;
+  const hasCleanRows = Boolean(cleanTextRows && cleanTextRows.length > 0);
+  const hasUnlinkedPassages = Boolean((passages ?? []).some((passage: any) => !passage.lesson_id));
+  const linkedLessonsCount = (passages ?? []).filter((passage: any) => Boolean(passage.lesson_id)).length;
+
   return (
     <AdminShell
       title={source.title}
       subtitle={`${source.author || 'Unknown author'} · ${source.source_type}`}
     >
+      <section className="card-surface p-5 sm:p-6">
+        <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="space-y-4">
+            {coverImagePath ? (
+              <div className="overflow-hidden rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)]">
+                <img src={coverImagePath} alt={source.title} className="h-full w-full object-cover" />
+              </div>
+            ) : (
+              <div className="flex min-h-[16rem] items-center justify-center rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-sm font-semibold text-slate-500">
+                No cover
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-5">
+            <div>
+              <div className="app-kicker">Content Pipeline</div>
+              <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-slate-950">
+                Create, chunk, review, publish
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                This source feeds the existing lesson review flow. Generate chunks first, then create AI lessons and review them inline.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="app-card-soft p-4">
+                <div className="app-kicker text-slate-500">Type</div>
+                <div className="mt-2 text-xl font-semibold text-slate-950">{source.source_type}</div>
+              </div>
+              <div className="app-card-soft p-4">
+                <div className="app-kicker text-slate-500">Clean Sections</div>
+                <div className="mt-2 text-xl font-semibold text-slate-950">{cleanTextRows?.length ?? 0}</div>
+              </div>
+              <div className="app-card-soft p-4">
+                <div className="app-kicker text-slate-500">Chunks</div>
+                <div className="mt-2 text-xl font-semibold text-slate-950">{passages?.length ?? 0}</div>
+              </div>
+              <div className="app-card-soft p-4">
+                <div className="app-kicker text-slate-500">Lessons</div>
+                <div className="mt-2 text-xl font-semibold text-slate-950">{linkedLessonsCount}</div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              {!hasCleanRows && source.upload_kind === 'pdf' ? (
+                <>
+                  <DetectStructureButton sourceDocumentId={source.id} />
+                  <BuildCleanTextButton sourceDocumentId={source.id} />
+                </>
+              ) : null}
+
+              {hasCleanRows ? (
+                <GeneratePassagesFromCleanTextButton sourceDocumentId={source.id} />
+              ) : null}
+
+              {passages && passages.length > 0 ? (
+                <GenerateLessonsFromSourceButton
+                  sourceDocumentId={source.id}
+                  disabled={!hasUnlinkedPassages}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-2xl border bg-white p-5">
           <div className="text-sm text-slate-500">Upload kind</div>
@@ -93,12 +168,6 @@ export default async function AdminSourceDetailPage({
             {passages?.length ?? 0}
           </div>
         </div>
-      </div>
-
-      <div className="flex flex-wrap gap-3">
-        <DetectStructureButton sourceDocumentId={source.id} />
-        <BuildCleanTextButton sourceDocumentId={source.id} />
-        <GeneratePassagesFromCleanTextButton sourceDocumentId={source.id} />
       </div>
 
       {source.pdf_file_path ? (
@@ -230,10 +299,10 @@ export default async function AdminSourceDetailPage({
       ) : null}
 
       <section className="rounded-2xl border bg-white p-6">
-        <h2 className="mb-4 text-xl font-semibold text-slate-900">Generated passages</h2>
+        <h2 className="mb-4 text-xl font-semibold text-slate-900">Generated chunks</h2>
 
         {!passages || passages.length === 0 ? (
-          <p className="text-slate-600">No generated passages yet.</p>
+          <p className="text-slate-600">No generated chunks yet.</p>
         ) : (
           <div className="space-y-4">
             {passages.map((passage: any) => (

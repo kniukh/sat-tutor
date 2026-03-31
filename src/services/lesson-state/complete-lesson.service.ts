@@ -3,6 +3,7 @@ import { getOrCreateLessonState } from "./lesson-state.service";
 import { updateSkillTrackingForAttempt } from "@/services/analytics/skill-tracking.service";
 import { runMistakeBrainForLesson } from "@/services/analytics/mistake-brain.service";
 import { ensureLessonVocabularyDrillsReady } from "@/services/vocabulary/drill-preparation.service";
+import { awardReadingLessonCompletionXp } from "@/services/gamification/xp-awards.service";
 
 export async function completeLesson(studentId: string, lessonId: string) {
   const supabase = await createClient();
@@ -84,6 +85,7 @@ export async function completeLesson(studentId: string, lessonId: string) {
   }
 
   let vocabularyPreparation = null;
+  let xpReward = null;
 
   try {
     vocabularyPreparation = await ensureLessonVocabularyDrillsReady({
@@ -94,9 +96,22 @@ export async function completeLesson(studentId: string, lessonId: string) {
     console.error("Vocabulary drill preparation failed after lesson completion", error);
   }
 
+  try {
+    xpReward = await awardReadingLessonCompletionXp({
+      studentId,
+      lessonId,
+      lessonAttemptId: attempt.id,
+      totalQuestions,
+      accuracy,
+    });
+  } catch (error) {
+    console.error("Reading lesson XP reward failed", error);
+  }
+
   return {
     ...attempt,
     vocabularyPreparation,
+    xpReward,
   };
 }
 

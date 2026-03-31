@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import InteractivePassageReader from "./InteractivePassageReader";
 
 type Question = {
   id: string;
@@ -14,13 +15,44 @@ type Question = {
   question_type: string;
 };
 
+type KnownWord = {
+  id: string;
+  item_text: string;
+  lifecycle_state?: string | null;
+  review_bucket?: "recently_failed" | "weak_again" | "overdue" | "reinforcement" | "scheduled" | null;
+  review_ready?: boolean;
+};
+
+type LessonCompletionPayload = {
+  vocabularyPreparation?: {
+    generatedCount?: number;
+    preparedCount?: number;
+    totalItems?: number;
+  } | null;
+} | null;
+
+type QuestionReasoningExplanation = {
+  correct_answer: {
+    option: "A" | "B" | "C" | "D";
+    text: string;
+  };
+  why_correct: string;
+  why_others_wrong: Array<{
+    option: "A" | "B" | "C" | "D";
+    text: string;
+    reason: string;
+  }>;
+  thinking_tip: string;
+};
+
 type Props = {
   studentId: string;
   lessonId: string;
   passageId?: string;
   questions: Question[];
   passageText?: string;
-  onFinished?: () => void;
+  knownWords?: KnownWord[];
+  onFinished?: (result: LessonCompletionPayload) => void;
   onProgressChange?: Dispatch<
     SetStateAction<{
       totalQuestions: number;
@@ -31,12 +63,34 @@ type Props = {
   initialQuestionIndex?: number;
 };
 
+function normalizeCaptureWord(word: string) {
+  return word
+    .toLowerCase()
+    .replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, "")
+    .trim();
+}
+
+function buildSnippet(fullText: string, itemText: string) {
+  const lowerText = fullText.toLowerCase();
+  const lowerItem = itemText.toLowerCase();
+  const index = lowerText.indexOf(lowerItem);
+
+  if (index === -1) {
+    return fullText.trim().slice(0, 180);
+  }
+
+  const start = Math.max(0, index - 80);
+  const end = Math.min(fullText.length, index + itemText.length + 80);
+  return fullText.slice(start, end).trim();
+}
+
 export default function LessonPlayer({
   studentId,
   lessonId,
   passageId,
   questions,
   passageText,
+  knownWords = [],
   onFinished,
   onProgressChange,
   initialAnswers,
@@ -57,29 +111,48 @@ export default function LessonPlayer({
       : false
   );
   const [showPassage, setShowPassage] = useState(false);
+  const [showExplanationSheet, setShowExplanationSheet] = useState(false);
+  const [explanationCache, setExplanationCache] = useState<
+    Record<string, QuestionReasoningExplanation | undefined>
+  >({});
+  const [explanationLoadingFor, setExplanationLoadingFor] = useState<string | null>(null);
+  const [explanationErrorFor, setExplanationErrorFor] = useState<Record<string, string | undefined>>(
+    {}
+  );
   const questionStartedAtRef = useRef<number>(Date.now());
   const longPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const knownWordsMapRef = useRef<Map<string, KnownWord>>(new Map());
 
-  function normalizeCaptureWord(word: string) {
-    return word
-      .toLowerCase()
-      .replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, "")
-      .trim();
-  }
+  useEffect(() => {
+    const nextMap = new Map<string, KnownWord>();
+    for (const item of knownWords) {
+      const normalized = normalizeCaptureWord(item.item_text);
+      if (!normalized || nextMap.has(normalized)) {
+        continue;
+      }
 
-  function buildSnippet(fullText: string, itemText: string) {
-    const lowerText = fullText.toLowerCase();
-    const lowerItem = itemText.toLowerCase();
-    const index = lowerText.indexOf(lowerItem);
-
-    if (index === -1) {
-      return fullText.trim().slice(0, 180);
+      nextMap.set(normalized, item);
     }
+    knownWordsMapRef.current = nextMap;
+  }, [knownWords]);
 
-    const start = Math.max(0, index - 80);
-    const end = Math.min(fullText.length, index + itemText.length + 80);
-    return fullText.slice(start, end).trim();
-  }
+  useEffect(() => {
+    questionStartedAtRef.current = Date.now();
+  }, [index]);
+
+  useEffect(() => {
+    setShowExplanationSheet(false);
+  }, [index]);
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimeoutRef.current) {
+        clearTimeout(longPressTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const question = questions[index];
 
   async function captureWordFromLessonContext(
     rawWord: string,
@@ -144,20 +217,32 @@ export default function LessonPlayer({
   ) {
     return (
       <span className={className}>
-        {text.split(/(\s+)/g).map((token, index) => {
+        {text.split(/(\s+)/g).map((token, tokenIndex) => {
           const normalized = normalizeCaptureWord(token);
 
           if (!normalized) {
-            return <span key={`${sourceType}-${index}`}>{token}</span>;
+            return <span key={`${sourceType}-${tokenIndex}`}>{token}</span>;
           }
+
+          const knownWord = knownWordsMapRef.current.get(normalized);
+          const knownWordClassName = knownWord
+            ? knownWord.review_ready || knownWord.review_bucket === "weak_again"
+              ? "rounded-md bg-amber-100/75 px-0.5 underline decoration-amber-500 decoration-2 underline-offset-4"
+              : knownWord.review_bucket === "recently_failed"
+                ? "rounded-md bg-rose-100/75 px-0.5 underline decoration-rose-500 decoration-2 underline-offset-4"
+                : "rounded-md bg-sky-100/75 px-0.5 underline decoration-sky-500 decoration-2 underline-offset-4"
+            : null;
 
           return (
             <span
-              key={`${sourceType}-${index}-${token}`}
-              onTouchStart={() => startLongPress(token, sourceType, text)}
-              onTouchEnd={clearLongPress}
-              onTouchMove={clearLongPress}
-              onTouchCancel={clearLongPress}
+              key={`${sourceType}-${tokenIndex}-${token}`}
+              className={knownWordClassName ?? undefined}
+              onTouchStart={
+                knownWord ? undefined : () => startLongPress(token, sourceType, text)
+              }
+              onTouchEnd={knownWord ? undefined : clearLongPress}
+              onTouchMove={knownWord ? undefined : clearLongPress}
+              onTouchCancel={knownWord ? undefined : clearLongPress}
             >
               {token}
             </span>
@@ -167,35 +252,8 @@ export default function LessonPlayer({
     );
   }
 
-  useEffect(() => {
-    questionStartedAtRef.current = Date.now();
-  }, [index]);
-
-  const question = questions[index];
-
   if (!question) {
-    return <div>No questions.</div>;
-  }
-
-  if (showPassage) {
-    return (
-      <div className="space-y-4 rounded-[28px] border border-slate-200 bg-white px-4 py-5 shadow-sm sm:px-6">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-slate-900">Passage</div>
-          <button
-            type="button"
-            onClick={() => setShowPassage(false)}
-            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-          >
-            Back to Question
-          </button>
-        </div>
-
-        <div className="whitespace-pre-wrap text-[18px] leading-8 text-slate-900 sm:text-[19px] sm:leading-9">
-          {passageText || "Passage unavailable for this question."}
-        </div>
-      </div>
-    );
+    return <div className="text-sm text-slate-600">No questions available.</div>;
   }
 
   const options = [
@@ -209,9 +267,12 @@ export default function LessonPlayer({
     submitted && question.correct_option
       ? selected === question.correct_option
       : null;
+  const progressPercent = ((index + 1) / Math.max(questions.length, 1)) * 100;
 
   async function submitAnswer() {
-    if (!selected) return;
+    if (!selected) {
+      return;
+    }
 
     setSaving(true);
 
@@ -263,13 +324,19 @@ export default function LessonPlayer({
       setSaving(true);
 
       try {
-        await fetch("/api/lesson/complete", {
+        const response = await fetch("/api/lesson/complete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ studentId, lessonId }),
         });
 
-        onFinished?.();
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Failed to complete lesson");
+        }
+
+        onFinished?.(payload?.result ?? null);
       } catch (error) {
         console.error("complete lesson error", error);
         alert("Failed to complete lesson");
@@ -288,113 +355,286 @@ export default function LessonPlayer({
     setSubmitted(nextQuestion ? Boolean(initialAnswers?.[nextQuestion.id]) : false);
   }
 
+  async function openExplanation() {
+    if (!submitted || !question?.correct_option) {
+      return;
+    }
+
+    setShowExplanationSheet(true);
+
+    if (explanationCache[question.id] || explanationLoadingFor === question.id) {
+      return;
+    }
+
+    setExplanationLoadingFor(question.id);
+    setExplanationErrorFor((current) => ({ ...current, [question.id]: undefined }));
+
+    try {
+      const response = await fetch("/api/question-explanation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          passageText: passageText || "",
+          questionText: question.question_text,
+          correctOption: question.correct_option,
+          questionExplanation: question.explanation ?? null,
+          options: options.map((option) => ({
+            option: option.key,
+            text: option.text,
+          })),
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Explanation unavailable");
+      }
+
+      setExplanationCache((current) => ({
+        ...current,
+        [question.id]: payload?.data,
+      }));
+    } catch (error) {
+      setExplanationErrorFor((current) => ({
+        ...current,
+        [question.id]:
+          error instanceof Error ? error.message : "Explanation unavailable right now.",
+      }));
+    } finally {
+      setExplanationLoadingFor((current) => (current === question.id ? null : current));
+    }
+  }
+
+  const currentExplanation = explanationCache[question.id];
+  const currentExplanationError = explanationErrorFor[question.id];
+
   return (
-    <div className="space-y-4 rounded-[28px] border border-slate-200 bg-white px-4 py-5 shadow-sm sm:px-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-sm text-gray-500">
-          Question {index + 1} of {questions.length}
-        </div>
-        <div className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">
-          {question.question_type}
-        </div>
-      </div>
-
-      <div className="text-xl font-semibold leading-8 text-slate-950">
-        {renderCaptureableText(question.question_text, "question")}
-      </div>
-
-      <div className="grid gap-2">
-        {options.map((option) => {
-          const isPicked = selected === option.key;
-          const showCorrect = submitted && question.correct_option === option.key;
-          const showWrong = submitted && isPicked && question.correct_option !== option.key;
-
-          return (
-            <button
-              key={option.key}
-              onClick={() => {
-                if (submitted) return;
-                setSelected(option.key);
-              }}
-              className={`text-left border rounded-xl px-4 py-3 ${
-                showCorrect
-                  ? "border-green-600 bg-green-50"
-                  : showWrong
-                  ? "border-red-600 bg-red-50"
-                  : isPicked
-                  ? "border-black bg-gray-100"
-                  : "bg-white"
-              }`}
-            >
-              <span className="font-semibold mr-2">{option.key}.</span>
-              {renderCaptureableText(option.text, "answer")}
-            </button>
-          );
-        })}
-      </div>
-
-      {!submitted ? (
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => setShowPassage(true)}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-          >
-            See Passage
-          </button>
-          <button
-            onClick={submitAnswer}
-            disabled={!selected || saving}
-            className="rounded-lg bg-black px-4 py-2 text-white disabled:opacity-50"
-          >
-            {saving ? "Saving..." : "Submit Answer"}
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div
-            className={`rounded-xl p-4 ${
-              isCorrect ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
-            }`}
-          >
-            <div className="font-semibold mb-2">
-              {isCorrect ? "Correct" : "Not quite"}
+    <div className="relative flex min-h-full flex-1 flex-col pb-32">
+      {showPassage ? (
+        <div className="fixed inset-0 z-40 bg-[#fbf7ee]/98 backdrop-blur-sm">
+          <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
+            <div className="reading-topbar">
+              <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+                <div className="text-sm font-medium text-slate-700">Passage</div>
+                <button
+                  type="button"
+                  onClick={() => setShowPassage(false)}
+                  className="secondary-button"
+                >
+                  Back to Question
+                </button>
+              </div>
             </div>
 
-            {question.correct_option ? (
-              <div className="text-sm mb-2">
-                Correct answer: <span className="font-semibold">{question.correct_option}</span>
+            <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+              <div className="reading-surface px-5 py-7 sm:px-8 sm:py-9">
+                <InteractivePassageReader
+                  studentId={studentId}
+                  lessonId={lessonId}
+                  passageId={passageId}
+                  passageText={passageText || "Passage unavailable for this question."}
+                  knownWords={knownWords}
+                  mode="capture"
+                />
               </div>
-            ) : null}
-
-            {question.explanation ? (
-              <div className="text-sm text-slate-700 whitespace-pre-wrap">
-                {question.explanation}
-              </div>
-            ) : null}
+            </div>
           </div>
+        </div>
+      ) : null}
 
-          <div className="flex flex-wrap gap-3">
+      {showExplanationSheet ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/22 backdrop-blur-[2px]">
+          <button
+            type="button"
+            aria-label="Close explanation"
+            onClick={() => setShowExplanationSheet(false)}
+            className="absolute inset-0 h-full w-full"
+          />
+
+          <div className="absolute inset-x-0 bottom-0">
+            <div className="mx-auto w-full max-w-3xl rounded-t-[2rem] border border-slate-200 bg-white px-4 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] pt-4 shadow-2xl sm:px-6">
+              <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200" />
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-base font-semibold text-slate-950">Why this answer works</div>
+                <button
+                  type="button"
+                  onClick={() => setShowExplanationSheet(false)}
+                  className="secondary-button min-h-10 px-4 text-sm"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-4 text-sm leading-6 text-slate-700">
+                {explanationLoadingFor === question.id ? (
+                  <div className="rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-4">
+                    Building a quick reasoning guide...
+                  </div>
+                ) : currentExplanation ? (
+                  <>
+                    <section className="rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Correct answer
+                      </div>
+                      <div className="mt-2 text-sm font-semibold text-slate-950">
+                        {currentExplanation.correct_answer.option}. {currentExplanation.correct_answer.text}
+                      </div>
+                    </section>
+
+                    <section className="rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Why it is correct
+                      </div>
+                      <div className="mt-2">{currentExplanation.why_correct}</div>
+                    </section>
+
+                    <section className="rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Why the other answers are wrong
+                      </div>
+                      <div className="mt-3 space-y-3">
+                        {currentExplanation.why_others_wrong.map((item) => (
+                          <div key={item.option} className="rounded-2xl bg-white px-3 py-3">
+                            <div className="font-semibold text-slate-950">
+                              {item.option}. {item.text}
+                            </div>
+                            <div className="mt-1 text-slate-700">{item.reason}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Thinking tip
+                      </div>
+                      <div className="mt-2">{currentExplanation.thinking_tip}</div>
+                    </section>
+                  </>
+                ) : (
+                  <div className="rounded-[1.35rem] border border-rose-200 bg-rose-50 px-4 py-4 text-rose-800">
+                    {currentExplanationError || "Explanation unavailable right now."}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="space-y-5">
+        <div className="space-y-3 pt-1">
+          <div className="flex items-center justify-between gap-3 text-sm font-medium text-slate-600">
+            <span>{`Question ${index + 1} of ${questions.length}`}</span>
             <button
               type="button"
               onClick={() => setShowPassage(true)}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+              className="secondary-button min-h-11 px-4 text-sm"
             >
               See Passage
             </button>
-            <button
-              onClick={next}
-              disabled={saving}
-              className="rounded-lg bg-black px-4 py-2 text-white disabled:opacity-50"
-            >
-              {index >= questions.length - 1 ? "Finish Lesson" : "Next"}
-            </button>
+          </div>
+
+          <div className="progress-track">
+            <div
+              className="progress-fill"
+              style={{ width: `${progressPercent}%` }}
+            />
           </div>
         </div>
-      )}
+
+        <div className="px-1">
+          <div className="drill-question">
+            {renderCaptureableText(question.question_text, "question")}
+          </div>
+        </div>
+
+        <div className="grid gap-3">
+          {options.map((option) => {
+            const isPicked = selected === option.key;
+            const showCorrect = submitted && question.correct_option === option.key;
+            const showWrong = submitted && isPicked && question.correct_option !== option.key;
+            const optionState = showCorrect
+              ? "correct"
+              : showWrong
+                ? "incorrect"
+                : isPicked
+                  ? "selected"
+                  : "idle";
+
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => {
+                  if (submitted) {
+                    return;
+                  }
+                  setSelected(option.key);
+                }}
+                data-state={optionState}
+                className="drill-option min-h-16"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="drill-option-indicator mt-0.5">
+                    {option.key}
+                  </div>
+                  <div className="flex-1 text-[0.98rem] leading-7 text-inherit sm:text-[1.05rem] sm:leading-8">
+                    {renderCaptureableText(option.text, "answer")}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {submitted ? (
+          <div
+            className={`rounded-[1.35rem] border px-4 py-4 ${
+              isCorrect
+                ? "border-emerald-200 bg-emerald-50/80"
+                : "border-rose-200 bg-rose-50/80"
+            }`}
+          >
+            <div className="text-sm font-semibold text-slate-950">
+              {isCorrect ? "Correct" : "Incorrect"}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="fixed-action-bar">
+        <div className="fixed-action-bar__inner flex items-center gap-3">
+          {submitted ? (
+            <button
+              type="button"
+              onClick={openExplanation}
+              className="secondary-button min-h-14 px-5"
+            >
+              Why?
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={submitted ? next : submitAnswer}
+            disabled={submitted ? saving : !selected || saving}
+            className="primary-button min-h-14 flex-1 disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-300 disabled:text-white"
+          >
+            {saving
+              ? "Saving..."
+              : submitted
+                ? index >= questions.length - 1
+                  ? "Finish Lesson"
+                  : "Continue"
+                : "Submit"}
+          </button>
+        </div>
+      </div>
 
       {captureToast ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+6rem)] z-30 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white shadow-xl sm:left-auto sm:right-6 sm:max-w-sm">
           {captureSaving ? `Saving "${captureToast}"...` : `Added "${captureToast}" to vocabulary.`}
         </div>
       ) : null}

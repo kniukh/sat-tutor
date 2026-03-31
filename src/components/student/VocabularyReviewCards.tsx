@@ -1,7 +1,5 @@
 "use client";
 
-import { useMemo, useState } from "react";
-
 type VocabItem = {
   id: string;
   item_text: string;
@@ -18,18 +16,18 @@ type Props = {
 };
 
 export default function VocabularyReviewCards({ items, onDone }: Props) {
-  const [index, setIndex] = useState(0);
-
-  const item = useMemo(() => items[index], [items, index]);
-
   if (!items.length) {
     return (
-      <div className="space-y-3">
-        <div className="text-lg font-semibold">Vocabulary review</div>
-        <div>No vocabulary cards yet.</div>
+      <div className="mx-auto flex min-h-[calc(100svh-12rem)] max-w-3xl flex-col justify-center px-4 py-8 text-center sm:px-6">
+        <div className="card-surface space-y-3 px-6 py-8">
+          <div className="text-2xl font-semibold text-slate-950">Nothing saved this time</div>
+          <div className="text-sm leading-6 text-slate-600">
+            Continue to the second read and keep moving through the passage.
+          </div>
+        </div>
         <button
           onClick={onDone}
-          className="px-4 py-2 rounded-lg bg-black text-white"
+          className="primary-button mt-5"
         >
           Continue
         </button>
@@ -37,58 +35,41 @@ export default function VocabularyReviewCards({ items, onDone }: Props) {
     );
   }
 
-  function next() {
-    if (index >= items.length - 1) {
-      onDone?.();
-      return;
-    }
-    setIndex((prev) => prev + 1);
-  }
-
   return (
-    <div className="max-w-2xl space-y-4">
-      <div className="text-sm text-gray-500">
-        Card {index + 1} of {items.length}
+    <div className="mx-auto flex min-h-[calc(100svh-12rem)] max-w-3xl flex-col px-4 py-4 sm:px-6">
+      <div className="space-y-1">
+        <h2 className="text-2xl font-semibold text-slate-950">Saved from this passage</h2>
+        <div className="text-sm leading-6 text-slate-600">
+          Take a quick look, then continue reading with a little more support.
+        </div>
       </div>
 
-      <div className="border rounded-2xl p-5 bg-white space-y-3">
-        <div className="text-2xl font-bold">{item.item_text}</div>
-
-        <div>
-          <div className="text-sm text-gray-500">Meaning</div>
-          <div>{item.english_explanation || "-"}</div>
-        </div>
-
-        <div>
-          <div className="text-sm text-gray-500">Translation</div>
-          <div>{item.translated_explanation || "-"}</div>
-        </div>
-
-        <div>
-          <div className="text-sm text-gray-500">Example</div>
-          <div>{item.example_text || "-"}</div>
-        </div>
-
-        <div>
-          <div className="text-sm text-gray-500">Meaning in context</div>
-          <div>{item.context_sentence || "-"}</div>
-        </div>
-
-        {item.audio_url ? (
-          <div className="pt-2">
-            <audio controls src={item.audio_url} className="w-full" />
+      <div className="mt-5 grid gap-3 pb-6 sm:grid-cols-2">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="card-surface px-4 py-4"
+          >
+            <div className="text-xl font-semibold text-slate-950">{item.item_text}</div>
+            <div className="mt-2 text-sm leading-6 text-slate-700">
+              {item.english_explanation || item.translated_explanation || "Meaning will appear soon."}
+            </div>
+            {item.translated_explanation &&
+            item.translated_explanation !== item.english_explanation ? (
+              <div className="mt-2 text-sm text-slate-500">{item.translated_explanation}</div>
+            ) : null}
           </div>
-        ) : (
-          <div className="text-sm text-amber-600">Audio not ready yet</div>
-        )}
+        ))}
       </div>
 
-      <button
-        onClick={next}
-        className="px-4 py-2 rounded-lg bg-black text-white"
-      >
-        {index >= items.length - 1 ? "Continue" : "Next"}
-      </button>
+      <div className="mt-auto flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row">
+        <button
+          onClick={onDone}
+          className="primary-button sm:flex-1"
+        >
+          Continue to Second Read
+        </button>
+      </div>
     </div>
   );
 }

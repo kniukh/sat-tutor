@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import MascotCat from "@/components/student/MascotCat";
 import type { VocabExerciseSession } from "@/services/vocabulary/session-builder";
 import type { ExerciseResult } from "@/components/student/exercise-player";
 import {
@@ -38,6 +39,8 @@ export default function VocabularySessionResults({
   });
   const continueHref = `/s/${accessCode}/vocabulary/drill?mode=${session.mode}&phase=endless_continuation`;
   const weakWordsHref = `/s/${accessCode}/vocabulary?mode=review_weak_words&phase=endless_continuation`;
+  const insightsHref = `/s/${accessCode}/mistake-brain`;
+  const replayHref = `/s/${accessCode}/mistake-replay`;
 
   const sessionHighlights = [
     {
@@ -110,22 +113,26 @@ export default function VocabularySessionResults({
     return (
       <div className="mx-auto flex min-h-[100svh] w-full max-w-xl flex-col justify-center gap-6 bg-white px-4 py-6 text-center sm:px-6">
         <div className="space-y-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+          <div className="flex justify-center">
+            <MascotCat mood="celebrate" size="md" />
+          </div>
+          <div className="app-kicker">
             {summary.sessionPhase === "priority_review" ? "Checkpoint" : "Practice Checkpoint"}
           </div>
-          <h2 className="text-3xl font-semibold text-slate-950">{summary.completionTitle}</h2>
+          <h2 className="app-heading-lg text-[2rem]">{summary.completionTitle}</h2>
           <p className="text-base leading-7 text-slate-600">{summary.completionSubtitle}</p>
+          <p className="app-copy font-medium">{summary.rewardNote}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <div className="app-card-soft p-4">
+            <div className="app-kicker text-slate-500">
               Accuracy
             </div>
             <div className="mt-2 text-3xl font-semibold text-slate-950">{summary.accuracy}%</div>
           </div>
-          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <div className="app-card-soft p-4">
+            <div className="app-kicker text-slate-500">
               XP
             </div>
             <div className="mt-2 text-3xl font-semibold text-slate-950">+{summary.reward.totalXp}</div>
@@ -135,21 +142,33 @@ export default function VocabularySessionResults({
         <div className="space-y-3 pt-2">
           <Link
             href={continueHref}
-            className="block rounded-2xl bg-slate-950 px-5 py-4 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+            className="app-button app-button-primary flex w-full"
           >
             {summary.continueLabel}
           </Link>
           <Link
             href={weakWordsHref}
-            className="block rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
+            className="app-button app-button-secondary flex w-full"
           >
             Review Weak Words
           </Link>
           <Link
+            href={replayHref}
+            className="app-button app-button-secondary flex w-full"
+          >
+            Replay Mistakes
+          </Link>
+          <Link
             href={`/s/${accessCode}/vocabulary?mode=${session.mode}`}
-            className="block rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+            className="app-button app-button-muted flex w-full"
           >
             Back to vocabulary
+          </Link>
+          <Link
+            href={insightsHref}
+            className="text-sm font-semibold text-slate-600 underline underline-offset-4"
+          >
+            View your weak areas
           </Link>
         </div>
       </div>
@@ -157,15 +176,19 @@ export default function VocabularySessionResults({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+    <div className="app-card mx-auto max-w-3xl space-y-5 p-5 sm:p-6">
       <div className="space-y-3 text-center sm:text-left">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+        <div className="flex justify-center sm:justify-start">
+          <MascotCat mood="celebrate" size="md" />
+        </div>
+        <div className="app-kicker">
           {summary.sessionPhase === "priority_review" ? "Checkpoint" : "Practice Checkpoint"}
         </div>
-        <h2 className="text-2xl font-semibold text-slate-950">{summary.completionTitle}</h2>
-        <p className="text-sm leading-6 text-slate-600">
+        <h2 className="app-heading-lg">{summary.completionTitle}</h2>
+        <p className="app-copy">
           {summary.completionSubtitle} {summary.accuracyTone}
         </p>
+        <p className="app-copy font-medium">{summary.rewardNote}</p>
         <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
             {summary.completedCount} exercises
@@ -287,21 +310,35 @@ export default function VocabularySessionResults({
         <div className="flex flex-wrap gap-3">
           <Link
             href={continueHref}
-            className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+            className="app-button app-button-primary"
           >
             {summary.continueLabel}
           </Link>
           <Link
+            href={replayHref}
+            className="app-button app-button-secondary"
+          >
+            Replay mistakes
+          </Link>
+          <Link
             href={weakWordsHref}
-            className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
+            className="app-button app-button-secondary"
           >
             Review weak words
           </Link>
           <Link
             href={`/s/${accessCode}/vocabulary?mode=${session.mode}`}
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+            className="app-button app-button-muted"
           >
             Back to vocabulary
+          </Link>
+        </div>
+        <div>
+          <Link
+            href={insightsHref}
+            className="text-sm font-semibold text-slate-600 underline underline-offset-4"
+          >
+            View your weak areas
           </Link>
         </div>
       </div>

@@ -22,7 +22,7 @@ Student sees the passage and can collect unknown words or phrases.
 
 Current supported actions:
 - full-width mobile-first reading screen
-- long-press a passage word to capture it quickly
+- long-press a passage word to preview meaning / translation and capture it quickly
 - add vocabulary manually if needed
 - see known words underlined for the current student
 - show a compact review-submit block below the passage
@@ -66,7 +66,7 @@ Current behavior:
 - select answer
 - submit
 - see correct / incorrect state
-- see explanation
+- optionally open a `Why?` bottom sheet for structured reasoning help
 - open a temporary `See Passage` view and return back to the same question
 - long press words in question text or answer text to capture them into lesson vocabulary
 - continue to next question
@@ -176,6 +176,29 @@ Vocabulary Studio now closes the loop after a student finishes a vocab session:
   - weak words from the session
   - strengthened words
   - recovery, new-lesson, and retention-check words when available
+- results can now also branch into:
+  - `Replay Mistakes`
+  - `View your weak areas`
+
+## Current Mistake Replay Layer
+Mistake Replay is a short repair mode rather than a static wrong-answer list.
+
+Current source inputs:
+- recent incorrect `question_attempts`
+- recent incorrect `exercise_attempts`
+- weak skills from repeated reading misses
+- weak / repeated vocabulary items from `word_progress`
+
+Current flow per replay item:
+- `You missed this`
+- `Why it was wrong`
+- `Try again`
+- `Next`
+
+Current product note:
+- reading replay reuses the same reading question models and `question_attempts`
+- vocab replay reuses the same vocab attempt logging and normalized answer sets
+- replay is optional and launched from Insights or session results instead of interrupting the main learning flow
 
 ## Current Drill Capture Layer
 Inside vocabulary drills:

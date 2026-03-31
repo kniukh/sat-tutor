@@ -39,6 +39,7 @@ import {
   parseVocabularyDrillAnswerSets,
 } from "@/services/vocabulary/drill-answer-sets.service";
 import { prepareVocabularyDrillsForStudent } from "@/services/vocabulary/drill-preparation.service";
+import { getStudentGamificationSnapshot } from "@/services/gamification/gamification.service";
 import {
   getExerciseTargetWordId,
   type VocabExerciseSourceType,
@@ -155,6 +156,14 @@ export type StudentVocabularyPageData = {
         readyNewWordCount: number;
       }>;
     };
+    lessonFocus: {
+      lessonId: string;
+      lessonName: string;
+      matchedWordCount: number;
+      matchedReadyCount: number;
+      matchedNewWordCount: number;
+      matchedContinuationCount: number;
+    } | null;
   };
   adaptiveSelection: AdaptiveSessionSelectionSummary | null;
   drillCounts: {
@@ -236,6 +245,11 @@ export function normalizeVocabularySessionPhase(
   }
 
   return null;
+}
+
+export function normalizeVocabularyLessonId(lessonId: string | undefined) {
+  const normalized = lessonId?.trim();
+  return normalized ? normalized : null;
 }
 
 function getSessionPhaseLabel(phase: VocabularySessionPhase | null) {
@@ -681,7 +695,8 @@ function attachAdaptiveSelectionMeta<TExercise extends SupportedVocabExercise>(p
 export async function getStudentVocabularyPageData(
   accessCode: string,
   selectedMode: VocabularyPageMode = "mixed_practice",
-  requestedPhase: VocabularySessionPhase | null = null
+  requestedPhase: VocabularySessionPhase | null = null,
+  preferredLessonId: string | null = null
 ) {
   const supabase = await createServerSupabaseClient();
 
@@ -736,11 +751,7 @@ export async function getStudentVocabularyPageData(
         .eq("student_id", studentData.id)
         .not("target_word_id", "is", null),
       getStudentVocabularyAnalytics(studentData.id),
-      supabase
-        .from("student_gamification")
-        .select("*")
-        .eq("student_id", studentData.id)
-        .maybeSingle(),
+      getStudentGamificationSnapshot(studentData.id),
     ]);
 
   if (allVocabDetails.error) {
@@ -749,10 +760,6 @@ export async function getStudentVocabularyPageData(
 
   if (attemptedWordIds.error) {
     throw attemptedWordIds.error;
-  }
-
-  if (gamificationResult.error) {
-    throw gamificationResult.error;
   }
 
   let vocabularyDetailRows = (allVocabDetails.data ?? []) as any[];
@@ -888,6 +895,22 @@ export async function getStudentVocabularyPageData(
     Array.from(recentLessonMetaMap.entries()).map(([lessonId, meta]) => [lessonId, meta.lessonName])
   );
 
+  if (preferredLessonId && !recentLessonMetaMap.has(preferredLessonId)) {
+    const { data: preferredLesson } = await supabase
+      .from("lessons")
+      .select("id, name, lesson_type")
+      .eq("id", preferredLessonId)
+      .maybeSingle();
+
+    if (preferredLesson?.id) {
+      recentLessonMetaMap.set(preferredLesson.id, {
+        lessonName: preferredLesson.name as string,
+        lessonType: (preferredLesson.lesson_type as string | null) ?? null,
+      });
+      recentLessonNameMap.set(preferredLesson.id, preferredLesson.name as string);
+    }
+  }
+
   const lessonIdsForCaptures = Array.from(
     new Set([
       ...(queueVocabDetails ?? []).map((detail: any) => detail.lesson_id).filter(Boolean),
@@ -973,6 +996,30 @@ export async function getStudentVocabularyPageData(
       );
     })
     .filter(Boolean) as DrillItem[];
+  const matchedQueueCount = preferredLessonId
+    ? queueDrillItems.filter((item) => item.sourceLessonId === preferredLessonId).length
+    : 0;
+  const matchedNewWordCount = preferredLessonId
+    ? newWordDrillItems.filter((item) => item.sourceLessonId === preferredLessonId).length
+    : 0;
+  const matchedContinuationCount = preferredLessonId
+    ? continuationDrillItems.filter((item) => item.sourceLessonId === preferredLessonId).length
+    : 0;
+  const matchedWordCount = preferredLessonId
+    ? new Set(
+        [
+          ...queueDrillItems
+            .filter((item) => item.sourceLessonId === preferredLessonId)
+            .map((item) => item.vocabularyItemId),
+          ...newWordDrillItems
+            .filter((item) => item.sourceLessonId === preferredLessonId)
+            .map((item) => item.vocabularyItemId),
+          ...continuationDrillItems
+            .filter((item) => item.sourceLessonId === preferredLessonId)
+            .map((item) => item.vocabularyItemId),
+        ].filter(Boolean)
+      ).size
+    : 0;
 
   const queueExercisePool = buildExercisePoolFromDrillItems(queueDrillItems);
   const queueExercises = [
@@ -1079,6 +1126,7 @@ export async function getStudentVocabularyPageData(
           phase: "priority_review",
           candidates: priorityCandidates,
           targetSize: priorityTargetSize,
+          preferredLessonId,
           seed: `${studentData.id}:${today}:${selectedMode}:priority:${bucketCounts.recently_failed}:${bucketCounts.weak_again}:${bucketCounts.overdue}:${newWordExercises.length}`,
         })
       : null;
@@ -1089,6 +1137,7 @@ export async function getStudentVocabularyPageData(
           phase: "endless_continuation",
           candidates: continuationCandidates,
           targetSize: continuationTargetSize,
+          preferredLessonId,
           seed: `${studentData.id}:${today}:${selectedMode}:continuation:${bucketCounts.recently_failed}:${bucketCounts.weak_again}:${bucketCounts.overdue}:${continuationExercises.length}:${newWordExercises.length}`,
         })
       : null;
@@ -1168,9 +1217,9 @@ export async function getStudentVocabularyPageData(
   const masteredWords = vocabularyAnalytics.summary.masteredWordsCount;
   const wordsInReview = getLifecycleCount(masteryDistribution, "review");
   const practicedTodayWords = vocabularyAnalytics.summary.practicedTodayWordsCount;
-  const currentStreak = Number(gamificationResult.data?.streak_days ?? 0);
+  const currentStreak = Number(gamificationResult?.streak_days ?? 0);
   const longestStreakCandidate = Number(
-    (gamificationResult.data as Record<string, unknown> | null)?.longest_streak_days ??
+    (gamificationResult as Record<string, unknown> | null)?.longest_streak_days ??
       currentStreak
   );
   const longestStreak = Number.isFinite(longestStreakCandidate)
@@ -1227,6 +1276,21 @@ export async function getStudentVocabularyPageData(
           .slice(0, 6),
         recentLessons: recentLessonsSummary,
       },
+      lessonFocus:
+        preferredLessonId &&
+        (matchedQueueCount > 0 || matchedNewWordCount > 0 || matchedContinuationCount > 0)
+          ? {
+              lessonId: preferredLessonId,
+              lessonName:
+                recentLessonNameMap.get(preferredLessonId) ??
+                recentLessonMetaMap.get(preferredLessonId)?.lessonName ??
+                "Lesson words",
+              matchedWordCount,
+              matchedReadyCount: matchedQueueCount,
+              matchedNewWordCount,
+              matchedContinuationCount,
+            }
+          : null,
     },
     adaptiveSelection: adaptiveSelection?.summary ?? null,
     drillCounts: {

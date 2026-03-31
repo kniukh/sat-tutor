@@ -68,6 +68,7 @@ Current patterns:
 - thin server page
 - dashboard aggregation through progress services
 - current reading and vocabulary blocks use service-shaped data
+- progress / competition hero reads gamification + leaderboard summary
 - vocabulary summary now uses review-queue-backed `ready to practice` shaping instead of surfacing legacy due-date counts as the primary student signal
 
 ### `/s/[code]/book`
@@ -106,6 +107,9 @@ Main UI:
   - mobile-first single-column lesson stages
   - full-screen reading focus during first and second read
   - passage/question/answer vocabulary capture hooks into shared vocab storage
+- [LessonPlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/LessonPlayer.tsx)
+  - SAT-style one-question-per-screen quiz shell
+  - optional `Why?` reasoning bottom sheet backed by `/api/question-explanation`
 
 ### `/s/[code]/vocabulary`
 Vocabulary Studio page.
@@ -130,6 +134,24 @@ Current shape:
 - data from [vocabulary-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/vocabulary-page.service.ts)
 - reuses [VocabSessionPlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/VocabSessionPlayer.tsx) in focused mode
 - hides summary chrome and keeps the drill surface to progress, question, answers, and action CTA
+
+### `/s/[code]/mistake-brain`
+Insights surface.
+
+Current shape:
+- thin page
+- data from [mistake-brain-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/mistake-brain-page.service.ts)
+- weak skills, review lists, patterns, recommendations
+- optional launch point into Mistake Replay
+
+### `/s/[code]/mistake-replay`
+Focused repair-mode route.
+
+Current shape:
+- thin page
+- data from [mistake-replay.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/mistake-replay.service.ts)
+- one-item-at-a-time replay player
+- reuses question attempts, vocab attempts, and explanation services
 
 ## Important API Routes
 
@@ -159,6 +181,7 @@ Current note:
 
 ### AI
 - `/api/ai/tutor`
+- `/api/question-explanation`
 
 ## Student UI Architecture
 
@@ -171,6 +194,7 @@ Current note:
   - one-question-per-screen flow
   - passage recall overlay during quiz
   - per-question timing post
+  - optional structured reasoning explanation bottom sheet
 - [InteractivePassageReader.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/InteractivePassageReader.tsx)
   - long-press passage capture
   - known-word interactions
@@ -281,17 +305,21 @@ Current responsibilities:
 - skill tracking
 - skill dashboards
 - Mistake Brain orchestration
+- Mistake Replay session selection
 - vocabulary analytics aggregation for student-facing progress surfaces and future teacher/admin reuse
 
 Important files:
 - [question-attempts.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/question-attempts.service.ts)
 - [mistake-brain.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/mistake-brain.service.ts)
+- [mistake-brain-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/mistake-brain-page.service.ts)
+- [mistake-replay.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/mistake-replay.service.ts)
 - [skill-tracking.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/skill-tracking.service.ts)
 - [vocabulary-analytics.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/vocabulary-analytics.service.ts)
 
 ### `services/ai`
 Current responsibilities:
 - tutor explanations
+- structured reasoning explanations for reading questions
 - lesson mistake analysis
 - question generation
 - vocab card generation
@@ -301,7 +329,19 @@ Current responsibilities:
 
 Important files:
 - [tutor.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/tutor.service.ts)
+- [generate-question-reasoning-explanation.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/generate-question-reasoning-explanation.ts)
 - [analyze-lesson-mistakes.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/analyze-lesson-mistakes.ts)
+
+### `services/gamification`
+Current responsibilities:
+- XP policy and award ledger
+- student gamification snapshot shaping
+- weekly leaderboard groups and ranking
+
+Important files:
+- [xp-policy.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/gamification/xp-policy.service.ts)
+- [xp-awards.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/gamification/xp-awards.service.ts)
+- [leaderboards.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/gamification/leaderboards.service.ts)
 
 ### `services/vocabulary`
 Current responsibilities:

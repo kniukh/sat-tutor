@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { awardReadingQuestionXp } from "@/services/gamification/xp-awards.service";
 
 export async function saveQuestionAttempt(params: {
   studentId: string;
@@ -11,7 +12,7 @@ export async function saveQuestionAttempt(params: {
 
   const { data: question, error: questionError } = await supabase
     .from("question_bank")
-    .select("id, correct_option")
+    .select("id, correct_option, question_type")
     .eq("id", params.questionId)
     .single();
 
@@ -37,5 +38,17 @@ export async function saveQuestionAttempt(params: {
     throw error;
   }
 
-  return data;
+  const xpReward = await awardReadingQuestionXp({
+    studentId: params.studentId,
+    lessonId: params.lessonId,
+    questionAttemptId: data.id,
+    questionId: params.questionId,
+    questionType: question.question_type ?? null,
+    isCorrect: data.is_correct,
+  });
+
+  return {
+    attempt: data,
+    xpReward,
+  };
 }

@@ -168,6 +168,7 @@ Important fields:
 
 Source:
 - created from `/api/question-attempt`
+- also reused by Mistake Replay reading retries, so repair attempts stay inside the same reading analytics stream
 
 ### `mistake_analysis`
 AI-generated post-lesson mistake analysis.
@@ -281,6 +282,7 @@ Current use:
 - one row per completed vocab exercise attempt
 - receives data from `/api/vocabulary/exercise-attempt`
 - now also serves as the base telemetry source for Vocabulary Analytics v1
+- also supports Mistake Replay vocab repair attempts without a separate replay-attempt table
 
 ### `word_progress`
 Per-student word lifecycle and review state.
@@ -373,6 +375,25 @@ Per-student skill performance summary.
 ### `student_gamification`
 XP, level, streak, achievements.
 
+Important fields now include:
+- `total_xp`
+- `weekly_xp`
+- streak / level fields used by the student dashboard
+
+### `xp_events`
+Ledger of XP rewards and anti-abuse-aware credit decisions.
+
+Current use:
+- reading question XP
+- vocabulary exercise XP
+- vocabulary session completion XP
+
+### Weekly leaderboard tables
+Current leaderboard support uses:
+- weekly leaderboard group tables added by migration
+- `student_gamification.weekly_xp` as the ranking source
+- lightweight weekly group assignment rather than a global leaderboard
+
 ## Vocabulary Analytics v1
 
 Current analytics surfaces are built from existing vocab tables rather than a separate warehouse table.
@@ -389,6 +410,10 @@ Main sources:
   - recent weak words
   - mastery distribution by lifecycle state
   - current difficulty band / weak streak context
+
+These same sources now also feed:
+- Mistake Brain page summaries
+- Mistake Replay source selection
 
 ## Current Main Flows
 
@@ -429,6 +454,17 @@ plus
 -> `services/analytics/vocabulary-analytics.service.ts`
 -> dashboard / progress surfaces
 
+### Mistake Replay flow
+`question_attempts`
+plus
+`exercise_attempts`
+plus
+`word_progress`
+plus
+`question_bank` / `vocabulary_item_details`
+-> `services/analytics/mistake-replay.service.ts`
+-> `/s/[code]/mistake-replay`
+
 ### Lesson-to-vocabulary bridge
 `lesson_passages`
 -> inline capture / lesson vocabulary submit
@@ -466,12 +502,15 @@ Current note:
 - `20260328204000_update_word_progress_lifecycle_weak_again.sql`
 - `20260330120000_add_vocab_drill_answer_sets.sql`
 - `20260330143000_expand_vocab_drill_capture_metadata.sql`
+- `20260330180000_add_robust_xp_system.sql`
+- `20260330193000_add_weekly_leaderboard_groups.sql`
 
-## Recent Schema Note
-The latest vocabulary drill work did not require creating brand-new tables.
-Instead, it extended existing vocab tables with:
-- `vocabulary_item_details.drill_answer_sets`
-- `vocabulary_capture_events.metadata`
-- expanded `vocabulary_capture_events.source_type` support for `vocab_drill`
-
-No new Supabase migration was required for the latest endless-practice and progress-first Vocabulary Studio updates because they reused the existing `exercise_attempts`, `word_progress`, `review_queue`, `vocab_sessions`, and `vocabulary_item_details` schema.
+## Recent Schema Notes
+- Vocabulary drill normalization reused existing vocab tables and extended:
+  - `vocabulary_item_details.drill_answer_sets`
+  - `vocabulary_capture_events.metadata`
+  - `vocabulary_capture_events.source_type` for `vocab_drill`
+- Endless practice, Mistake Brain page, Mistake Replay, and reasoning explanations reuse existing `question_attempts`, `exercise_attempts`, `word_progress`, `review_queue`, `question_bank`, `lesson_passages`, and `vocabulary_item_details` tables.
+- New schema additions in this batch are focused on gamification:
+  - XP ledger / totals
+  - weekly leaderboard groups
