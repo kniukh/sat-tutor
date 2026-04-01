@@ -6,6 +6,12 @@ type Props = {
   selectedOptionId: string | null;
   correctOptionId: string;
   submitted: boolean;
+  feedbackReward?: {
+    id: string;
+    xp: number;
+    comboCount: number;
+    comboMultiplier: number;
+  } | null;
   onSelect: (optionId: string) => void;
   renderOptionLabel?: (params: {
     option: ExerciseOption;
@@ -18,6 +24,7 @@ export default function ExerciseOptionList({
   selectedOptionId,
   correctOptionId,
   submitted,
+  feedbackReward = null,
   onSelect,
   renderOptionLabel,
 }: Props) {
@@ -31,7 +38,7 @@ export default function ExerciseOptionList({
   }
 
   return (
-    <div className="space-y-2" role="radiogroup" aria-label="Answer choices">
+    <div className="space-y-3" role="radiogroup" aria-label="Answer choices">
       {options.map((option, index) => {
         const isSelected = selectedOptionId === option.id;
         const isCorrect = submitted && option.id === correctOptionId;
@@ -75,14 +82,22 @@ export default function ExerciseOptionList({
             aria-checked={isSelected}
             aria-disabled={submitted}
             data-state={optionState}
-            className="drill-option group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+            className="drill-option group relative overflow-visible focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-secondary)] focus-visible:ring-offset-2"
           >
+            {submitted && isSelected && feedbackReward && feedbackReward.xp > 0 ? (
+              <div className="drill-option-reward reward-float reward-float--inline">
+                <span>{`+${feedbackReward.xp} XP`}</span>
+                {feedbackReward.comboCount >= 3 ? (
+                  <span className="drill-option-reward__combo">{`🔥 x${feedbackReward.comboCount}`}</span>
+                ) : null}
+              </div>
+            ) : null}
             <div className="flex items-start gap-3">
               <div className="drill-option-indicator mt-0.5">
                 {submitted ? (isCorrect ? "OK" : isWrongSelected ? "NO" : index + 1) : index + 1}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[0.96rem] font-medium leading-[1.45] sm:text-base">
+                <div className="text-[0.98rem] font-semibold leading-[1.55] sm:text-base">
                   {renderOptionLabel
                     ? renderOptionLabel({
                         option,

@@ -11,6 +11,7 @@ export default function CollocationExercise({
   onSelect,
   submitted,
   focused = false,
+  feedbackReward,
   renderCaptureText,
 }: ExerciseRendererProps<CollocationExerciseData>) {
   const isPairSelection = exercise.variant === "pair_selection";
@@ -48,6 +49,7 @@ export default function CollocationExercise({
         selectedOptionId={selectedValue || null}
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
+        feedbackReward={feedbackReward}
         onSelect={onSelect}
         renderOptionLabel={({ option, isDistractor }) =>
           renderCaptureText

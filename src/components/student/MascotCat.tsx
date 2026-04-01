@@ -25,7 +25,7 @@ export default function MascotCat({
   const faceFill =
     mood === "incorrect" ? "#fff1f2" : mood === "celebrate" ? "#eff6ff" : "#f0fdf4";
   const stroke = mood === "incorrect" ? "#be123c" : mood === "celebrate" ? "#0f766e" : "#15803d";
-  const cheek = mood === "incorrect" ? "#fda4af" : "#fdba74";
+  const cheek = mood === "incorrect" ? "#fda4af" : mood === "celebrate" ? "#93c5fd" : "#fdba74";
 
   return (
     <div
@@ -49,6 +49,13 @@ export default function MascotCat({
         {mood === "incorrect" ? (
           <path
             d="M40 69c2.5-3 13.5-3 16 0"
+            stroke={stroke}
+            strokeWidth="3.5"
+            strokeLinecap="round"
+          />
+        ) : mood === "celebrate" ? (
+          <path
+            d="M39 64.5c4.2 5.2 13.8 5.2 18 0"
             stroke={stroke}
             strokeWidth="3.5"
             strokeLinecap="round"

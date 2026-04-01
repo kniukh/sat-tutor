@@ -30,6 +30,12 @@ import FillBlankExercise from "./renderers/FillBlankExercise";
 import ContextMeaningExercise from "./renderers/ContextMeaningExercise";
 import SynonymExercise from "./renderers/SynonymExercise";
 import CollocationExercise from "./renderers/CollocationExercise";
+import {
+  getAnswerFeedbackCue,
+  primeFeedbackAudio,
+  triggerFeedbackCue,
+} from "@/services/feedback/feedback-effects.client";
+import { useFeedbackSettings } from "@/services/feedback/use-feedback-settings";
 
 type Props = {
   exercises: Exercise[];
@@ -38,6 +44,14 @@ type Props = {
   sessionMetadata?: Record<string, unknown>;
   focused?: boolean;
   captureStudentId?: string;
+  comboCount?: number;
+  floatingReward?: {
+    id: string;
+    xp: number;
+    comboCount: number;
+    comboMultiplier: number;
+    leveledUp: boolean;
+  } | null;
   onExerciseComplete?: (result: ExerciseResult) => void;
   onComplete?: (results: ExerciseResult[]) => void;
 };
@@ -48,6 +62,7 @@ type ExerciseFeedbackState = {
   selectedAnswer?: string;
   correctAnswer?: string;
   answerLabel?: string;
+  streakCount?: number;
 };
 
 function parseSentenceBuilderResponse(value: string) {
@@ -90,6 +105,8 @@ export default function ExercisePlayer({
   sessionMetadata,
   focused = false,
   captureStudentId,
+  comboCount = 0,
+  floatingReward = null,
   onExerciseComplete,
   onComplete,
 }: Props) {
@@ -106,7 +123,10 @@ export default function ExercisePlayer({
   const [captureToast, setCaptureToast] = useState<string | null>(null);
   const [currentFeedback, setCurrentFeedback] = useState<ExerciseFeedbackState | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [continueReady, setContinueReady] = useState(false);
   const startedAtRef = useRef<number>(Date.now());
+  const continueUnlockTimeoutRef = useRef<number | null>(null);
+  const { settings: feedbackSettings } = useFeedbackSettings();
 
   const currentExercise = exercises[currentIndex] ?? null;
   const questionText = getExerciseQuestionText(currentExercise);
@@ -114,12 +134,38 @@ export default function ExercisePlayer({
   useEffect(() => {
     startedAtRef.current = Date.now();
     setIsAdvancing(false);
+    setContinueReady(false);
   }, [currentIndex]);
+
+  useEffect(() => {
+    primeFeedbackAudio();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (continueUnlockTimeoutRef.current) {
+        clearTimeout(continueUnlockTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const currentResult = useMemo(
     () => results.find((item) => item.exercise_id === currentExercise?.id) ?? null,
     [results, currentExercise]
   );
+  const currentStreak = useMemo(() => {
+    let streak = 0;
+
+    for (let index = results.length - 1; index >= 0; index -= 1) {
+      if (!results[index]?.is_correct) {
+        break;
+      }
+
+      streak += 1;
+    }
+
+    return streak;
+  }, [results]);
 
   if (!currentExercise) {
     return (
@@ -271,6 +317,14 @@ export default function ExercisePlayer({
         ? JSON.stringify(selectedTileIds) ===
           JSON.stringify(getExerciseCorrectSequence(currentExercise))
       : getExerciseAcceptableAnswers(currentExercise).includes(responseValue);
+    const comboCountAfter = isCorrect ? currentStreak + 1 : 0;
+    triggerFeedbackCue(
+      getAnswerFeedbackCue({
+        isCorrect,
+        comboCountAfter,
+      }),
+      feedbackSettings
+    );
     const wordProgressId = currentExercise.reviewMeta?.sourceDrillId ?? null;
     const result: ExerciseResult = {
       response_time_ms: timeSpentMs,
@@ -336,6 +390,13 @@ export default function ExercisePlayer({
     };
 
     setSubmitted(true);
+    setContinueReady(false);
+    if (continueUnlockTimeoutRef.current) {
+      clearTimeout(continueUnlockTimeoutRef.current);
+    }
+    continueUnlockTimeoutRef.current = window.setTimeout(() => {
+      setContinueReady(true);
+    }, 380);
     setCurrentFeedback({
       isCorrect,
       explanation: currentExercise.explanation,
@@ -354,6 +415,7 @@ export default function ExercisePlayer({
         : isSentenceBuilder
           ? "Your sentence"
           : "Your answer",
+      streakCount: isCorrect ? currentStreak + 1 : 0,
     });
     setResults((prev) => [
       ...prev.filter((item) => item.exercise_id !== result.exercise_id),
@@ -364,7 +426,7 @@ export default function ExercisePlayer({
   }
 
   function handleContinue() {
-    if (isAdvancing) {
+    if (isAdvancing || !continueReady) {
       return;
     }
 
@@ -382,6 +444,7 @@ export default function ExercisePlayer({
       setCurrentIndex((prev) => prev + 1);
       setResponseValue("");
       setSubmitted(false);
+      setContinueReady(false);
       setCurrentFeedback(null);
     }, 120);
   }
@@ -431,6 +494,7 @@ export default function ExercisePlayer({
             onSelect={setResponseValue}
             submitted={submitted}
             focused={focused}
+            feedbackReward={submitted ? floatingReward : null}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -485,6 +549,7 @@ export default function ExercisePlayer({
             onSelect={setResponseValue}
             submitted={submitted}
             focused={focused}
+            feedbackReward={submitted ? floatingReward : null}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -496,6 +561,7 @@ export default function ExercisePlayer({
             onSelect={setResponseValue}
             submitted={submitted}
             focused={focused}
+            feedbackReward={submitted ? floatingReward : null}
           />
         );
       case "context_meaning":
@@ -506,6 +572,7 @@ export default function ExercisePlayer({
             onSelect={setResponseValue}
             submitted={submitted}
             focused={focused}
+            feedbackReward={submitted ? floatingReward : null}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -517,6 +584,7 @@ export default function ExercisePlayer({
             onSelect={setResponseValue}
             submitted={submitted}
             focused={focused}
+            feedbackReward={submitted ? floatingReward : null}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -528,6 +596,7 @@ export default function ExercisePlayer({
             onSelect={setResponseValue}
             submitted={submitted}
             focused={focused}
+            feedbackReward={submitted ? floatingReward : null}
             renderCaptureText={renderCaptureText}
           />
         );
@@ -540,13 +609,25 @@ export default function ExercisePlayer({
     <div
       className={`mx-auto flex w-full flex-col ${
         focused
-          ? "min-h-[100svh] max-w-xl gap-2 overflow-hidden bg-white px-4 pb-0 pt-3 sm:px-6 sm:pt-4"
-          : "min-h-[70vh] max-w-2xl gap-4 rounded-[28px] bg-white px-4 py-5 sm:px-6 sm:py-6"
+          ? "min-h-[100svh] max-w-xl gap-3 overflow-hidden bg-[var(--color-surface)] px-4 pb-0 pt-3 sm:px-6 sm:pt-4"
+          : "min-h-[70vh] max-w-2xl gap-4 rounded-[28px] bg-[var(--color-surface)] px-4 py-5 sm:px-6 sm:py-6"
       }`}
     >
-      <ExerciseProgressHeader currentIndex={currentIndex} total={exercises.length} />
+      <ExerciseProgressHeader
+        currentIndex={currentIndex}
+        total={exercises.length}
+        submitted={submitted}
+        comboCount={comboCount}
+        comboMultiplier={floatingReward?.comboCount === comboCount ? floatingReward.comboMultiplier : undefined}
+        comboActive={Boolean(
+          submitted &&
+            floatingReward &&
+            comboCount >= 2 &&
+            floatingReward.comboCount === comboCount
+        )}
+      />
 
-      <div className={focused ? "space-y-1 pt-0.5" : "space-y-1"}>
+      <div className={focused ? "space-y-1.5 pt-1" : "space-y-1"}>
         {questionText ? (
           <div className={focused ? "drill-question" : "text-[1.6rem] font-semibold leading-[1.18] text-slate-950 sm:text-[1.9rem]"}>
             {questionText}
@@ -568,6 +649,7 @@ export default function ExercisePlayer({
         canSubmit={canSubmit}
         isLast={currentIndex >= exercises.length - 1}
         isAdvancing={isAdvancing}
+        continueLocked={submitted && !continueReady}
         feedback={currentFeedback}
         focused={focused}
         onCheck={handleCheck}
@@ -581,6 +663,25 @@ export default function ExercisePlayer({
           }`}
         >
           Added "{captureToast}" to your vocabulary list.
+        </div>
+      ) : null}
+
+      {floatingReward && (isTypedResponse || isPairMatch || isSentenceBuilder) ? (
+        <div
+          key={floatingReward.id}
+          className={`pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4 ${
+            focused ? "top-20 sm:top-24" : "top-6"
+          }`}
+        >
+          <div className="reward-float rounded-full border border-emerald-200 bg-white/96 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-[var(--shadow-button)] backdrop-blur">
+            <span>{`+${floatingReward.xp} XP`}</span>
+            {floatingReward.comboCount >= 3 ? (
+              <span className="ml-2 text-slate-500">{`Combo x${floatingReward.comboCount}`}</span>
+            ) : null}
+            {floatingReward.leveledUp ? (
+              <span className="ml-2 text-[var(--color-secondary)]">Level up</span>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>

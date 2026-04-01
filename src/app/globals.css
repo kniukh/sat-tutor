@@ -15,11 +15,14 @@
   --color-border-strong: #c8d4e3;
   --color-surface: #ffffff;
   --color-surface-muted: #f7f9fc;
+  --color-surface-elevated: #ffffff;
   --color-reading-bg: #f7f3eb;
   --color-reading-surface: #fffdfa;
   --shadow-card: 0 18px 40px -30px rgba(15, 23, 42, 0.18);
   --shadow-elevated: 0 28px 70px -44px rgba(15, 23, 42, 0.28);
   --shadow-button: 0 18px 32px -20px rgba(15, 23, 42, 0.24);
+  --shadow-drill-card: 0 14px 28px -18px rgba(15, 23, 42, 0.18);
+  --shadow-drill-card-active: 0 18px 34px -18px rgba(15, 23, 42, 0.24);
   --radius-control: 1rem;
   --radius-card: 1.5rem;
   --radius-panel: 1.75rem;
@@ -311,26 +314,36 @@ a {
 }
 
 .progress-track {
-  height: 0.5rem;
+  height: 0.72rem;
   width: 100%;
   overflow: hidden;
   border-radius: 999px;
-  background: #dde6f0;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: linear-gradient(180deg, rgba(226, 234, 244, 0.96) 0%, rgba(214, 224, 237, 0.98) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0 rgba(148, 163, 184, 0.18);
 }
 
 .progress-fill {
   height: 100%;
   border-radius: inherit;
-  background: var(--color-primary);
-  transition: width 220ms ease-out;
+  background: linear-gradient(90deg, #14b8a6 0%, #0f766e 44%, var(--color-primary) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    0 10px 18px -12px rgba(15, 118, 110, 0.9);
+  transition:
+    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 180ms ease;
 }
 
 .drill-question {
-  font-size: clamp(1.45rem, 4vw, 1.85rem);
+  font-size: clamp(1.36rem, 3.8vw, 1.72rem);
   font-weight: 650;
-  line-height: 1.2;
+  line-height: 1.14;
   letter-spacing: -0.03em;
   color: var(--foreground);
+  text-wrap: balance;
 }
 
 .drill-context-surface {
@@ -350,6 +363,12 @@ a {
 .reading-stage-shell {
   min-height: 100svh;
   background: var(--color-reading-bg);
+}
+
+.reading-focus-highlight {
+  border-radius: 0.35rem;
+  background: rgba(15, 118, 110, 0.14);
+  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.08);
 }
 
 .reading-topbar {
@@ -398,47 +417,65 @@ a {
 .drill-option {
   display: block;
   width: 100%;
-  min-height: 3.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: 1.125rem;
-  background: var(--color-surface);
-  padding: 0.875rem 1rem;
+  min-height: 4.35rem;
+  border: 1px solid rgba(200, 212, 227, 0.95);
+  border-radius: 1.5rem;
+  background: linear-gradient(180deg, var(--color-surface-elevated) 0%, var(--color-surface) 100%);
+  padding: 1.05rem 1.1rem;
   text-align: left;
   color: var(--foreground);
+  box-shadow:
+    var(--shadow-drill-card),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
   transition:
     border-color 150ms ease,
     background-color 150ms ease,
     color 150ms ease,
-    box-shadow 150ms ease,
+    box-shadow 180ms ease,
     transform 150ms ease;
+  will-change: transform, box-shadow;
 }
 
 .drill-option:hover {
-  border-color: var(--color-border-strong);
-  background: #fbfcfe;
+  border-color: rgba(15, 118, 110, 0.24);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow:
+    var(--shadow-drill-card-active),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  transform: translateY(-1px);
 }
 
 .drill-option:active {
-  transform: scale(0.995);
+  transform: scale(0.97);
 }
 
 .drill-option[data-state="selected"] {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-  color: white;
-  box-shadow: var(--shadow-button);
+  border-color: rgba(15, 118, 110, 0.48);
+  background: linear-gradient(180deg, rgba(215, 243, 239, 0.95) 0%, rgba(233, 248, 245, 0.98) 100%);
+  color: var(--foreground);
+  box-shadow:
+    0 18px 28px -22px rgba(15, 118, 110, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .drill-option[data-state="correct"] {
-  border-color: #86efac;
-  background: var(--color-success-soft);
+  border-color: #4ade80;
+  background: linear-gradient(180deg, rgba(220, 252, 231, 0.98) 0%, rgba(187, 247, 208, 1) 100%);
   color: var(--foreground);
+  box-shadow:
+    0 18px 34px -24px rgba(22, 163, 74, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+  animation: drill-bounce 380ms cubic-bezier(0.2, 0.9, 0.3, 1.25);
 }
 
 .drill-option[data-state="incorrect"] {
-  border-color: #fda4af;
-  background: var(--color-error-soft);
+  border-color: #fb7185;
+  background: linear-gradient(180deg, rgba(255, 228, 230, 0.98) 0%, rgba(254, 205, 211, 0.98) 100%);
   color: var(--foreground);
+  box-shadow:
+    0 18px 34px -24px rgba(225, 29, 72, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  animation: drill-shake 220ms ease-in-out;
 }
 
 .drill-option:disabled {
@@ -448,39 +485,48 @@ a {
 
 .drill-option-indicator {
   display: inline-flex;
-  height: 1.5rem;
-  width: 1.5rem;
+  height: 1.9rem;
+  width: 1.9rem;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  border: 1px solid #cbd5e1;
-  background: white;
+  border: 1px solid #d4dde7;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97) 0%, rgba(248, 250, 252, 0.96) 100%);
   font-size: 0.6875rem;
   font-weight: 700;
   color: #64748b;
+  box-shadow:
+    inset 0 -1px 0 rgba(15, 23, 42, 0.04),
+    0 8px 14px -12px rgba(15, 23, 42, 0.24);
   transition:
     border-color 150ms ease,
     background-color 150ms ease,
-    color 150ms ease;
+    color 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .drill-option[data-state="selected"] .drill-option-indicator {
-  border-color: rgba(255, 255, 255, 0.7);
-  background: white;
-  color: var(--color-primary);
+  border-color: rgba(15, 118, 110, 0.28);
+  background: linear-gradient(180deg, var(--color-secondary) 0%, #0b5f59 100%);
+  color: white;
+  box-shadow: 0 12px 18px -14px rgba(15, 118, 110, 0.55);
+  transform: scale(1.03);
 }
 
 .drill-option[data-state="correct"] .drill-option-indicator {
   border-color: var(--color-success);
-  background: var(--color-success);
+  background: linear-gradient(180deg, #22c55e 0%, var(--color-success) 100%);
   color: white;
+  box-shadow: 0 12px 18px -14px rgba(21, 128, 61, 0.52);
 }
 
 .drill-option[data-state="incorrect"] .drill-option-indicator {
   border-color: var(--color-error);
-  background: var(--color-error);
+  background: linear-gradient(180deg, #e11d48 0%, var(--color-error) 100%);
   color: white;
+  box-shadow: 0 12px 18px -14px rgba(190, 24, 93, 0.48);
 }
 
 .drill-input {
@@ -521,16 +567,74 @@ a {
   bottom: 0;
   z-index: 20;
   border-top: 1px solid rgba(219, 228, 239, 0.96);
-  background: rgba(255, 255, 255, 0.98);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(255, 255, 255, 0.98) 48%, rgba(255, 255, 255, 1) 100%);
   padding: 0.625rem 1rem calc(env(safe-area-inset-bottom) + 0.875rem);
   backdrop-filter: blur(18px);
-  box-shadow: 0 -18px 42px -30px rgba(15, 23, 42, 0.34);
+  box-shadow:
+    0 -18px 42px -30px rgba(15, 23, 42, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .fixed-action-bar__inner {
   width: 100%;
   max-width: 36rem;
   margin: 0 auto;
+}
+
+.combo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(245, 158, 11, 0.26);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 247, 237, 0.98) 0%, rgba(255, 237, 213, 0.98) 100%);
+  padding: 0.32rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #b45309;
+  box-shadow: 0 12px 20px -18px rgba(245, 158, 11, 0.55);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.combo-chip[data-active="true"] {
+  animation: combo-pulse 360ms cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+
+.drill-option-reward {
+  position: absolute;
+  right: 1rem;
+  top: -0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #047857;
+  box-shadow:
+    0 18px 28px -24px rgba(16, 185, 129, 0.58),
+    0 10px 20px -18px rgba(15, 23, 42, 0.24);
+  backdrop-filter: blur(10px);
+}
+
+.drill-option-reward__combo {
+  color: #b45309;
+}
+
+.reward-float--inline {
+  animation-duration: 1.2s;
+}
+
+.reward-float {
+  animation: reward-float-up 1.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (min-width: 640px) {
@@ -550,6 +654,39 @@ a {
   }
 }
 
+@keyframes drill-bounce {
+  0% {
+    transform: scale(0.98);
+  }
+
+  45% {
+    transform: scale(1.02);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes drill-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-4px);
+  }
+
+  50% {
+    transform: translateX(4px);
+  }
+
+  75% {
+    transform: translateX(-3px);
+  }
+}
+
 @keyframes mascot-spark {
   0%,
   100% {
@@ -560,6 +697,45 @@ a {
   50% {
     transform: scale(1.06);
     opacity: 1;
+  }
+}
+
+@keyframes reward-float-up {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+
+  18% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  82% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-18px) scale(1.02);
+  }
+}
+
+@keyframes combo-pulse {
+  0% {
+    transform: scale(0.94);
+    box-shadow: 0 8px 16px -14px rgba(245, 158, 11, 0.42);
+  }
+
+  55% {
+    transform: scale(1.05);
+    box-shadow: 0 16px 24px -16px rgba(245, 158, 11, 0.6);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 12px 20px -18px rgba(245, 158, 11, 0.55);
   }
 }
 
@@ -582,6 +758,7 @@ a {
 
 .mascot-cat--celebrate {
   color: var(--color-secondary);
+  animation-duration: 2.2s;
 }
 
 .mascot-cat__spark {
@@ -590,9 +767,113 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .drill-option[data-state="correct"],
+  .drill-option[data-state="incorrect"],
   .mascot-cat,
-  .mascot-cat__spark {
+  .mascot-cat__spark,
+  .reward-float,
+  .combo-chip[data-active="true"] {
     animation: none;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0e1724;
+    --foreground: #edf4ff;
+    --color-primary: #4fd1c5;
+    --color-primary-hover: #6ee7db;
+    --color-secondary: #7dd3fc;
+    --color-secondary-soft: rgba(125, 211, 252, 0.12);
+    --color-success: #4ade80;
+    --color-success-soft: rgba(74, 222, 128, 0.14);
+    --color-error: #fb7185;
+    --color-error-soft: rgba(251, 113, 133, 0.14);
+    --color-border: rgba(148, 163, 184, 0.18);
+    --color-border-strong: rgba(148, 163, 184, 0.3);
+    --color-surface: #162234;
+    --color-surface-muted: #111b2b;
+    --color-surface-elevated: #1b2a3e;
+    --shadow-card: 0 18px 40px -30px rgba(2, 8, 23, 0.55);
+    --shadow-elevated: 0 28px 70px -44px rgba(2, 8, 23, 0.7);
+    --shadow-button: 0 20px 34px -20px rgba(2, 8, 23, 0.8);
+    --shadow-drill-card: 0 14px 28px -18px rgba(2, 8, 23, 0.5);
+    --shadow-drill-card-active: 0 18px 34px -18px rgba(2, 8, 23, 0.65);
+  }
+
+  .app-kicker,
+  .app-copy {
+    color: rgba(226, 232, 240, 0.72);
+  }
+
+  .progress-track {
+    border-color: rgba(255, 255, 255, 0.04);
+    background: linear-gradient(180deg, rgba(33, 47, 68, 0.98) 0%, rgba(25, 37, 55, 0.98) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.03),
+      inset 0 -1px 0 rgba(2, 8, 23, 0.32);
+  }
+
+  .drill-context-surface {
+    background: rgba(148, 163, 184, 0.08);
+  }
+
+  .drill-context-inline {
+    color: rgba(226, 232, 240, 0.78);
+  }
+
+  .drill-option:hover {
+    background: linear-gradient(180deg, #1d2c42 0%, #18263a 100%);
+  }
+
+  .drill-option[data-state="selected"] {
+    border-color: rgba(79, 209, 197, 0.42);
+    background: linear-gradient(180deg, rgba(79, 209, 197, 0.16) 0%, rgba(79, 209, 197, 0.24) 100%);
+    color: var(--foreground);
+  }
+
+  .drill-option[data-state="correct"] {
+    border-color: rgba(74, 222, 128, 0.44);
+    background: linear-gradient(180deg, rgba(74, 222, 128, 0.16) 0%, rgba(74, 222, 128, 0.24) 100%);
+  }
+
+  .drill-option[data-state="incorrect"] {
+    border-color: rgba(251, 113, 133, 0.42);
+    background: linear-gradient(180deg, rgba(251, 113, 133, 0.16) 0%, rgba(251, 113, 133, 0.24) 100%);
+  }
+
+  .drill-option-indicator {
+    border-color: rgba(148, 163, 184, 0.24);
+    background: rgba(15, 23, 42, 0.34);
+    color: rgba(226, 232, 240, 0.72);
+  }
+
+  .fixed-action-bar {
+    border-top-color: rgba(148, 163, 184, 0.14);
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.84) 0%, rgba(15, 23, 42, 0.95) 42%, rgba(15, 23, 42, 0.98) 100%);
+    box-shadow:
+      0 -18px 42px -30px rgba(2, 8, 23, 0.76),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  .combo-chip {
+    border-color: rgba(251, 191, 36, 0.18);
+    background: linear-gradient(180deg, rgba(120, 53, 15, 0.42) 0%, rgba(92, 40, 14, 0.48) 100%);
+    color: #fde68a;
+    box-shadow: 0 12px 20px -18px rgba(251, 191, 36, 0.35);
+  }
+
+  .drill-option-reward {
+    border-color: rgba(74, 222, 128, 0.16);
+    background: rgba(12, 18, 30, 0.92);
+    color: #86efac;
+    box-shadow:
+      0 18px 28px -24px rgba(74, 222, 128, 0.45),
+      0 10px 20px -18px rgba(2, 6, 23, 0.7);
+  }
+
+  .drill-option-reward__combo {
+    color: #fbbf24;
   }
 }
 

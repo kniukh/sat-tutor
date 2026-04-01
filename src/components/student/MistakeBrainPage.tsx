@@ -61,10 +61,10 @@ export default function MistakeBrainPage({
 
           <div className="flex flex-wrap gap-3">
             <Link
-              href={`/s/${data.student.accessCode}/mistake-replay`}
+              href={`/s/${data.student.accessCode}/vocabulary/drill?mode=review_weak_words&phase=endless_continuation`}
               className="primary-button bg-white text-slate-950 hover:bg-slate-100"
             >
-              Start Replay Session
+              Review Weak Words
             </Link>
             <Link href={`/s/${data.student.accessCode}`} className="secondary-button bg-white/90">
               Back to Dashboard
@@ -113,13 +113,13 @@ export default function MistakeBrainPage({
 
         <div className="mt-5 grid gap-3 lg:grid-cols-2">
           <Link
-            href={`/s/${data.student.accessCode}/mistake-replay`}
+            href={`/s/${data.student.accessCode}/vocabulary/drill?mode=review_weak_words&phase=endless_continuation`}
             className="primary-button h-auto justify-between rounded-[1.25rem] bg-white text-slate-950 hover:bg-slate-100 px-4 py-4 text-left"
           >
             <div className="space-y-1">
-              <div>Start Replay Session</div>
+              <div>Review Weak Words</div>
               <div className="text-xs font-medium leading-5 text-slate-600">
-                Repair recent mistakes with a short focused run.
+                Turn weak items into fast corrective practice.
               </div>
             </div>
           </Link>

@@ -25,6 +25,7 @@ type Props = {
   lessonId: string;
   passageId?: string;
   passageText: string;
+  highlightText?: string | null;
   knownWords?: KnownWord[];
   onCaptured?: (item: {
     itemText: string;
@@ -156,11 +157,31 @@ function clampCardPosition(x: number, y: number) {
   };
 }
 
+function findHighlightRange(passageText: string, highlightText: string | null | undefined) {
+  const snippet = highlightText?.trim();
+
+  if (!snippet) {
+    return null;
+  }
+
+  const start = passageText.toLowerCase().indexOf(snippet.toLowerCase());
+
+  if (start === -1) {
+    return null;
+  }
+
+  return {
+    start,
+    end: start + snippet.length,
+  };
+}
+
 export default function InteractivePassageReader({
   studentId,
   lessonId,
   passageId,
   passageText,
+  highlightText,
   knownWords = [],
   onCaptured,
   mode = "reference",
@@ -185,6 +206,10 @@ export default function InteractivePassageReader({
     }
     return map;
   }, [knownWords]);
+  const highlightRange = useMemo(
+    () => findHighlightRange(passageText, highlightText),
+    [passageText, highlightText]
+  );
 
   function handleMouseUp() {
     if (mode !== "capture" && mode !== "audio_review") {
@@ -505,12 +530,29 @@ export default function InteractivePassageReader({
 
   const renderedTokens = useMemo(() => {
     const tokens = tokenize(passageText);
+    let cursor = 0;
 
     return tokens.map((token, index) => {
+      const tokenStart = cursor;
+      const tokenEnd = tokenStart + token.length;
+      cursor = tokenEnd;
+
+      const isHighlighted =
+        highlightRange !== null &&
+        token.trim().length > 0 &&
+        tokenStart < highlightRange.end &&
+        tokenEnd > highlightRange.start;
       const normalized = normalizeWord(token);
 
       if (!normalized) {
-        return <span key={`${token}-${index}`}>{token}</span>;
+        return (
+          <span
+            key={`${token}-${index}`}
+            className={isHighlighted ? "reading-focus-highlight" : undefined}
+          >
+            {token}
+          </span>
+        );
       }
 
       const candidates = getWordCandidates(token);
@@ -530,6 +572,7 @@ export default function InteractivePassageReader({
         return (
           <span
             key={tokenKey}
+            className={isHighlighted ? "reading-focus-highlight" : undefined}
             onTouchStart={(event) => startLongPress(token, event.touches[0] ?? null)}
             onTouchEnd={clearLongPress}
             onTouchMove={clearLongPress}
@@ -545,7 +588,7 @@ export default function InteractivePassageReader({
       return (
         <span
           key={tokenKey}
-          className={`cursor-pointer ${getKnownWordTokenClass(known, mode)}`}
+          className={`cursor-pointer ${getKnownWordTokenClass(known, mode)} ${isHighlighted ? "reading-focus-highlight" : ""}`}
           onMouseEnter={(e) => {
             if (mode === "review") {
               openCard(e, known, false);
@@ -578,7 +621,7 @@ export default function InteractivePassageReader({
         </span>
       );
     });
-  }, [passageText, knownWordsMap, hoverCard?.pinned]);
+  }, [highlightRange, mode, passageText, knownWordsMap, hoverCard?.pinned]);
 
   return (
     <div className="relative space-y-3">

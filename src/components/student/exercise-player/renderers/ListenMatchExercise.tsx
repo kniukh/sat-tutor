@@ -8,6 +8,7 @@ export default function ListenMatchExercise({
   selectedValue,
   onSelect,
   submitted,
+  feedbackReward,
 }: ExerciseRendererProps<ListenMatchExerciseData>) {
   return (
     <div className="space-y-3">
@@ -21,6 +22,7 @@ export default function ListenMatchExercise({
         selectedOptionId={selectedValue || null}
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
+        feedbackReward={feedbackReward}
         onSelect={onSelect}
       />
     </div>

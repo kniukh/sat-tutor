@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { generateSatQuestionsFromPassage } from '@/services/ai/generate-sat-questions';
+import { generateChunkLessonPackage } from '@/services/ai/generate-chunk-lesson-package';
 
 function makeSlug(value: string) {
   return value
@@ -28,15 +28,17 @@ export async function createAiLessonFromGeneratedPassage(params: {
 }) {
   const supabase = await createServerSupabaseClient();
 
-  const { data: passage, error: passageError } = await supabase
+  const { data: initialPassage, error: passageError } = await supabase
     .from('generated_passages')
     .select('*')
     .eq('id', params.generatedPassageId)
     .single();
 
-  if (passageError || !passage) {
+  if (passageError || !initialPassage) {
     throw new Error('Generated passage not found');
   }
+
+  let passage = initialPassage;
 
   if (passage.lesson_id) {
     const { data: existingLesson, error: existingLessonError } = await supabase
@@ -65,6 +67,38 @@ export async function createAiLessonFromGeneratedPassage(params: {
   const chapterPrefix = passage.chapter_title ? `${passage.chapter_title} — ` : '';
   const lessonName = `${chapterPrefix}${baseName}`.slice(0, 120);
   const lessonSlug = `${makeSlug(lessonName)}-${Date.now()}`;
+  const generatedPackage = await generateChunkLessonPackage({
+    title: passage.title,
+    chapterTitle: passage.chapter_title,
+    passageText: passage.passage_text,
+    sourceType: source?.source_type ?? null,
+  });
+
+  const { data: updatedPassage } = await supabase
+    .from('generated_passages')
+    .update({
+      passage_role: generatedPackage.passage_role,
+      question_strategy: generatedPackage.question_strategy,
+      recommended_question_count: generatedPackage.recommended_question_count,
+      recommended_question_types: generatedPackage.recommended_question_types,
+      analyzer_reason: generatedPackage.analyzer_reason,
+      difficulty_level: generatedPackage.difficulty_level,
+      text_mode: generatedPackage.text_mode,
+      vocab_density: generatedPackage.vocab_density,
+      phrase_density: generatedPackage.phrase_density,
+      writing_prompt_worthy: generatedPackage.writing_prompt_worthy,
+      recommended_vocab_questions_count: generatedPackage.recommended_vocab_questions_count,
+      recommended_vocab_target_words: generatedPackage.recommended_vocab_target_words,
+      recommended_vocab_target_phrases: generatedPackage.recommended_vocab_target_phrases,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', passage.id)
+    .select()
+    .single();
+
+  if (updatedPassage) {
+    passage = updatedPassage;
+  }
 
   const { data: lesson, error: lessonError } = await supabase
     .from('lessons')
@@ -110,26 +144,7 @@ export async function createAiLessonFromGeneratedPassage(params: {
 
   const nextVersion = (existingQuestions?.[0]?.generation_version ?? 0) + 1;
 
-  const [satQuestions, vocabQuestions] = await Promise.all([
-    generateSatQuestionsFromPassage({
-      title: passage.title,
-      passageText: passage.passage_text,
-      passageRole: 'assessment',
-      questionStrategy: 'full_set',
-      recommendedQuestionCount: 2,
-      recommendedQuestionTypes: ['main_idea', 'detail', 'inference', 'tone'],
-    }),
-    generateSatQuestionsFromPassage({
-      title: passage.title,
-      passageText: passage.passage_text,
-      passageRole: 'assessment',
-      questionStrategy: 'full_set',
-      recommendedQuestionCount: 2,
-      recommendedQuestionTypes: ['vocabulary'],
-    }),
-  ]);
-
-  const questionRows = [...satQuestions.slice(0, 2), ...vocabQuestions.slice(0, 2)].map(
+  const questionRows = [...generatedPackage.sat_questions, ...generatedPackage.vocab_questions].map(
     (question, index) => ({
       lesson_id: lesson.id,
       question_type: question.question_type,

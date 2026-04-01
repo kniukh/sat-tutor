@@ -11,6 +11,7 @@ export default function SynonymExercise({
   onSelect,
   submitted,
   focused = false,
+  feedbackReward,
   renderCaptureText,
 }: ExerciseRendererProps<SynonymExerciseData>) {
   return (
@@ -36,6 +37,7 @@ export default function SynonymExercise({
         selectedOptionId={selectedValue || null}
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
+        feedbackReward={feedbackReward}
         onSelect={onSelect}
         renderOptionLabel={({ option, isDistractor }) =>
           renderCaptureText

@@ -15,7 +15,7 @@ type Question = {
   option_b: string;
   option_c: string;
   option_d: string;
-  correct_option?: string;
+  correct_option?: "A" | "B" | "C" | "D";
   explanation?: string | null;
   question_type: string;
 };
@@ -230,12 +230,6 @@ export default function LessonStagePanel({
                 className="app-button app-button-primary"
               >
                 Practice Lesson Words Now
-              </Link>
-              <Link
-                href={`/s/${accessCode}/mistake-replay`}
-                className="app-button app-button-secondary"
-              >
-                Replay Mistakes
               </Link>
               <Link
                 href={studioHref}

@@ -63,6 +63,7 @@ export default function ContextMeaningExercise({
   onSelect,
   submitted,
   focused = false,
+  feedbackReward,
   renderCaptureText,
 }: ExerciseRendererProps<ContextMeaningExerciseData>) {
   return (
@@ -84,6 +85,7 @@ export default function ContextMeaningExercise({
         selectedOptionId={selectedValue || null}
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
+        feedbackReward={feedbackReward}
         onSelect={onSelect}
         renderOptionLabel={({ option, isDistractor }) =>
           renderCaptureText

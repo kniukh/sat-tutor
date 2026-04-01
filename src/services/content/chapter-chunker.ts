@@ -72,5 +72,25 @@ export function chunkCleanChapterText(params: {
     flushChunk();
   }
 
-  return chunks;
+  if (chunks.length > 1) {
+    const lastChunk = chunks[chunks.length - 1];
+    const previousChunk = chunks[chunks.length - 2];
+    const smallTailThreshold = Math.max(120, Math.floor(minWords * 0.65));
+    const maxMergedWords = targetWords + Math.floor(minWords * 0.9);
+
+    if (
+      lastChunk.wordCount < smallTailThreshold ||
+      (lastChunk.wordCount < minWords &&
+        previousChunk.wordCount + lastChunk.wordCount <= maxMergedWords)
+    ) {
+      previousChunk.passageText = `${previousChunk.passageText}\n\n${lastChunk.passageText}`.trim();
+      previousChunk.wordCount = countWords(previousChunk.passageText);
+      chunks.pop();
+    }
+  }
+
+  return chunks.map((chunk, index) => ({
+    ...chunk,
+    chunkIndexWithinChapter: index,
+  }));
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { StudentVocabularyAnalytics } from "@/services/analytics/vocabulary-analytics.service";
 import type { StudentWeeklyLeaderboard } from "@/services/gamification/leaderboards.service";
+import FeedbackSettingsButton from "./FeedbackSettingsButton";
 
 type CurrentBook = {
   id: string;
@@ -76,6 +77,7 @@ export default function StudentDashboardOverview({
             >
               View Insights
             </Link>
+            <FeedbackSettingsButton tone="dark" />
           </div>
         </div>
 

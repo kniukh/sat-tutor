@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { analyzeGeneratedPassage } from '@/services/ai/analyze-generated-passage';
+import { analyzeGeneratedPassageV2 } from '@/services/ai/analyze-generated-passage-v2';
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -20,8 +20,9 @@ export async function POST(request: Request) {
 
   let analysis;
   try {
-    analysis = await analyzeGeneratedPassage({
+    analysis = await analyzeGeneratedPassageV2({
       title: passage.title,
+      chapterTitle: passage.chapter_title,
       passageText: passage.passage_text,
     });
   } catch (error: any) {
@@ -39,6 +40,14 @@ export async function POST(request: Request) {
       recommended_question_count: analysis.recommended_question_count,
       recommended_question_types: analysis.recommended_question_types,
       analyzer_reason: analysis.analyzer_reason,
+      difficulty_level: analysis.difficulty_level,
+      text_mode: analysis.text_mode,
+      vocab_density: analysis.vocab_density,
+      phrase_density: analysis.phrase_density,
+      writing_prompt_worthy: analysis.writing_prompt_worthy,
+      recommended_vocab_questions_count: analysis.recommended_vocab_questions_count,
+      recommended_vocab_target_words: analysis.recommended_vocab_target_words,
+      recommended_vocab_target_phrases: analysis.recommended_vocab_target_phrases,
       updated_at: new Date().toISOString(),
     })
     .eq('id', generatedPassageId)

@@ -26,6 +26,22 @@ export type VocabularySessionRewardCredit = {
     streakDays: number;
     longestStreakDays: number;
   } | null;
+  progress?: {
+    previousLevel: number;
+    currentLevel: number;
+    leveledUp: boolean;
+    previousStreakDays: number;
+    currentStreakDays: number;
+  } | null;
+};
+
+export type VocabularySessionGamificationSummary = {
+  totalXpEarned: number;
+  maxCombo: number;
+  wordsImprovedCount: number;
+  leveledUp: boolean;
+  previousLevel: number | null;
+  currentLevel: number | null;
 };
 
 export type VocabularySessionResultsSummary = {
@@ -52,6 +68,7 @@ export type VocabularySessionResultsSummary = {
   advancedWords: string[];
   reward: VocabularySessionRewardBreakdown;
   streakMessage: string | null;
+  sessionGamification: VocabularySessionGamificationSummary | null;
 };
 
 function uniqueWords(words: Array<string | null | undefined>) {
@@ -150,6 +167,7 @@ export function buildVocabularySessionResultsSummary(params: {
   results: ExerciseResult[];
   progressSignals?: VocabularySessionProgressSignal[];
   rewardCredit?: VocabularySessionRewardCredit | null;
+  sessionGamification?: VocabularySessionGamificationSummary | null;
 }) {
   const completedCount = params.results.length || params.session.metadata.actual_size;
   const correctResults = params.results.filter((result) => result.is_correct);
@@ -237,5 +255,6 @@ export function buildVocabularySessionResultsSummary(params: {
         sessionPhase: params.session.metadata.session_phase,
       }),
     streakMessage: buildStreakMessage(params.rewardCredit),
+    sessionGamification: params.sessionGamification ?? null,
   } satisfies VocabularySessionResultsSummary;
 }

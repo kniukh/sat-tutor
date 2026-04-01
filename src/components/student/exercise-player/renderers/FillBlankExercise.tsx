@@ -11,6 +11,7 @@ export default function FillBlankExercise({
   onSelect,
   submitted,
   focused = false,
+  feedbackReward,
   renderCaptureText,
 }: ExerciseRendererProps<FillBlankExerciseData>) {
   return (
@@ -36,6 +37,7 @@ export default function FillBlankExercise({
         selectedOptionId={selectedValue || null}
         correctOptionId={getExerciseCorrectAnswer(exercise)}
         submitted={submitted}
+        feedbackReward={feedbackReward}
         onSelect={onSelect}
         renderOptionLabel={({ option, isDistractor }) =>
           renderCaptureText

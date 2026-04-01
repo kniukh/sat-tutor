@@ -62,8 +62,17 @@ export async function POST(request: Request) {
             longestStreakDays: Number(
               existingMetadata.rewarded_longest_streak_days ??
                 existingMetadata.rewarded_streak_days ??
-                0
+              0
             ),
+          },
+          progress: {
+            previousLevel: Number(existingMetadata.rewarded_previous_level ?? existingMetadata.rewarded_level ?? 1),
+            currentLevel: Number(existingMetadata.rewarded_level ?? 1),
+            leveledUp: Boolean(existingMetadata.rewarded_leveled_up ?? false),
+            previousStreakDays: Number(
+              existingMetadata.rewarded_previous_streak_days ?? existingMetadata.rewarded_streak_days ?? 0
+            ),
+            currentStreakDays: Number(existingMetadata.rewarded_streak_days ?? 0),
           },
         },
       });
@@ -89,7 +98,12 @@ export async function POST(request: Request) {
       xp_breakdown: finalizedXpBreakdown,
       rewarded_total_xp: Number(gamification?.xp ?? 0),
       rewarded_level: Number(gamification?.level ?? 1),
+      rewarded_previous_level: Number(xpReward.progress?.previousLevel ?? gamification?.level ?? 1),
+      rewarded_leveled_up: Boolean(xpReward.progress?.leveledUp),
       rewarded_streak_days: Number(gamification?.streak_days ?? 0),
+      rewarded_previous_streak_days: Number(
+        xpReward.progress?.previousStreakDays ?? gamification?.streak_days ?? 0
+      ),
       rewarded_longest_streak_days: Number(
         (gamification as Record<string, unknown> | null)?.longest_streak_days ??
           gamification?.streak_days ??
@@ -129,6 +143,7 @@ export async function POST(request: Request) {
               0
           ),
         },
+        progress: xpReward.progress,
       },
     });
   } catch (error: any) {

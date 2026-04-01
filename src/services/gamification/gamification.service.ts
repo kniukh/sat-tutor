@@ -224,6 +224,13 @@ export async function awardStudentXpEvent(params: {
         xpAwarded: Number(existingEvent.xp_awarded ?? 0),
         event: existingEvent,
         deduplicated: true,
+        progress: {
+          previousLevel: Number(gamification.level ?? 1),
+          currentLevel: Number(gamification.level ?? 1),
+          leveledUp: false,
+          previousStreakDays: Number(gamification.streak_days ?? 0),
+          currentStreakDays: Number(gamification.streak_days ?? 0),
+        },
       };
     }
   }
@@ -339,6 +346,13 @@ export async function awardStudentXpEvent(params: {
     xpAwarded: normalizedXpToAdd,
     event: createdEvent,
     deduplicated: false,
+    progress: {
+      previousLevel: Number(current.level ?? calculateLevel(Number(current.total_xp ?? current.xp ?? 0))),
+      currentLevel: level,
+      leveledUp: level > Number(current.level ?? calculateLevel(Number(current.total_xp ?? current.xp ?? 0))),
+      previousStreakDays: Number(current.streak_days ?? 0),
+      currentStreakDays: streakDays,
+    },
   };
 }
 

@@ -1,4 +1,5 @@
 import { openai } from '@/lib/openai';
+import { shuffleQuestionOptions } from '@/services/ai/shuffle-question-options';
 
 type GeneratedQuestion = {
   question_type: 'main_idea' | 'detail' | 'inference' | 'vocabulary' | 'tone';
@@ -147,5 +148,5 @@ ${input.passageText}
   const questions = extractJson(text);
   validateQuestions(questions);
 
-  return questions;
+  return questions.map((question) => shuffleQuestionOptions(question));
 }

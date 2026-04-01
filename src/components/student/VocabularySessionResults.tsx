@@ -1,18 +1,19 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import MascotCat from "@/components/student/MascotCat";
+import FeedbackSettingsButton from "@/components/student/FeedbackSettingsButton";
 import type { VocabExerciseSession } from "@/services/vocabulary/session-builder";
 import type { ExerciseResult } from "@/components/student/exercise-player";
 import {
   buildVocabularySessionResultsSummary,
+  type VocabularySessionGamificationSummary,
   type VocabularySessionProgressSignal,
   type VocabularySessionRewardCredit,
 } from "@/services/vocabulary/session-results.service";
-
-function formatModeLabel(mode: VocabExerciseSession["mode"]) {
-  return mode.replace(/_/g, " ");
-}
+import { triggerFeedbackCue } from "@/services/feedback/feedback-effects.client";
+import { useFeedbackSettings } from "@/services/feedback/use-feedback-settings";
 
 export default function VocabularySessionResults({
   session,
@@ -20,6 +21,7 @@ export default function VocabularySessionResults({
   accessCode,
   progressSignals,
   rewardCredit,
+  sessionGamification,
   isRewardPending = false,
   focused = false,
 }: {
@@ -28,24 +30,36 @@ export default function VocabularySessionResults({
   accessCode: string;
   progressSignals?: VocabularySessionProgressSignal[];
   rewardCredit?: VocabularySessionRewardCredit | null;
+  sessionGamification?: VocabularySessionGamificationSummary | null;
   isRewardPending?: boolean;
   focused?: boolean;
 }) {
+  const completionPlayedRef = useRef(false);
+  const { settings: feedbackSettings } = useFeedbackSettings();
   const summary = buildVocabularySessionResultsSummary({
     session,
     results,
     progressSignals,
     rewardCredit,
+    sessionGamification,
   });
   const continueHref = `/s/${accessCode}/vocabulary/drill?mode=${session.mode}&phase=endless_continuation`;
   const weakWordsHref = `/s/${accessCode}/vocabulary?mode=review_weak_words&phase=endless_continuation`;
   const insightsHref = `/s/${accessCode}/mistake-brain`;
-  const replayHref = `/s/${accessCode}/mistake-replay`;
+
+  useEffect(() => {
+    if (completionPlayedRef.current) {
+      return;
+    }
+
+    completionPlayedRef.current = true;
+    triggerFeedbackCue("completion", feedbackSettings);
+  }, [feedbackSettings]);
 
   const sessionHighlights = [
     {
       label: "XP",
-      value: `+${summary.reward.totalXp}`,
+      value: `+${summary.sessionGamification?.totalXpEarned ?? summary.reward.totalXp}`,
       hint:
         summary.reward.accuracyBonusXp > 0 || summary.reward.dueReviewBonusXp > 0
           ? "Includes session bonuses"
@@ -57,14 +71,17 @@ export default function VocabularySessionResults({
       hint: `${summary.incorrectCount} missed`,
     },
     {
-      label: "Words reviewed",
-      value: String(summary.wordsReviewedCount),
-      hint: "Unique words touched",
+      label: "Max combo",
+      value:
+        summary.sessionGamification && summary.sessionGamification.maxCombo > 0
+          ? `x${summary.sessionGamification.maxCombo}`
+          : "x0",
+      hint: "Best run this session",
     },
     {
-      label: "Mode",
-      value: formatModeLabel(session.mode),
-      hint: "Current session path",
+      label: "Words improved",
+      value: String(summary.sessionGamification?.wordsImprovedCount ?? summary.advancedWords.length),
+      hint: "Moved forward today",
     },
   ];
 
@@ -122,6 +139,11 @@ export default function VocabularySessionResults({
           <h2 className="app-heading-lg text-[2rem]">{summary.completionTitle}</h2>
           <p className="text-base leading-7 text-slate-600">{summary.completionSubtitle}</p>
           <p className="app-copy font-medium">{summary.rewardNote}</p>
+          {summary.sessionGamification?.leveledUp ? (
+            <div className="rounded-full border border-[var(--color-secondary)] bg-[var(--color-secondary-soft)] px-3 py-1 text-xs font-semibold text-[var(--color-secondary)]">
+              {`Level ${summary.sessionGamification.currentLevel ?? 1} reached`}
+            </div>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -135,9 +157,38 @@ export default function VocabularySessionResults({
             <div className="app-kicker text-slate-500">
               XP
             </div>
-            <div className="mt-2 text-3xl font-semibold text-slate-950">+{summary.reward.totalXp}</div>
+            <div className="mt-2 text-3xl font-semibold text-slate-950">
+              +{summary.sessionGamification?.totalXpEarned ?? summary.reward.totalXp}
+            </div>
           </div>
         </div>
+
+        {summary.sessionGamification ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="app-card-soft p-4">
+              <div className="app-kicker text-slate-500">Max combo</div>
+              <div className="mt-2 text-3xl font-semibold text-slate-950">
+                {summary.sessionGamification.maxCombo > 0 ? `x${summary.sessionGamification.maxCombo}` : "x0"}
+              </div>
+            </div>
+            <div className="app-card-soft p-4">
+              <div className="app-kicker text-slate-500">Words improved</div>
+              <div className="mt-2 text-3xl font-semibold text-slate-950">
+                {summary.sessionGamification.wordsImprovedCount}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {summary.sessionGamification?.leveledUp ? (
+          <div className="rounded-[1.5rem] border border-[var(--color-secondary)] bg-[var(--color-secondary-soft)] px-4 py-4 text-left">
+            <div className="text-sm font-semibold text-slate-950">Level up</div>
+            <div className="mt-1 text-sm leading-6 text-slate-700">
+              You moved from level {summary.sessionGamification.previousLevel ?? 1} to level{" "}
+              {summary.sessionGamification.currentLevel ?? 1}.
+            </div>
+          </div>
+        ) : null}
 
         <div className="space-y-3 pt-2">
           <Link
@@ -153,12 +204,6 @@ export default function VocabularySessionResults({
             Review Weak Words
           </Link>
           <Link
-            href={replayHref}
-            className="app-button app-button-secondary flex w-full"
-          >
-            Replay Mistakes
-          </Link>
-          <Link
             href={`/s/${accessCode}/vocabulary?mode=${session.mode}`}
             className="app-button app-button-muted flex w-full"
           >
@@ -170,6 +215,9 @@ export default function VocabularySessionResults({
           >
             View your weak areas
           </Link>
+          <div className="flex justify-center">
+            <FeedbackSettingsButton label="Feedback settings" />
+          </div>
         </div>
       </div>
     );
@@ -189,6 +237,11 @@ export default function VocabularySessionResults({
           {summary.completionSubtitle} {summary.accuracyTone}
         </p>
         <p className="app-copy font-medium">{summary.rewardNote}</p>
+        {summary.sessionGamification?.leveledUp ? (
+          <div className="rounded-full border border-[var(--color-secondary)] bg-[var(--color-secondary-soft)] px-3 py-1 text-xs font-semibold text-[var(--color-secondary)]">
+            {`Level ${summary.sessionGamification.currentLevel ?? 1} reached`}
+          </div>
+        ) : null}
         <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
             {summary.completedCount} exercises
@@ -231,7 +284,7 @@ export default function VocabularySessionResults({
               Lifecycle moves
             </div>
             <div className="mt-2 text-2xl font-semibold text-slate-950">
-              {summary.advancedWords.length}
+              {summary.sessionGamification?.wordsImprovedCount ?? summary.advancedWords.length}
             </div>
           </div>
           <div className="rounded-[20px] border border-slate-200 bg-white p-4">
@@ -315,12 +368,6 @@ export default function VocabularySessionResults({
             {summary.continueLabel}
           </Link>
           <Link
-            href={replayHref}
-            className="app-button app-button-secondary"
-          >
-            Replay mistakes
-          </Link>
-          <Link
             href={weakWordsHref}
             className="app-button app-button-secondary"
           >
@@ -340,6 +387,9 @@ export default function VocabularySessionResults({
           >
             View your weak areas
           </Link>
+        </div>
+        <div>
+          <FeedbackSettingsButton label="Feedback settings" />
         </div>
       </div>
     </div>

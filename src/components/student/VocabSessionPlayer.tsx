@@ -12,8 +12,17 @@ import { persistExerciseAttempt } from '@/services/vocabulary/exercise-attempt-c
 import { finalizeVocabularySession } from '@/services/vocabulary/session-complete-client.service';
 import type {
   VocabularySessionProgressSignal,
+  VocabularySessionGamificationSummary,
   VocabularySessionRewardCredit,
 } from '@/services/vocabulary/session-results.service';
+
+type FloatingReward = {
+  id: string;
+  xp: number;
+  comboCount: number;
+  comboMultiplier: number;
+  leveledUp: boolean;
+};
 
 export default function VocabSessionPlayer({
   session,
@@ -33,6 +42,10 @@ export default function VocabSessionPlayer({
   const [completedResults, setCompletedResults] = useState<ExerciseResult[]>([]);
   const [progressSignals, setProgressSignals] = useState<VocabularySessionProgressSignal[]>([]);
   const [rewardCredit, setRewardCredit] = useState<VocabularySessionRewardCredit | null>(null);
+  const [sessionXpEarned, setSessionXpEarned] = useState(0);
+  const [currentCombo, setCurrentCombo] = useState(0);
+  const [maxCombo, setMaxCombo] = useState(0);
+  const [floatingReward, setFloatingReward] = useState<FloatingReward | null>(null);
 
   async function submitExerciseAttempt(result: ExerciseResult) {
     const sourceExercise = session.ordered_exercises.find(
@@ -63,11 +76,39 @@ export default function VocabSessionPlayer({
           },
         ]);
 
+        const xpReward = persisted.xpReward;
+        const xpAwarded = Math.max(0, Number(xpReward?.xpAwarded ?? 0));
+        const comboCount = Math.max(
+          0,
+          Number(xpReward?.breakdown?.comboCountAfter ?? (result.is_correct ? currentCombo + 1 : 0))
+        );
+        const comboMultiplier = Number(xpReward?.breakdown?.comboMultiplier ?? 1);
+        const leveledUp = Boolean(xpReward?.progress?.leveledUp);
+
+        setSessionXpEarned((prev) => prev + xpAwarded);
+        setCurrentCombo(result.is_correct ? comboCount : 0);
+        setMaxCombo((prev) => Math.max(prev, result.is_correct ? comboCount : prev));
+
+        if (xpAwarded > 0) {
+          const rewardId = `${result.exercise_id}-${Date.now()}`;
+          setFloatingReward({
+            id: rewardId,
+            xp: xpAwarded,
+            comboCount,
+            comboMultiplier,
+            leveledUp,
+          });
+          window.setTimeout(() => {
+            setFloatingReward((current) => (current?.id === rewardId ? null : current));
+          }, 1600);
+        }
+
         if (process.env.NODE_ENV !== 'production') {
           console.debug('Saved vocab exercise attempt', {
             attempt: saved,
             progress: persisted.progress,
             progressError: persisted.progressError,
+            xpReward: persisted.xpReward,
           });
         }
       }
@@ -101,6 +142,7 @@ export default function VocabSessionPlayer({
           accuracy,
         });
         setRewardCredit(reward);
+        setSessionXpEarned((prev) => prev + Math.max(0, Number(reward?.xp?.totalXp ?? 0)));
       } catch (error) {
         console.error('Failed to finalize vocabulary session reward', error);
       } finally {
@@ -110,6 +152,25 @@ export default function VocabSessionPlayer({
   }
 
   if (done) {
+    const wordsImprovedCount = new Set(
+      progressSignals
+        .filter(
+          (signal) =>
+            Boolean(signal.targetWord) &&
+            Boolean(signal.nextLifecycleState) &&
+            signal.previousLifecycleState !== signal.nextLifecycleState
+        )
+        .map((signal) => signal.targetWord)
+    ).size;
+    const sessionGamification: VocabularySessionGamificationSummary = {
+      totalXpEarned: sessionXpEarned,
+      maxCombo,
+      wordsImprovedCount,
+      leveledUp: Boolean(rewardCredit?.progress?.leveledUp),
+      previousLevel: rewardCredit?.progress?.previousLevel ?? null,
+      currentLevel: rewardCredit?.progress?.currentLevel ?? rewardCredit?.gamification?.level ?? null,
+    };
+
     return (
       <div className="space-y-4">
         <VocabularySessionResults
@@ -118,6 +179,7 @@ export default function VocabSessionPlayer({
           accessCode={accessCode}
           progressSignals={progressSignals}
           rewardCredit={rewardCredit}
+          sessionGamification={sessionGamification}
           isRewardPending={isFinalizingReward}
           focused={focused}
         />
@@ -140,6 +202,8 @@ export default function VocabSessionPlayer({
         }}
         focused={focused}
         captureStudentId={studentId}
+        comboCount={currentCombo}
+        floatingReward={floatingReward}
         onExerciseComplete={handleExerciseComplete}
         onComplete={handleComplete}
       />

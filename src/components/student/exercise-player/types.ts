@@ -48,5 +48,12 @@ export type ExerciseRendererProps<TExercise extends Exercise = Exercise> = {
   onSelect: (value: string) => void;
   submitted: boolean;
   focused?: boolean;
+  feedbackReward?: {
+    id: string;
+    xp: number;
+    comboCount: number;
+    comboMultiplier: number;
+    leveledUp: boolean;
+  } | null;
   renderCaptureText?: (params: ExerciseCaptureRenderParams) => ReactNode;
 };

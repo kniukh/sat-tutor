@@ -4,6 +4,7 @@ import {
   getStudentGamificationSnapshot,
 } from "@/services/gamification/gamification.service";
 import {
+  calculateReadingMistakeFixXp,
   calculateReadingLessonCompletionXp,
   calculateReadingQuestionXp,
   calculateVocabularyExerciseXp,
@@ -62,6 +63,66 @@ async function getVocabularyWordSessionStats(params: {
   };
 }
 
+async function getVocabularySessionComboCount(params: {
+  studentId: string;
+  sessionId: string;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("exercise_attempts")
+    .select("is_correct")
+    .eq("student_id", params.studentId)
+    .eq("session_id", params.sessionId)
+    .order("created_at", { ascending: false })
+    .limit(16);
+
+  if (error) {
+    throw error;
+  }
+
+  let combo = 0;
+
+  for (const attempt of data ?? []) {
+    if (!attempt?.is_correct) {
+      break;
+    }
+
+    combo += 1;
+  }
+
+  return combo;
+}
+
+async function getReadingLessonComboCount(params: {
+  studentId: string;
+  lessonId: string;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("question_attempts")
+    .select("is_correct")
+    .eq("student_id", params.studentId)
+    .eq("lesson_id", params.lessonId)
+    .order("answered_at", { ascending: false })
+    .limit(16);
+
+  if (error) {
+    throw error;
+  }
+
+  let combo = 0;
+
+  for (const attempt of data ?? []) {
+    if (!attempt?.is_correct) {
+      break;
+    }
+
+    combo += 1;
+  }
+
+  return combo;
+}
+
 async function getRecentMicroSessionCount(params: {
   studentId: string;
   sessionId: string;
@@ -109,11 +170,14 @@ export async function awardVocabularyExerciseXp(params: {
     targetWordId: params.attempt.target_word_id,
     targetWord: params.attempt.target_word,
   });
+  const comboCountAfter = await getVocabularySessionComboCount({
+    studentId: params.studentId,
+    sessionId: params.attempt.session_id,
+  });
   const breakdown = calculateVocabularyExerciseXp({
-    exerciseType: params.attempt.exercise_type,
     isCorrect: params.attempt.is_correct,
-    lifecycleState: inferLifecycleState(params.exercise, params.resultingLifecycleState),
-    exposureIndex: sessionWordStats.exposureIndex,
+    attemptCount: Number(params.attempt.attempt_count ?? 1),
+    comboCountAfter,
     alreadyAwardedForWordThisSession: sessionWordStats.alreadyAwardedForWordThisSession,
     sameSessionCreditCapped: params.sameSessionCreditCapped,
   });
@@ -132,16 +196,16 @@ export async function awardVocabularyExerciseXp(params: {
       modality: params.attempt.modality,
       difficultyBand: params.attempt.difficulty_band,
       isCorrect: params.attempt.is_correct,
+      attemptCount: params.attempt.attempt_count,
       reviewMeta: {
-        lifecycleState: params.exercise.reviewMeta?.lifecycleState ?? null,
+        lifecycleState: inferLifecycleState(params.exercise, params.resultingLifecycleState),
         queueBucket: params.exercise.reviewMeta?.queueBucket ?? null,
         continuationSourceBucket: params.exercise.reviewMeta?.continuationSourceBucket ?? null,
         sessionPhase: params.exercise.reviewMeta?.sessionPhase ?? null,
         adaptiveDifficultyBand: params.exercise.reviewMeta?.adaptiveDifficultyBand ?? null,
       },
       antiAbuse: {
-        exposureIndex: breakdown.exposureIndex,
-        repetitionMultiplier: breakdown.repetitionMultiplier,
+        exposureIndex: sessionWordStats.exposureIndex,
         sameSessionMultiplier: breakdown.sameSessionMultiplier,
         alreadyAwardedForWordThisSession: breakdown.alreadyAwardedForWordThisSession,
         perWordSessionCap: breakdown.perWordSessionCap,
@@ -173,8 +237,11 @@ export async function awardReadingQuestionXp(params: {
   isCorrect: boolean;
 }) {
   const breakdown = calculateReadingQuestionXp({
-    questionType: params.questionType,
     isCorrect: params.isCorrect,
+    comboCountAfter: await getReadingLessonComboCount({
+      studentId: params.studentId,
+      lessonId: params.lessonId,
+    }),
   });
   const reward = await awardStudentXpEvent({
     studentId: params.studentId,
@@ -187,6 +254,40 @@ export async function awardReadingQuestionXp(params: {
       questionId: params.questionId,
       questionType: params.questionType ?? null,
       isCorrect: params.isCorrect,
+      xpBreakdown: breakdown,
+    },
+  });
+
+  return {
+    ...reward,
+    breakdown,
+  } satisfies {
+    breakdown: ReadingQuestionXpBreakdown;
+    gamification: Awaited<ReturnType<typeof getStudentGamificationSnapshot>>;
+    xpAwarded: number;
+    event: unknown;
+    deduplicated: boolean;
+  };
+}
+
+export async function awardReadingMistakeFixXp(params: {
+  studentId: string;
+  lessonId: string;
+  questionId: string;
+  comboCountAfter: number;
+}) {
+  const breakdown = calculateReadingMistakeFixXp({
+    comboCountAfter: params.comboCountAfter,
+  });
+  const reward = await awardStudentXpEvent({
+    studentId: params.studentId,
+    xpToAdd: breakdown.totalXp,
+    eventType: "generic_activity",
+    eventKey: `reading-mistake-fix:${params.lessonId}:${params.questionId}`,
+    lessonId: params.lessonId,
+    metadata: {
+      rewardKind: "reading_mistake_fix",
+      questionId: params.questionId,
       xpBreakdown: breakdown,
     },
   });

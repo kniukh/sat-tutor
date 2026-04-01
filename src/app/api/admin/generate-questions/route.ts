@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { generateSatQuestionsFromPassage } from '@/services/ai/generate-sat-questions';
+import { generateChunkLessonPackage } from '@/services/ai/generate-chunk-lesson-package';
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -26,15 +26,17 @@ export async function POST(request: Request) {
     .eq('lesson_id', lessonId)
     .maybeSingle();
 
-  let generatedQuestions;
+  let generatedPackage;
   try {
-    generatedQuestions = await generateSatQuestionsFromPassage({
+    generatedPackage = await generateChunkLessonPackage({
       title: lessonPassage.title,
       passageText: lessonPassage.passage_text,
-      passageRole: generatedPassage?.passage_role ?? 'assessment',
-      questionStrategy: generatedPassage?.question_strategy ?? 'full_set',
-      recommendedQuestionCount: generatedPassage?.recommended_question_count ?? 5,
-      recommendedQuestionTypes: generatedPassage?.recommended_question_types ?? [],
+      sourceType:
+        lessonPassage.passage_kind === 'poem'
+          ? 'poem'
+          : lessonPassage.passage_kind === 'article'
+            ? 'article'
+            : 'book',
     });
   } catch (error: any) {
     return NextResponse.json(
@@ -43,13 +45,26 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!generatedQuestions || generatedQuestions.length === 0) {
-    return NextResponse.json({
-      success: true,
-      count: 0,
-      skipped: true,
-      message: 'Passage strategy indicates no questions should be generated.',
-    });
+  if (generatedPassage?.id) {
+    await supabase
+      .from('generated_passages')
+      .update({
+        passage_role: generatedPackage.passage_role,
+        question_strategy: generatedPackage.question_strategy,
+        recommended_question_count: generatedPackage.recommended_question_count,
+        recommended_question_types: generatedPackage.recommended_question_types,
+        analyzer_reason: generatedPackage.analyzer_reason,
+        difficulty_level: generatedPackage.difficulty_level,
+        text_mode: generatedPackage.text_mode,
+        vocab_density: generatedPackage.vocab_density,
+        phrase_density: generatedPackage.phrase_density,
+        writing_prompt_worthy: generatedPackage.writing_prompt_worthy,
+        recommended_vocab_questions_count: generatedPackage.recommended_vocab_questions_count,
+        recommended_vocab_target_words: generatedPackage.recommended_vocab_target_words,
+        recommended_vocab_target_phrases: generatedPackage.recommended_vocab_target_phrases,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', generatedPassage.id);
   }
 
   const { data: existingQuestions } = await supabase
@@ -61,7 +76,7 @@ export async function POST(request: Request) {
 
   const nextVersion = (existingQuestions?.[0]?.generation_version ?? 0) + 1;
 
-  const rows = generatedQuestions.map((q, index) => ({
+  const rows = [...generatedPackage.sat_questions, ...generatedPackage.vocab_questions].map((q, index) => ({
     lesson_id: lessonId,
     question_type: q.question_type,
     question_text: q.question_text,

@@ -26,6 +26,31 @@ export type PersistExerciseAttemptResponse = {
       }
     | null;
   progressError: string | null;
+  xpReward:
+    | {
+        xpAwarded?: number;
+        breakdown?: {
+          baseXp?: number;
+          actionLabel?: string;
+          comboCountAfter?: number;
+          comboMultiplier?: number;
+          totalXp?: number;
+        } | null;
+        progress?: {
+          previousLevel?: number;
+          currentLevel?: number;
+          leveledUp?: boolean;
+          previousStreakDays?: number;
+          currentStreakDays?: number;
+        } | null;
+        gamification?: {
+          xp?: number;
+          level?: number;
+          streak_days?: number;
+          longest_streak_days?: number;
+        } | null;
+      }
+    | null;
 };
 
 export async function persistExerciseAttempt(params: {
@@ -49,5 +74,6 @@ export async function persistExerciseAttempt(params: {
     attempt: (payload?.data ?? null) as ExerciseAttemptRow | null,
     progress: payload?.progress ?? null,
     progressError: payload?.progressError ?? null,
+    xpReward: payload?.xpReward ?? null,
   } satisfies PersistExerciseAttemptResponse;
 }

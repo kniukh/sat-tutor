@@ -5,6 +5,7 @@ type Props = {
   canSubmit: boolean;
   isLast: boolean;
   isAdvancing?: boolean;
+  continueLocked?: boolean;
   helperText?: string | null;
   focused?: boolean;
   feedback: {
@@ -13,6 +14,7 @@ type Props = {
     selectedAnswer?: string;
     correctAnswer?: string;
     answerLabel?: string;
+    streakCount?: number;
   } | null;
   onCheck: () => void;
   onContinue: () => void;
@@ -23,6 +25,7 @@ export default function ExercisePlayerFooter({
   canSubmit,
   isLast,
   isAdvancing = false,
+  continueLocked = false,
   helperText,
   focused = false,
   feedback,
@@ -32,12 +35,19 @@ export default function ExercisePlayerFooter({
   const toneClass = feedback?.isCorrect
     ? "border-emerald-200 bg-emerald-50 text-emerald-950"
     : "border-rose-200 bg-rose-50 text-rose-950";
-  const feedbackTitle = feedback?.isCorrect ? "Nice work." : "Not quite.";
+  const hasHotStreak = (feedback?.streakCount ?? 0) >= 3;
+  const feedbackTitle = feedback?.isCorrect
+    ? hasHotStreak
+      ? "Hot streak."
+      : "Nice work."
+    : "Not quite.";
   const feedbackHint = feedback?.isCorrect
-    ? "Locked in. Keep the pace going."
+    ? hasHotStreak
+      ? `${feedback?.streakCount} correct in a row. Keep the rhythm.`
+      : "Locked in. Keep the pace going."
     : "You still get the next rep right away, so keep the rhythm.";
   const focusedButtonClass =
-    "min-h-14 w-full rounded-[1.125rem] bg-[var(--color-primary)] px-5 py-3 text-base font-semibold text-white shadow-[var(--shadow-button)] transition-all duration-150 hover:bg-[var(--color-primary-hover)] active:scale-[0.99] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-500";
+    "min-h-14 w-full rounded-[1.25rem] bg-[var(--color-primary)] px-5 py-3 text-base font-semibold text-white shadow-[var(--shadow-button)] transition-all duration-150 hover:bg-[var(--color-primary-hover)] active:translate-y-[1px] active:scale-[0.985] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-500";
 
   return (
     <div className={focused ? "fixed-action-bar" : "-mx-4 border-t border-slate-200 bg-white/95 px-4 pb-4 pt-3 backdrop-blur sm:-mx-0 sm:rounded-b-[24px] sm:border sm:px-5 sm:pb-5"}>
@@ -54,14 +64,21 @@ export default function ExercisePlayerFooter({
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-3">
-              <MascotCat mood={feedback.isCorrect ? "correct" : "incorrect"} size="sm" />
-              <div>
-                <div className="text-sm font-semibold">{feedbackTitle}</div>
-                <div className="text-xs text-current/70">
-                  {feedback.isCorrect ? "The cat approves." : "The cat is still with you."}
+                <MascotCat
+                  mood={feedback.isCorrect ? (hasHotStreak ? "celebrate" : "correct") : "incorrect"}
+                  size="sm"
+                />
+                <div>
+                  <div className="text-sm font-semibold">{feedbackTitle}</div>
+                  <div className="text-xs text-current/70">
+                    {feedback.isCorrect
+                      ? hasHotStreak
+                        ? "The cat is fully locked in."
+                        : "The cat approves."
+                      : "The cat is still with you."}
+                  </div>
                 </div>
               </div>
-            </div>
             {!focused ? (
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-current/70">
                 Press Enter to continue
@@ -117,7 +134,7 @@ export default function ExercisePlayerFooter({
             className={`rounded-2xl px-5 py-3 text-sm font-semibold text-white transition-all duration-150 active:scale-[0.99] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-500 ${
               focused
                 ? focusedButtonClass
-                : "min-w-32 bg-slate-950 hover:bg-slate-800"
+                : "min-w-32 bg-[var(--color-primary)] shadow-[var(--shadow-button)] hover:bg-[var(--color-primary-hover)] active:translate-y-[1px] active:scale-[0.985]"
             }`}
           >
             Check
@@ -125,7 +142,7 @@ export default function ExercisePlayerFooter({
         ) : (
           <button
             type="button"
-            disabled={isAdvancing}
+            disabled={isAdvancing || continueLocked}
             onClick={onContinue}
             className={`rounded-2xl px-5 py-3 text-sm font-semibold text-white transition-all duration-150 active:scale-[0.99] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-500 ${
               focused ? focusedButtonClass : "min-w-32"
@@ -133,8 +150,8 @@ export default function ExercisePlayerFooter({
               focused
                 ? ""
                 : feedback?.isCorrect
-                  ? "bg-emerald-600 hover:bg-emerald-500"
-                  : "bg-slate-950 hover:bg-slate-800"
+                  ? "bg-emerald-600 shadow-[var(--shadow-button)] hover:bg-emerald-500 active:translate-y-[1px] active:scale-[0.985]"
+                  : "bg-[var(--color-primary)] shadow-[var(--shadow-button)] hover:bg-[var(--color-primary-hover)] active:translate-y-[1px] active:scale-[0.985]"
             }`}
           >
             {isAdvancing ? "Loading..." : isLast ? "Finish" : "Continue"}

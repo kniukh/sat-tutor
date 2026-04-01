@@ -7,6 +7,7 @@ export default function MeaningMatchExercise({
   selectedValue,
   onSelect,
   submitted,
+  feedbackReward,
   renderCaptureText,
 }: ExerciseRendererProps<MeaningMatchExerciseData>) {
   const isTranslation = exercise.type === "translation_match";
@@ -22,6 +23,7 @@ export default function MeaningMatchExercise({
       selectedOptionId={selectedValue || null}
       correctOptionId={getExerciseCorrectAnswer(exercise)}
       submitted={submitted}
+      feedbackReward={feedbackReward}
       onSelect={onSelect}
       renderOptionLabel={({ option, isDistractor }) =>
         renderCaptureText

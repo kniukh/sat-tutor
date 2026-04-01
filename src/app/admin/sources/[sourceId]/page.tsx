@@ -1,13 +1,11 @@
 import { requireAdmin } from '@/lib/auth/admin';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import GeneratedPassageActions from '@/components/admin/GeneratedPassageActions';
-import AnalyzePassageButton from '@/components/admin/AnalyzePassageButton';
 import { AdminShell } from '@/components/admin/AdminShell';
 import DetectStructureButton from '@/components/admin/DetectStructureButton';
 import BuildCleanTextButton from '@/components/admin/BuildCleanTextButton';
 import GeneratePassagesFromCleanTextButton from '@/components/admin/GeneratePassagesFromCleanTextButton';
-import AnalyzePassageV2Button from '@/components/admin/AnalyzePassageV2Button';
 import GenerateLessonsFromSourceButton from '@/components/admin/GenerateLessonsFromSourceButton';
+import SourceChunkReview from '@/components/admin/SourceChunkReview';
 
 export default async function AdminSourceDetailPage({
   params,
@@ -61,6 +59,58 @@ export default async function AdminSourceDetailPage({
     throw new Error(passagesError.message);
   }
 
+  const linkedLessonIds = Array.from(
+    new Set(
+      (passages ?? [])
+        .map((passage: any) => passage.lesson_id)
+        .filter((lessonId: string | null): lessonId is string => Boolean(lessonId))
+    )
+  );
+
+  const [{ data: linkedLessons }, { data: linkedQuestions }] = await Promise.all([
+    linkedLessonIds.length > 0
+      ? supabase
+          .from('lessons')
+          .select('id, status, lesson_type')
+          .in('id', linkedLessonIds)
+      : Promise.resolve({ data: [] as any[] }),
+    linkedLessonIds.length > 0
+      ? supabase
+          .from('question_bank')
+          .select(
+            'id, lesson_id, question_type, question_text, option_a, option_b, option_c, option_d, correct_option, review_status, display_order'
+          )
+          .in('lesson_id', linkedLessonIds)
+          .order('display_order', { ascending: true })
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+
+  const lessonMetaMap = new Map((linkedLessons ?? []).map((lesson: any) => [lesson.id, lesson]));
+  const questionMap = new Map<string, any[]>();
+
+  for (const question of linkedQuestions ?? []) {
+    const existing = questionMap.get(question.lesson_id) ?? [];
+    existing.push(question);
+    questionMap.set(question.lesson_id, existing);
+  }
+
+  const reviewChunks = (passages ?? []).map((passage: any) => {
+    const lessonMeta = passage.lesson_id ? lessonMetaMap.get(passage.lesson_id) ?? null : null;
+
+    return {
+      id: passage.id,
+      title: passage.title,
+      chunkIndex: passage.chunk_index ?? 0,
+      wordCount: passage.word_count ?? null,
+      status: passage.status ?? null,
+      chapterTitle: passage.chapter_title ?? null,
+      passageText: passage.passage_text,
+      lessonId: passage.lesson_id ?? null,
+      lessonStatus: lessonMeta?.status ?? null,
+      questions: passage.lesson_id ? questionMap.get(passage.lesson_id) ?? [] : [],
+    };
+  });
+
   const metadata = source.metadata && typeof source.metadata === 'object' ? source.metadata : {};
   const coverImagePath =
     typeof metadata.cover_image_path === 'string' ? metadata.cover_image_path : null;
@@ -94,7 +144,7 @@ export default async function AdminSourceDetailPage({
                 Create, chunk, review, publish
               </h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                This source feeds the existing lesson review flow. Generate chunks first, then create AI lessons and review them inline.
+                This source feeds the existing lesson review flow. Each chunk now goes through one AI pass for analysis, 2 SAT questions, 2 vocab questions, and short explanations before inline review.
               </p>
             </div>
 
@@ -104,7 +154,7 @@ export default async function AdminSourceDetailPage({
                 <div className="mt-2 text-xl font-semibold text-slate-950">{source.source_type}</div>
               </div>
               <div className="app-card-soft p-4">
-                <div className="app-kicker text-slate-500">Clean Sections</div>
+                <div className="app-kicker text-slate-500">Sections</div>
                 <div className="mt-2 text-xl font-semibold text-slate-950">{cleanTextRows?.length ?? 0}</div>
               </div>
               <div className="app-card-soft p-4">
@@ -163,7 +213,7 @@ export default async function AdminSourceDetailPage({
         </div>
 
         <div className="rounded-2xl border bg-white p-5">
-          <div className="text-sm text-slate-500">Generated passages</div>
+          <div className="text-sm text-slate-500">Chunks</div>
           <div className="mt-2 text-xl font-semibold text-slate-900">
             {passages?.length ?? 0}
           </div>
@@ -255,32 +305,6 @@ export default async function AdminSourceDetailPage({
         </section>
       ) : null}
 
-      {cleanTextRows && cleanTextRows.length > 0 ? (
-        <section className="rounded-2xl border bg-white p-6">
-          <h2 className="mb-4 text-xl font-semibold text-slate-900">Clean Book Text</h2>
-
-          <div className="space-y-4">
-            {cleanTextRows.map((row: any) => (
-              <div key={row.id} className="rounded-xl border border-slate-200 p-4">
-                <div className="font-medium text-slate-900">
-                  {row.chapter_title || `Chapter ${row.chapter_index}`}
-                </div>
-                <div className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">
-                  {(row.clean_text || '').slice(0, 1800)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="rounded-2xl border bg-white p-6">
-        <h2 className="mb-4 text-xl font-semibold text-slate-900">Raw text preview</h2>
-        <p className="whitespace-pre-wrap text-slate-700">
-          {(source.raw_text || '').slice(0, 8000)}
-        </p>
-      </section>
-
       {pages && pages.length > 0 ? (
         <section className="rounded-2xl border bg-white p-6">
           <h2 className="mb-4 text-xl font-semibold text-slate-900">Extracted Pages</h2>
@@ -298,69 +322,25 @@ export default async function AdminSourceDetailPage({
         </section>
       ) : null}
 
-      <section className="rounded-2xl border bg-white p-6">
-        <h2 className="mb-4 text-xl font-semibold text-slate-900">Generated chunks</h2>
-
-        {!passages || passages.length === 0 ? (
-          <p className="text-slate-600">No generated chunks yet.</p>
-        ) : (
-          <div className="space-y-4">
-            {passages.map((passage: any) => (
-              <div key={passage.id} className="rounded-xl border border-slate-200 p-4">
-                <div className="font-semibold text-slate-900">
-                  Chunk #{passage.chunk_index + 1}
-                </div>
-
-                <div className="mt-1 text-sm text-slate-500">
-                  {passage.word_count ?? 0} words · {passage.status}
-                </div>
-
-                <div className="mt-2 text-sm text-slate-600">
-                  Role: {passage.passage_role ?? 'not analyzed'} · Strategy:{' '}
-                  {passage.question_strategy ?? 'not analyzed'} · Recommended count:{' '}
-                  {passage.recommended_question_count ?? '-'}
-                </div>
-
-                <div className="mt-1 text-sm text-slate-600">
-                  Chapter: {passage.chapter_title ?? `Chapter ${passage.chapter_index ?? '-'}`} ·
-                  Difficulty: {passage.difficulty_level ?? '-'} · Mode: {passage.text_mode ?? '-'}
-                </div>
-
-                <div className="mt-1 text-sm text-slate-600">
-                  Vocab density: {passage.vocab_density ?? '-'} · Phrase density:{' '}
-                  {passage.phrase_density ?? '-'} · Vocab questions:{' '}
-                  {passage.recommended_vocab_questions_count ?? 0}
-                </div>
-
-                {Array.isArray(passage.recommended_vocab_target_words) &&
-                passage.recommended_vocab_target_words.length > 0 ? (
-                  <div className="mt-1 text-sm text-slate-600">
-                    Target words: {passage.recommended_vocab_target_words.join(', ')}
-                  </div>
-                ) : null}
-
-                {Array.isArray(passage.recommended_vocab_target_phrases) &&
-                passage.recommended_vocab_target_phrases.length > 0 ? (
-                  <div className="mt-1 text-sm text-slate-600">
-                    Target phrases: {passage.recommended_vocab_target_phrases.join(', ')}
-                  </div>
-                ) : null}
-
-                <p className="mt-3 whitespace-pre-wrap text-slate-700">
-                  {passage.passage_text}
-                </p>
-
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <AnalyzePassageV2Button generatedPassageId={passage.id} />
-                  <GeneratedPassageActions
-                    generatedPassageId={passage.id}
-                    status={passage.status}
-                    lessonId={passage.lesson_id}
-                  />
-                </div>
-              </div>
-            ))}
+      <section className="space-y-4">
+        <div className="card-surface p-5 sm:p-6">
+          <div className="space-y-2">
+            <div className="app-kicker">Lesson Review</div>
+            <h2 className="text-2xl font-semibold tracking-[-0.02em] text-slate-950">
+              Review generated chunks inline
+            </h2>
+            <p className="text-sm leading-6 text-slate-600">
+              Each chunk stays on this page. Generate once, scan the text, approve strong questions, and regenerate weak ones without opening another review screen.
+            </p>
           </div>
+        </div>
+
+        {!reviewChunks || reviewChunks.length === 0 ? (
+          <section className="card-surface p-6">
+            <p className="text-slate-600">No generated chunks yet.</p>
+          </section>
+        ) : (
+          <SourceChunkReview chunks={reviewChunks} />
         )}
       </section>
     </AdminShell>

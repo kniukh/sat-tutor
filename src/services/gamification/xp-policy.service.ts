@@ -1,5 +1,4 @@
 import type { VocabularySessionPhase } from "@/types/vocab-exercises";
-import type { VocabExerciseType, WordLifecycleState } from "@/types/vocab-tracking";
 
 export type XpEventType =
   | "generic_activity"
@@ -11,13 +10,12 @@ export type XpEventType =
   | "legacy_vocab_review";
 
 export type VocabularyExerciseXpBreakdown = {
-  completionXp: number;
-  correctnessXp: number;
+  baseXp: number;
+  actionLabel: "correct" | "correct_after_mistake" | "incorrect";
+  comboCountAfter: number;
+  comboMultiplier: number;
   rawXp: number;
-  lifecycleMultiplier: number;
-  repetitionMultiplier: number;
   sameSessionMultiplier: number;
-  exposureIndex: number;
   alreadyAwardedForWordThisSession: number;
   perWordSessionCap: number;
   capRemaining: number;
@@ -35,9 +33,9 @@ export type VocabularySessionXpBreakdown = {
 };
 
 export type ReadingQuestionXpBreakdown = {
-  completionXp: number;
-  correctnessXp: number;
-  questionDifficultyWeight: number;
+  baseXp: number;
+  comboCountAfter: number;
+  comboMultiplier: number;
   totalXp: number;
 };
 
@@ -47,83 +45,20 @@ export type ReadingLessonXpBreakdown = {
   totalXp: number;
 };
 
-const VOCAB_EXERCISE_BASE_XP: Record<VocabExerciseType, number> = {
-  meaning_match: 1,
-  translation_match: 1,
-  synonym: 1,
-  collocation: 1,
-  listen_match: 1,
-  spelling_from_audio: 2,
-  fill_blank: 2,
-  context_meaning: 2,
-  pair_match: 2,
-  sentence_builder: 3,
-  error_detection: 3,
-  spelling: 1,
-  memory: 1,
-  speed_round: 1,
-};
-
-const WORD_LIFECYCLE_MULTIPLIER: Record<WordLifecycleState | "review" | "unknown", number> = {
-  weak_again: 1.8,
-  learning: 1.45,
-  new: 1.3,
-  review: 1.1,
-  mastered: 0.7,
-  unknown: 1,
-};
-
-function getVocabularyExerciseBaseXp(exerciseType: VocabExerciseType) {
-  return VOCAB_EXERCISE_BASE_XP[exerciseType] ?? 1;
-}
-
-function getWordLifecycleMultiplier(lifecycleState: WordLifecycleState | null | undefined) {
-  if (!lifecycleState) {
-    return WORD_LIFECYCLE_MULTIPLIER.unknown;
+function getComboMultiplier(comboCountAfter: number) {
+  if (comboCountAfter >= 8) {
+    return 2;
   }
 
-  return WORD_LIFECYCLE_MULTIPLIER[lifecycleState] ?? WORD_LIFECYCLE_MULTIPLIER.unknown;
-}
-
-function getRepetitionMultiplier(exposureIndex: number) {
-  if (exposureIndex <= 1) {
-    return 1;
+  if (comboCountAfter >= 5) {
+    return 1.5;
   }
 
-  if (exposureIndex === 2) {
-    return 0.75;
+  if (comboCountAfter >= 3) {
+    return 1.2;
   }
 
-  if (exposureIndex === 3) {
-    return 0.5;
-  }
-
-  return 0.3;
-}
-
-function getReadingQuestionDifficultyWeight(questionType: string | null | undefined) {
-  const normalized = questionType?.trim().toLowerCase() ?? "";
-
-  if (
-    normalized.includes("inference") ||
-    normalized.includes("evidence") ||
-    normalized.includes("synthesis") ||
-    normalized.includes("rhetoric") ||
-    normalized.includes("purpose") ||
-    normalized.includes("function")
-  ) {
-    return 3;
-  }
-
-  if (
-    normalized.includes("vocabulary") ||
-    normalized.includes("detail") ||
-    normalized.includes("command")
-  ) {
-    return 1;
-  }
-
-  return 2;
+  return 1;
 }
 
 function getMicroSessionMultiplier(params: {
@@ -150,40 +85,39 @@ function getMicroSessionMultiplier(params: {
 }
 
 export function calculateVocabularyExerciseXp(params: {
-  exerciseType: VocabExerciseType;
   isCorrect: boolean;
-  lifecycleState?: WordLifecycleState | null;
-  exposureIndex: number;
+  attemptCount: number;
+  comboCountAfter: number;
   alreadyAwardedForWordThisSession: number;
   sameSessionCreditCapped?: boolean;
   perWordSessionCap?: number;
 }) {
-  const completionXp = getVocabularyExerciseBaseXp(params.exerciseType);
-  const correctnessXp = params.isCorrect ? completionXp : 0;
-  const lifecycleMultiplier = getWordLifecycleMultiplier(params.lifecycleState);
-  const repetitionMultiplier = getRepetitionMultiplier(params.exposureIndex);
+  const actionLabel = !params.isCorrect
+    ? "incorrect"
+    : params.attemptCount > 1
+      ? "correct_after_mistake"
+      : "correct";
+  const baseXp =
+    actionLabel === "correct"
+      ? 5
+      : actionLabel === "correct_after_mistake"
+        ? 2
+        : 0;
+  const comboMultiplier = params.isCorrect ? getComboMultiplier(params.comboCountAfter) : 1;
   const sameSessionMultiplier = params.sameSessionCreditCapped ? 0.7 : 1;
-  const rawXp = Math.max(
-    1,
-    Math.round(
-      (completionXp + correctnessXp) *
-        lifecycleMultiplier *
-        repetitionMultiplier *
-        sameSessionMultiplier
-    )
-  );
+  const rawXp =
+    baseXp <= 0 ? 0 : Math.max(1, Math.round(baseXp * comboMultiplier * sameSessionMultiplier));
   const perWordSessionCap = params.perWordSessionCap ?? 12;
   const capRemaining = Math.max(0, perWordSessionCap - params.alreadyAwardedForWordThisSession);
   const totalXp = Math.min(rawXp, capRemaining);
 
   return {
-    completionXp,
-    correctnessXp,
+    baseXp,
+    actionLabel,
+    comboCountAfter: params.comboCountAfter,
+    comboMultiplier,
     rawXp,
-    lifecycleMultiplier,
-    repetitionMultiplier,
     sameSessionMultiplier,
-    exposureIndex: params.exposureIndex,
     alreadyAwardedForWordThisSession: params.alreadyAwardedForWordThisSession,
     perWordSessionCap,
     capRemaining,
@@ -242,18 +176,32 @@ export function calculateVocabularySessionReward(params: {
 }
 
 export function calculateReadingQuestionXp(params: {
-  questionType?: string | null;
   isCorrect: boolean;
+  comboCountAfter: number;
 }) {
-  const questionDifficultyWeight = getReadingQuestionDifficultyWeight(params.questionType);
-  const completionXp = questionDifficultyWeight;
-  const correctnessXp = params.isCorrect ? questionDifficultyWeight : 0;
+  const baseXp = params.isCorrect ? 10 : 0;
+  const comboMultiplier = params.isCorrect ? getComboMultiplier(params.comboCountAfter) : 1;
+  const totalXp = baseXp <= 0 ? 0 : Math.max(1, Math.round(baseXp * comboMultiplier));
 
   return {
-    completionXp,
-    correctnessXp,
-    questionDifficultyWeight,
-    totalXp: completionXp + correctnessXp,
+    baseXp,
+    comboCountAfter: params.comboCountAfter,
+    comboMultiplier,
+    totalXp,
+  } satisfies ReadingQuestionXpBreakdown;
+}
+
+export function calculateReadingMistakeFixXp(params: {
+  comboCountAfter: number;
+}) {
+  const baseXp = 8;
+  const comboMultiplier = getComboMultiplier(params.comboCountAfter);
+
+  return {
+    baseXp,
+    comboCountAfter: params.comboCountAfter,
+    comboMultiplier,
+    totalXp: Math.max(1, Math.round(baseXp * comboMultiplier)),
   } satisfies ReadingQuestionXpBreakdown;
 }
 

@@ -7,6 +7,9 @@ const TYPE_PROMPTS: Record<string, string> = {
   detail: 'Generate exactly 1 SAT-style detail question.',
   inference: 'Generate exactly 1 SAT-style inference question.',
   vocabulary: 'Generate exactly 1 SAT-style vocabulary-in-context question.',
+  vocabulary_in_context: 'Generate exactly 1 SAT-style vocabulary-in-context question that depends on the passage context.',
+  vocabulary_definition: 'Generate exactly 1 SAT-style vocabulary question that asks for the best definition in this passage context.',
+  vocabulary_translation: 'Generate exactly 1 SAT-style vocabulary question that asks for the best translation or closest meaning in this passage context.',
   tone: 'Generate exactly 1 SAT-style tone question.',
 };
 
@@ -58,11 +61,14 @@ export async function POST(request: Request) {
   }
 
   const nextVersion = Number(question.generation_version ?? 1) + 1;
+  const nextQuestionType = String(question.question_type ?? '').includes('vocab')
+    ? question.question_type
+    : generated.question_type;
 
   const { data, error } = await supabase
     .from('question_bank')
     .update({
-      question_type: generated.question_type,
+      question_type: nextQuestionType,
       question_text: generated.question_text,
       option_a: generated.option_a,
       option_b: generated.option_b,
