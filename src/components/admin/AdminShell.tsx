@@ -48,11 +48,11 @@ export function AdminShell({
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
-      <header className="border-b border-[var(--color-border)] bg-white/95 backdrop-blur">
+      <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-lg font-semibold text-slate-950">SAT Tutor Admin</div>
-            <div className="text-sm text-slate-500">Structured control for students, insights, content, and sources.</div>
+            <div className="text-lg font-semibold token-text-primary">SAT Tutor Admin</div>
+            <div className="text-sm token-text-muted">Structured control for students, insights, content, and sources.</div>
           </div>
 
           <nav className="flex flex-wrap gap-2">
@@ -62,8 +62,8 @@ export function AdminShell({
                 href={item.href}
                 className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
                   item.match(pathname)
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-[var(--color-border-strong)] bg-white text-slate-900 hover:bg-[var(--color-surface-muted)]"
+                    ? "border-[var(--color-surface-inverse)] bg-[var(--color-surface-inverse)] text-[var(--color-text-inverse)]"
+                    : "border-[var(--color-border-strong)] bg-[var(--color-surface)] token-text-primary hover:bg-[var(--color-surface-muted)]"
                 }`}
               >
                 {item.label}
@@ -77,8 +77,8 @@ export function AdminShell({
         <div className="mx-auto max-w-7xl space-y-6">
           <div>
             <div className="app-kicker">Admin</div>
-            <h1 className="mt-1 text-3xl font-semibold tracking-[-0.02em] text-slate-950">{title}</h1>
-            {subtitle ? <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{subtitle}</p> : null}
+            <h1 className="mt-1 text-3xl font-semibold tracking-[-0.02em] token-text-primary">{title}</h1>
+            {subtitle ? <p className="mt-2 max-w-3xl text-sm leading-6 token-text-secondary">{subtitle}</p> : null}
           </div>
 
           {children}

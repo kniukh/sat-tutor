@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 function normalizeItem(text: string) {
@@ -14,24 +15,37 @@ function getNextReviewDate(daysToAdd: number) {
 export async function POST(request: Request) {
   const body = await request.json();
 
-  const {
-    studentId,
-    lessonId,
-    passageId,
-    items,
-  }: {
+  const { studentId, lessonId, passageId, items }: {
     studentId: string;
     lessonId: string;
-    passageId: string;
+    passageId?: string;
     items: Array<{
       itemText: string;
       itemType: 'word' | 'phrase';
       contextText?: string;
+      sourceType?: "passage" | "question" | "answer";
+      preview?: {
+        plainEnglishMeaning?: string | null;
+        translation?: string | null;
+        contextMeaning?: string | null;
+      } | null;
     }>;
   } = body;
 
   if (!Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: 'No items provided' }, { status: 400 });
+  }
+
+  let sessionStudentId: string;
+
+  try {
+    sessionStudentId = await requireStudentApiStudentId(studentId);
+  } catch (error) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
+    throw error;
   }
 
   const supabase = await createServerSupabaseClient();
@@ -44,12 +58,19 @@ export async function POST(request: Request) {
     const { error: captureError } = await supabase
       .from('vocabulary_capture_events')
       .insert({
-        student_id: studentId,
+        student_id: sessionStudentId,
         lesson_id: lessonId,
-        passage_id: passageId,
+        passage_id: passageId ?? null,
         item_text: itemText,
         item_type: item.itemType,
         context_text: item.contextText ?? null,
+        source_type:
+          item.sourceType === "question" || item.sourceType === "answer"
+            ? item.sourceType
+            : "passage",
+        metadata: {
+          preview: item.preview ?? null,
+        },
       });
 
     if (captureError) {
@@ -59,7 +80,7 @@ export async function POST(request: Request) {
     const { data: existing, error: existingError } = await supabase
       .from('word_progress')
       .select('*')
-      .eq('student_id', studentId)
+      .eq('student_id', sessionStudentId)
       .eq('word', itemText)
       .eq('item_type', item.itemType)
       .maybeSingle();
@@ -72,7 +93,7 @@ export async function POST(request: Request) {
       const { error: insertError } = await supabase
         .from('word_progress')
         .insert({
-          student_id: studentId,
+          student_id: sessionStudentId,
           word: itemText,
           item_type: item.itemType,
           status: 'learning',

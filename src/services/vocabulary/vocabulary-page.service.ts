@@ -38,7 +38,6 @@ import {
   hasReadyVocabularyDrillAnswerSets,
   parseVocabularyDrillAnswerSets,
 } from "@/services/vocabulary/drill-answer-sets.service";
-import { prepareVocabularyDrillsForStudent } from "@/services/vocabulary/drill-preparation.service";
 import { getStudentGamificationSnapshot } from "@/services/gamification/gamification.service";
 import {
   getExerciseTargetWordId,
@@ -774,14 +773,6 @@ export async function getStudentVocabularyPageData(
 
     return hasReadyVocabularyDrillAnswerSets(detail.drill_answer_sets);
   });
-
-  if (!hasAnyReadyVocabularyItems && vocabularyDetailRows.length > 0) {
-    const prepared = await prepareVocabularyDrillsForStudent({
-      studentId: studentData.id,
-    });
-
-    vocabularyDetailRows = prepared.items;
-  }
 
   const now = new Date();
   const bucketCounts = activeQueueCandidates.reduce<QueueBucketCounts>((acc, candidate) => {

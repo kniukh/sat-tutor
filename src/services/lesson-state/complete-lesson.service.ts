@@ -75,26 +75,7 @@ export async function completeLesson(studentId: string, lessonId: string) {
     .eq("lesson_id", lessonId);
 
   if (stateError) throw stateError;
-
-  await updateSkillTrackingForAttempt(studentId, evaluatedAnswers);
-
-  try {
-    await runMistakeBrainForLesson({ studentId, lessonId });
-  } catch (error) {
-    console.error("Mistake Brain failed", error);
-  }
-
-  let vocabularyPreparation = null;
   let xpReward = null;
-
-  try {
-    vocabularyPreparation = await ensureLessonVocabularyDrillsReady({
-      studentId,
-      lessonId,
-    });
-  } catch (error) {
-    console.error("Vocabulary drill preparation failed after lesson completion", error);
-  }
 
   try {
     xpReward = await awardReadingLessonCompletionXp({
@@ -108,9 +89,32 @@ export async function completeLesson(studentId: string, lessonId: string) {
     console.error("Reading lesson XP reward failed", error);
   }
 
+  void (async () => {
+    try {
+      await updateSkillTrackingForAttempt(studentId, evaluatedAnswers);
+    } catch (error) {
+      console.error("Skill tracking failed after lesson completion", error);
+    }
+
+    try {
+      await runMistakeBrainForLesson({ studentId, lessonId });
+    } catch (error) {
+      console.error("Mistake Brain failed", error);
+    }
+
+    try {
+      await ensureLessonVocabularyDrillsReady({
+        studentId,
+        lessonId,
+      });
+    } catch (error) {
+      console.error("Vocabulary drill preparation failed after lesson completion", error);
+    }
+  })();
+
   return {
     ...attempt,
-    vocabularyPreparation,
+    vocabularyPreparation: null,
     xpReward,
   };
 }

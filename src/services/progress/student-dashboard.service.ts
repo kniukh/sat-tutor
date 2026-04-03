@@ -75,7 +75,8 @@ export async function getStudentDashboardData(studentId: string) {
         source_documents (
           id,
           title,
-          author
+          author,
+          metadata
         )
       `)
       .eq("student_id", studentId)

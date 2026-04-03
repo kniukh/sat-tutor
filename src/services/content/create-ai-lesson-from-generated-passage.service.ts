@@ -1,5 +1,12 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { generateChunkLessonPackage } from '@/services/ai/generate-chunk-lesson-package';
+import {
+  CHUNK_PACKAGE_CACHE_VERSION,
+  buildStoredChunkPackageCache,
+  computeChunkFingerprint,
+  extractCachedChunkAnalysis,
+  readStoredChunkPackageCache,
+} from '@/services/ai/chunk-generation-cache';
 
 function makeSlug(value: string) {
   return value
@@ -67,21 +74,37 @@ export async function createAiLessonFromGeneratedPassage(params: {
   const chapterPrefix = passage.chapter_title ? `${passage.chapter_title} — ` : '';
   const lessonName = `${chapterPrefix}${baseName}`.slice(0, 120);
   const lessonSlug = `${makeSlug(lessonName)}-${Date.now()}`;
-  const generatedPackage = await generateChunkLessonPackage({
-    title: passage.title,
-    chapterTitle: passage.chapter_title,
+  const chunkFingerprint = computeChunkFingerprint({
     passageText: passage.passage_text,
     sourceType: source?.source_type ?? null,
   });
+  const cachedPackage = readStoredChunkPackageCache(passage.ai_package_cache, chunkFingerprint);
+  const cachedAnalysis = extractCachedChunkAnalysis(
+    passage as Record<string, unknown>,
+    chunkFingerprint
+  );
+  const generatedPackage =
+    cachedPackage ??
+    (await generateChunkLessonPackage({
+      title: passage.title,
+      chapterTitle: passage.chapter_title,
+      passageText: passage.passage_text,
+      sourceType: source?.source_type ?? null,
+      cachedAnalysis,
+    }));
 
   const { data: updatedPassage } = await supabase
     .from('generated_passages')
     .update({
+      chunk_fingerprint: chunkFingerprint,
       passage_role: generatedPackage.passage_role,
       question_strategy: generatedPackage.question_strategy,
       recommended_question_count: generatedPackage.recommended_question_count,
       recommended_question_types: generatedPackage.recommended_question_types,
       analyzer_reason: generatedPackage.analyzer_reason,
+      analysis_main_idea: generatedPackage.analysis_main_idea,
+      analysis_structure: generatedPackage.analysis_structure,
+      analysis_inference_points: generatedPackage.analysis_inference_points,
       difficulty_level: generatedPackage.difficulty_level,
       text_mode: generatedPackage.text_mode,
       vocab_density: generatedPackage.vocab_density,
@@ -90,6 +113,9 @@ export async function createAiLessonFromGeneratedPassage(params: {
       recommended_vocab_questions_count: generatedPackage.recommended_vocab_questions_count,
       recommended_vocab_target_words: generatedPackage.recommended_vocab_target_words,
       recommended_vocab_target_phrases: generatedPackage.recommended_vocab_target_phrases,
+      ai_package_cache: buildStoredChunkPackageCache(chunkFingerprint, generatedPackage),
+      ai_cache_version: CHUNK_PACKAGE_CACHE_VERSION,
+      ai_cached_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq('id', passage.id)

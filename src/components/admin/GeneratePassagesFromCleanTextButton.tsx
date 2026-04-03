@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation';
 
 export default function GeneratePassagesFromCleanTextButton({
   sourceDocumentId,
+  hasExistingChunks = false,
 }: {
   sourceDocumentId: string;
+  hasExistingChunks?: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +43,7 @@ export default function GeneratePassagesFromCleanTextButton({
         disabled={isPending}
         className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-slate-900 disabled:opacity-50"
       >
-        {isPending ? 'Generating...' : 'Generate Passages from Clean Text'}
+        {isPending ? 'Working...' : hasExistingChunks ? 'Redo Chunks' : 'Generate Chunks'}
       </button>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}

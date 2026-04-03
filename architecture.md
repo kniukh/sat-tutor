@@ -70,6 +70,8 @@ Current patterns:
 - current reading and vocabulary blocks use service-shaped data
 - progress / competition hero reads gamification + leaderboard summary
 - vocabulary summary now uses review-queue-backed `ready to practice` shaping instead of surfacing legacy due-date counts as the primary student signal
+- canonical session-based dashboard now also exists at `/s`, while `/s/[code]` remains a compatibility route
+- student logout clears the signed server cookie
 
 ### `/s/[code]/book`
 Books library page.
@@ -79,6 +81,8 @@ Current shape:
 - data from [books-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/reading/books-page.service.ts)
 - Kindle-style progress-first cards
 - featured current book section
+- visible `Go to Library` CTA from the dashboard and book covers on student cards
+- canonical session-based route now also exists at `/s/book`
 
 ### `/s/[code]/book/[sourceDocumentId]`
 Single book detail page.
@@ -89,6 +93,7 @@ Current shape:
 - Duolingo-like lesson path grouped by chapter
 - current lesson highlight
 - reading order preserved
+- canonical session-based route now also exists at `/s/book/[sourceDocumentId]`
 
 ### `/s/[code]/lesson/[lessonId]`
 Main reading lesson page.
@@ -107,9 +112,13 @@ Main UI:
   - mobile-first single-column lesson stages
   - full-screen reading focus during first and second read
   - passage/question/answer vocabulary capture hooks into shared vocab storage
+  - lesson-scoped Word Bank tray with pending/saved state
+  - first-read checkpoints save pending vocabulary and move the stage forward without a submit-centric UI
 - [LessonPlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/LessonPlayer.tsx)
   - SAT-style one-question-per-screen quiz shell
   - optional `Why?` reasoning bottom sheet backed by `/api/question-explanation`
+  - repair retries the original SAT item and does not reveal the correct answer immediately on the first wrong attempt
+  - canonical session-based route now also exists at `/s/lesson/[lessonId]`
 
 ### `/s/[code]/vocabulary`
 Vocabulary Studio page.
@@ -125,6 +134,8 @@ Current shape:
 - two conceptual phases in the same flow:
   - `priority_review`
   - `endless_continuation`
+- page load avoids blocking on heavy drill preparation; background prep and audio can happen after render
+- canonical session-based route now also exists at `/s/vocabulary`
 
 ### `/s/[code]/vocabulary/drill`
 Focused full-screen drill page.
@@ -134,6 +145,7 @@ Current shape:
 - data from [vocabulary-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/vocabulary-page.service.ts)
 - reuses [VocabSessionPlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/VocabSessionPlayer.tsx) in focused mode
 - hides summary chrome and keeps the drill surface to progress, question, answers, and action CTA
+- canonical session-based route now also exists at `/s/vocabulary/drill`
 
 ### `/s/[code]/mistake-brain`
 Insights surface.
@@ -143,6 +155,7 @@ Current shape:
 - data from [mistake-brain-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/mistake-brain-page.service.ts)
 - weak skills, review lists, patterns, recommendations
 - optional launch point into Mistake Replay
+- canonical session-based route now also exists at `/s/mistake-brain`
 
 ### `/s/[code]/mistake-replay`
 Focused repair-mode route.
@@ -169,6 +182,7 @@ Current shape:
 - `/api/vocabulary/prepare-drills`
 - `/api/vocabulary/review`
 - `/api/vocabulary/exercise-attempt`
+- `/api/vocabulary/session-complete`
 - `/api/vocabulary/capture`
 - `/api/vocabulary/capture-inline`
 - `/api/vocabulary/preview-inline`
@@ -178,6 +192,8 @@ Current shape:
 Current note:
 - `prepare-drills` and `generate-from-captures` now thinly wrap shared vocabulary prep services instead of owning the orchestration directly
 - lesson completion also triggers the same preparation pipeline in the backend
+- `preview-inline`, `generate-from-captures`, and `prepare-drills` use the shared `vocabulary_dictionary_cache` before AI generation
+- student-facing vocabulary session completion is guarded against async save/completion races
 
 ### AI
 - `/api/ai/tutor`
@@ -197,9 +213,13 @@ Current note:
   - optional structured reasoning explanation bottom sheet
 - [InteractivePassageReader.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/InteractivePassageReader.tsx)
   - long-press passage capture
-  - known-word interactions
-  - double-tap audio replay in second read
+  - known-word underline interactions
+  - fast second-read meaning/translation hover/tap cards
   - AI Tutor popup
+- [InlineVocabularyCaptureText.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/InlineVocabularyCaptureText.tsx)
+  - shared desktop text-selection + mobile long-press vocabulary capture wrapper for quiz, repair, and drills
+- [LessonVocabularyTray.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/LessonVocabularyTray.tsx)
+  - floating lesson Word Bank widget with pending/saved status
 
 ### Books surfaces
 - [StudentDashboard.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/StudentDashboard.tsx)
@@ -214,6 +234,7 @@ Current note:
 Current patterns:
 - focused full-screen drill mode lives on `/s/[code]/vocabulary/drill`
 - drill text can now long-press capture into shared vocabulary storage from answer choices and sentence fragments
+- grouped `listen_match` can render as a two-column audio-to-text matching exercise
 
 ## Vocab Exercise Architecture
 
@@ -326,11 +347,16 @@ Current responsibilities:
 - audio generation
 - passage analysis
 - drill answer-set generation
+- prompt routing and validation for admin SAT question generation
+- chunk-level generation cache and short regenerate context windows
 
 Important files:
 - [tutor.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/tutor.service.ts)
 - [generate-question-reasoning-explanation.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/generate-question-reasoning-explanation.ts)
 - [analyze-lesson-mistakes.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/analyze-lesson-mistakes.ts)
+- [admin-question-prompt-router.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/admin-question-prompt-router.ts)
+- [question-quality.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/question-quality.ts)
+- [chunk-generation-cache.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/chunk-generation-cache.ts)
 
 ### `services/gamification`
 Current responsibilities:
@@ -356,6 +382,8 @@ Current responsibilities:
 - normalize and store reusable drill answer sets
 - generate lesson vocabulary from captures
 - prepare drill-ready vocab payloads for lesson completion and vocabulary APIs
+- reuse shared dictionary cache entries across students before AI fallback
+- deduplicate inline preview requests with client/server cache
 
 Important files:
 - [vocabulary-page.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/vocabulary-page.service.ts)
@@ -364,6 +392,9 @@ Important files:
 - [exercise-progress.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/exercise-progress.service.ts)
 - [review-policy.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/review-policy.service.ts)
 - [review-queue.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/review-queue.service.ts)
+- [vocabulary-dictionary-cache.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/vocabulary-dictionary-cache.service.ts)
+- [inline-preview-cache.client.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/inline-preview-cache.client.ts)
+- [inline-preview-cache.server.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/inline-preview-cache.server.ts)
 
 ## Dependency Model
 
@@ -404,3 +435,4 @@ or
 - Keep adaptive logic rule-based and inspectable before introducing more AI-driven routing.
 - Preserve a single reusable exercise shell as new vocab types are added.
 - Keep analytics reusable across student, admin, and future teacher surfaces instead of page-local summaries.
+- Continue replacing legacy `/s/[code]/...` client assumptions with session-cookie-based APIs and canonical `/s/...` links.

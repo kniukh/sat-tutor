@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { studentDashboardPath } from '@/lib/routes/student';
 
 export function StudentLoginForm() {
   const router = useRouter();
@@ -35,22 +36,22 @@ export function StudentLoginForm() {
         return;
       }
 
-      router.push(`/s/${encodeURIComponent(normalizedCode)}`);
+      router.push(studentDashboardPath());
       router.refresh();
     });
   }
 
   return (
-    <form onSubmit={onSubmit} className="mx-auto max-w-md space-y-4 rounded-2xl border bg-white p-6 shadow-sm">
+    <form onSubmit={onSubmit} className="surface-panel mx-auto max-w-md space-y-4 rounded-2xl p-6 shadow-sm">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Student login</h1>
-        <p className="mt-1 text-sm text-slate-600">Введите код доступа ученика, чтобы перейти к дашборду</p>
+        <h1 className="token-text-primary text-2xl font-semibold">Student login</h1>
+        <p className="token-text-secondary mt-1 text-sm">Введите код доступа ученика, чтобы перейти к дашборду</p>
       </div>
 
       <label className="block">
-        <span className="mb-1 block text-sm font-medium text-slate-700">Код доступа</span>
+        <span className="token-text-secondary mb-1 block text-sm font-medium">Код доступа</span>
         <input
-          className="w-full rounded-xl border px-3 py-2 text-slate-900"
+          className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           placeholder="0000"
@@ -63,7 +64,7 @@ export function StudentLoginForm() {
       <button
         type="submit"
         disabled={isPending}
-        className="w-full rounded-xl bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
+        className="primary-button w-full justify-center disabled:opacity-50"
       >
         {isPending ? 'Вход...' : 'Войти'}
       </button>

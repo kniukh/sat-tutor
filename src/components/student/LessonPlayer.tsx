@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateActio
 import InteractivePassageReader from "./InteractivePassageReader";
 import MascotCat from "./MascotCat";
 import FeedbackSettingsButton from "./FeedbackSettingsButton";
+import InlineVocabularyCaptureText from "./InlineVocabularyCaptureText";
+import type { CapturedVocabularyItem } from "./PassageVocabularyCapture";
 import {
   getAnswerFeedbackCue,
   primeFeedbackAudio,
@@ -79,10 +81,18 @@ type QuestionReasoningExplanation = {
   thinking_tip: string;
 };
 
+type RepairMode = "scope" | "inference" | "detail" | "context_word" | "evidence";
+
 type RepairMicroTask = {
+  mode: RepairMode;
+  strategyLabel: string;
+  reviewTitle: string;
+  reviewCopy: string;
+  actionLabel: string;
   prompt: string;
   supportText: string | null;
   hint: string;
+  successMessage: string;
   options: Array<{
     key: OptionKey;
     text: string;
@@ -109,6 +119,8 @@ type Props = {
   questions: Question[];
   passageText?: string;
   knownWords?: KnownWord[];
+  onVocabularyCaptured?: (item: CapturedVocabularyItem) => void;
+  onBeforeComplete?: () => Promise<void>;
   onFinished?: (result: LessonCompletionPayload) => void;
   onProgressChange?: Dispatch<
     SetStateAction<{
@@ -155,27 +167,6 @@ const STOP_WORDS = new Set([
   "would",
 ]);
 
-function normalizeCaptureWord(word: string) {
-  return word
-    .toLowerCase()
-    .replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, "")
-    .trim();
-}
-
-function buildSnippet(fullText: string, itemText: string) {
-  const lowerText = fullText.toLowerCase();
-  const lowerItem = itemText.toLowerCase();
-  const index = lowerText.indexOf(lowerItem);
-
-  if (index === -1) {
-    return fullText.trim().slice(0, 180);
-  }
-
-  const start = Math.max(0, index - 80);
-  const end = Math.min(fullText.length, index + itemText.length + 80);
-  return fullText.slice(start, end).trim();
-}
-
 function getQuestionOptions(question: Question) {
   return [
     { key: "A" as const, text: question.option_a },
@@ -185,10 +176,64 @@ function getQuestionOptions(question: Question) {
   ];
 }
 
+const SENTENCE_END_ABBREVIATIONS = new Set([
+  "mr.",
+  "mrs.",
+  "ms.",
+  "dr.",
+  "prof.",
+  "sr.",
+  "jr.",
+  "st.",
+  "mt.",
+  "vs.",
+  "etc.",
+  "e.g.",
+  "i.e.",
+  "u.s.",
+  "u.k.",
+]);
+
+function shouldMergeSentenceBoundary(current: string, next: string) {
+  const tail = current.trim().toLowerCase();
+  if (!tail || !next.trim()) {
+    return false;
+  }
+
+  const lastToken = tail.split(/\s+/).pop() ?? "";
+  if (SENTENCE_END_ABBREVIATIONS.has(lastToken)) {
+    return true;
+  }
+
+  if (/^[a-z]\.$/i.test(lastToken)) {
+    return true;
+  }
+
+  return false;
+}
+
 function splitIntoSentences(text: string) {
-  return (text.match(/[^.!?]+[.!?]+["']?|[^.!?]+$/g) ?? [])
+  const rawSentences = (text.match(/[^.!?]+[.!?]+["'”’)\]]*|[^.!?]+$/g) ?? [])
     .map((sentence) => sentence.trim())
     .filter(Boolean);
+
+  if (rawSentences.length <= 1) {
+    return rawSentences;
+  }
+
+  const merged: string[] = [];
+
+  for (const sentence of rawSentences) {
+    const previous = merged[merged.length - 1];
+    if (previous && shouldMergeSentenceBoundary(previous, sentence)) {
+      merged[merged.length - 1] = `${previous} ${sentence}`.replace(/\s+/g, " ").trim();
+      continue;
+    }
+
+    merged.push(sentence);
+  }
+
+  return merged;
 }
 
 function extractSearchTokens(...values: Array<string | null | undefined>) {
@@ -199,25 +244,6 @@ function extractSearchTokens(...values: Array<string | null | undefined>) {
         .split(/[^a-z]+/g)
         .filter((token) => token.length >= 4 && !STOP_WORDS.has(token))
     );
-}
-
-function stableShuffle<T>(values: T[], seed: string) {
-  const items = [...values];
-  let hash = 0;
-
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
-  }
-
-  for (let index = items.length - 1; index > 0; index -= 1) {
-    hash = (hash * 1664525 + 1013904223) >>> 0;
-    const swapIndex = hash % (index + 1);
-    const next = items[index];
-    items[index] = items[swapIndex];
-    items[swapIndex] = next;
-  }
-
-  return items;
 }
 
 function findRelevantSentence(params: {
@@ -258,29 +284,6 @@ function findRelevantSentence(params: {
   return ranked[0]?.sentence ?? sentences[0] ?? null;
 }
 
-function getRepairPrompt(questionType: string, hasSentence: boolean) {
-  switch (questionType) {
-    case "vocabulary_in_context":
-      return "Which choice best matches the word's meaning here?";
-    case "detail":
-      return hasSentence
-        ? "Which choice is supported most directly by the highlighted sentence?"
-        : "Which choice is supported most directly by the passage?";
-    case "main_idea":
-      return hasSentence
-        ? "Which choice best captures the point of the highlighted part?"
-        : "Which choice best captures the author's point here?";
-    case "inference":
-      return hasSentence
-        ? "What does the highlighted sentence most strongly suggest?"
-        : "What does the passage most strongly suggest here?";
-    default:
-      return hasSentence
-        ? "Which choice best matches the highlighted part of the passage?"
-        : "Which choice best fits the passage here?";
-  }
-}
-
 function getRepairHint(questionType: string) {
   switch (questionType) {
     case "vocabulary_in_context":
@@ -296,24 +299,98 @@ function getRepairHint(questionType: string) {
   }
 }
 
+function getRepairMode(questionType: string): RepairMode {
+  switch (questionType) {
+    case "vocabulary_in_context":
+    case "meaning_in_context":
+    case "definition":
+    case "translation":
+      return "context_word";
+    case "detail":
+      return "detail";
+    case "main_idea":
+      return "scope";
+    case "inference":
+      return "inference";
+    default:
+      return "evidence";
+  }
+}
+
+function getRepairConfig(questionType: string, hasSentence: boolean) {
+  const mode = getRepairMode(questionType);
+
+  switch (mode) {
+    case "context_word":
+      return {
+        mode,
+        strategyLabel: "Context Word Repair",
+        reviewTitle: "Meaning slipped off the line.",
+        reviewCopy:
+          "Read the local sentence again and choose the meaning that keeps both the sense and the tone intact.",
+        successMessage: "Good repair. You matched the word to the local meaning, not just the familiar definition.",
+      };
+    case "detail":
+      return {
+        mode,
+        strategyLabel: "Detail Trap Repair",
+        reviewTitle: "This one needed tighter evidence.",
+        reviewCopy:
+          "Stay with what the text directly gives you. The best answer should be supported, not loosely related.",
+        successMessage: "Good repair. You stayed with the line instead of reaching past it.",
+      };
+    case "scope":
+      return {
+        mode,
+        strategyLabel: "Scope Repair",
+        reviewTitle: "The trap was about scope.",
+        reviewCopy:
+          hasSentence
+            ? "Match the point of this part of the passage without going broader or narrower than the text allows."
+            : "Match the passage's real point without stretching wider or shrinking to one detail.",
+        successMessage: "Good repair. You found the answer that fits the passage's real scope.",
+      };
+    case "inference":
+      return {
+        mode,
+        strategyLabel: "Inference Repair",
+        reviewTitle: "This one asked for a supported conclusion.",
+        reviewCopy:
+          "Pick the idea the passage strongly suggests. The repair is about support, not the boldest sounding claim.",
+        successMessage: "Good repair. You chose the conclusion the passage supports without overreaching.",
+      };
+    default:
+      return {
+        mode,
+        strategyLabel: "Evidence Repair",
+        reviewTitle: "Go back to the text anchor.",
+        reviewCopy:
+          "Reopen the relevant line, drop the keyword trap, and choose the answer the passage actually supports.",
+        successMessage: "Good repair. You re-anchored the choice in the passage.",
+      };
+  }
+}
+
 function buildRepairMicroTask(question: Question, relevantSentence: string | null): RepairMicroTask {
   const originalOptions = getQuestionOptions(question);
-  const shuffled = stableShuffle(originalOptions, `${question.id}:repair`);
-  const options = shuffled.map((option, index) => ({
-    key: OPTION_KEYS[index],
+  const config = getRepairConfig(question.question_type, Boolean(relevantSentence));
+  const options = originalOptions.map((option) => ({
+    key: option.key,
     text: option.text,
   }));
-  const correctText =
-    originalOptions.find((option) => option.key === question.correct_option)?.text ?? originalOptions[0]?.text ?? "";
-  const correctOption =
-    options.find((option) => option.text === correctText)?.key ?? "A";
 
   return {
-    prompt: getRepairPrompt(question.question_type, Boolean(relevantSentence)),
+    mode: config.mode,
+    strategyLabel: config.strategyLabel,
+    reviewTitle: config.reviewTitle,
+    reviewCopy: config.reviewCopy,
+    actionLabel: "Retry the Question",
+    prompt: question.question_text,
     supportText: relevantSentence,
     hint: getRepairHint(question.question_type),
+    successMessage: config.successMessage,
     options,
-    correctOption,
+    correctOption: question.correct_option ?? "A",
   };
 }
 
@@ -324,6 +401,8 @@ export default function LessonPlayer({
   questions,
   passageText,
   knownWords = [],
+  onVocabularyCaptured,
+  onBeforeComplete,
   onFinished,
   onProgressChange,
   initialAnswers,
@@ -337,8 +416,6 @@ export default function LessonPlayer({
       : null
   );
   const [saving, setSaving] = useState(false);
-  const [captureSaving, setCaptureSaving] = useState(false);
-  const [captureToast, setCaptureToast] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(
     questions[initialQuestionIndex]
       ? Boolean(initialAnswers?.[questions[initialQuestionIndex].id])
@@ -379,8 +456,6 @@ export default function LessonPlayer({
     streakDays: null,
   });
   const questionStartedAtRef = useRef<number>(Date.now());
-  const longPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const knownWordsMapRef = useRef<Map<string, KnownWord>>(new Map());
   const completionCuePlayedRef = useRef<string | null>(null);
   const { settings: feedbackSettings } = useFeedbackSettings();
 
@@ -462,19 +537,6 @@ export default function LessonPlayer({
     mistakeItems.length > 0 ? ((repairIndex + 1) / mistakeItems.length) * 100 : 0;
 
   useEffect(() => {
-    const nextMap = new Map<string, KnownWord>();
-    for (const item of knownWords) {
-      const normalized = normalizeCaptureWord(item.item_text);
-      if (!normalized || nextMap.has(normalized)) {
-        continue;
-      }
-
-      nextMap.set(normalized, item);
-    }
-    knownWordsMapRef.current = nextMap;
-  }, [knownWords]);
-
-  useEffect(() => {
     questionStartedAtRef.current = Date.now();
   }, [index]);
 
@@ -508,6 +570,19 @@ export default function LessonPlayer({
   }, [repairIndex, quizPhase]);
 
   useEffect(() => {
+    if (quizPhase !== "repair" || repairStep !== "review") {
+      return;
+    }
+
+    if (!activeRepairItem?.relevantSentence) {
+      return;
+    }
+
+    setPassageHighlightText(activeRepairItem.relevantSentence);
+    setShowPassage(true);
+  }, [activeRepairItem?.relevantSentence, quizPhase, repairIndex, repairStep]);
+
+  useEffect(() => {
     const completionState =
       quizPhase === "repair_complete"
         ? "repair_complete"
@@ -522,112 +597,6 @@ export default function LessonPlayer({
     completionCuePlayedRef.current = completionState;
     triggerFeedbackCue("completion", feedbackSettings);
   }, [feedbackSettings, mistakeItems.length, quizPhase]);
-
-  useEffect(() => {
-    return () => {
-      if (longPressTimeoutRef.current) {
-        clearTimeout(longPressTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  async function captureWordFromLessonContext(
-    rawWord: string,
-    sourceType: "question" | "answer",
-    sourceText: string
-  ) {
-    const itemText = normalizeCaptureWord(rawWord);
-    if (!itemText) {
-      return;
-    }
-
-    setCaptureSaving(true);
-
-    try {
-      await fetch("/api/vocabulary/capture-inline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId,
-          lessonId,
-          passageId,
-          itemText,
-          itemType: "word",
-          sourceType,
-          contextText: buildSnippet(sourceText, rawWord),
-        }),
-      });
-
-      setCaptureToast(itemText);
-      window.setTimeout(() => {
-        setCaptureToast((current) => (current === itemText ? null : current));
-      }, 1600);
-    } catch (error) {
-      console.error("capture word from lesson context error", error);
-    } finally {
-      setCaptureSaving(false);
-    }
-  }
-
-  function clearLongPress() {
-    if (longPressTimeoutRef.current) {
-      clearTimeout(longPressTimeoutRef.current);
-      longPressTimeoutRef.current = null;
-    }
-  }
-
-  function startLongPress(
-    rawWord: string,
-    sourceType: "question" | "answer",
-    sourceText: string
-  ) {
-    clearLongPress();
-    longPressTimeoutRef.current = setTimeout(() => {
-      void captureWordFromLessonContext(rawWord, sourceType, sourceText);
-    }, 420);
-  }
-
-  function renderCaptureableText(
-    text: string,
-    sourceType: "question" | "answer",
-    className?: string
-  ) {
-    return (
-      <span className={className}>
-        {text.split(/(\s+)/g).map((token, tokenIndex) => {
-          const normalized = normalizeCaptureWord(token);
-
-          if (!normalized) {
-            return <span key={`${sourceType}-${tokenIndex}`}>{token}</span>;
-          }
-
-          const knownWord = knownWordsMapRef.current.get(normalized);
-          const knownWordClassName = knownWord
-            ? knownWord.review_ready || knownWord.review_bucket === "weak_again"
-              ? "rounded-md bg-amber-100/75 px-0.5 underline decoration-amber-500 decoration-2 underline-offset-4"
-              : knownWord.review_bucket === "recently_failed"
-                ? "rounded-md bg-rose-100/75 px-0.5 underline decoration-rose-500 decoration-2 underline-offset-4"
-                : "rounded-md bg-sky-100/75 px-0.5 underline decoration-sky-500 decoration-2 underline-offset-4"
-            : null;
-
-          return (
-            <span
-              key={`${sourceType}-${tokenIndex}-${token}`}
-              className={knownWordClassName ?? undefined}
-              onTouchStart={
-                knownWord ? undefined : () => startLongPress(token, sourceType, text)
-              }
-              onTouchEnd={knownWord ? undefined : clearLongPress}
-              onTouchMove={knownWord ? undefined : clearLongPress}
-              onTouchCancel={knownWord ? undefined : clearLongPress}
-            >
-              {token}
-            </span>
-          );
-        })}
-      </span>
-    );
-  }
 
   async function ensureExplanation(questionToExplain: Question) {
     if (explanationCache[questionToExplain.id] || explanationLoadingFor === questionToExplain.id) {
@@ -709,6 +678,10 @@ export default function LessonPlayer({
     setSaving(true);
 
     try {
+      if (onBeforeComplete) {
+        await onBeforeComplete();
+      }
+
       const response = await fetch("/api/lesson/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -789,6 +762,7 @@ export default function LessonPlayer({
 
       await fetch("/api/lesson/save-question-progress", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentId,
@@ -801,6 +775,7 @@ export default function LessonPlayer({
 
       const attemptResponse = await fetch("/api/question-attempt", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentId,
@@ -929,7 +904,7 @@ export default function LessonPlayer({
 
       setRepairFeedback({
         status: "correct",
-        message: "Good repair. You matched the sentence instead of following the trap.",
+        message: activeRepairItem.microTask.successMessage,
       });
       return;
     }
@@ -985,7 +960,7 @@ export default function LessonPlayer({
       : null;
 
   if (!question) {
-    return <div className="text-sm text-slate-600">No questions available.</div>;
+    return <div className="text-sm token-text-secondary">No questions available.</div>;
   }
 
   const options = getQuestionOptions(question);
@@ -1028,13 +1003,24 @@ export default function LessonPlayer({
         ? hasQuizHotStreak
           ? `${currentCorrectStreak} correct in a row. Keep reading the passage this tightly.`
           : "You matched the text without overreaching."
-        : "Stay anchored to what the passage actually supports.";
+        : question.question_type === "vocabulary_in_context" ||
+            question.question_type === "meaning_in_context" ||
+            question.question_type === "definition" ||
+            question.question_type === "translation"
+          ? "That meaning doesn't fit the word closely enough in this context."
+          : question.question_type === "main_idea"
+            ? "This choice misses the real scope of the passage."
+            : question.question_type === "inference"
+              ? "This choice goes further than the passage clearly supports."
+              : question.question_type === "detail"
+                ? "This choice is not supported directly enough by the text."
+                : "This choice doesn't stay close enough to what the passage supports.";
   const quizFeedbackToneClass =
     isCorrect === null
       ? null
       : isCorrect
-        ? "border-emerald-200 bg-emerald-50/95 text-emerald-950"
-        : "border-rose-200 bg-rose-50/95 text-rose-950";
+        ? "repair-feedback-card repair-feedback-card--correct"
+        : "repair-feedback-card repair-feedback-card--incorrect";
   const quizPrimaryButtonClass = submitted
     ? isCorrect
       ? "primary-button min-h-14 flex-1 bg-emerald-600 hover:bg-emerald-500"
@@ -1044,11 +1030,11 @@ export default function LessonPlayer({
   return (
     <div className="relative flex min-h-full flex-1 flex-col pb-32">
       {showPassage ? (
-        <div className="fixed inset-0 z-40 bg-[#fbf7ee]/98 backdrop-blur-sm">
+        <div className="fixed inset-0 z-40 bg-[var(--color-surface)]/96 backdrop-blur-sm">
           <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
             <div className="reading-topbar">
               <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-                <div className="text-sm font-medium text-slate-700">
+                <div className="text-sm font-medium token-text-secondary">
                   {passageHighlightText ? "Relevant passage" : "Passage"}
                 </div>
                 <button
@@ -1056,7 +1042,7 @@ export default function LessonPlayer({
                   onClick={() => setShowPassage(false)}
                   className="secondary-button"
                 >
-                  Back
+                  {quizPhase === "repair" ? "Back to Question" : "Back"}
                 </button>
               </div>
             </div>
@@ -1087,11 +1073,11 @@ export default function LessonPlayer({
           />
 
           <div className="absolute inset-x-0 bottom-0">
-            <div className="mx-auto w-full max-w-3xl rounded-t-[2rem] border border-slate-200 bg-white px-4 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] pt-4 shadow-2xl sm:px-6">
-              <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200" />
+            <div className="mx-auto w-full max-w-3xl rounded-t-[2rem] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] pt-4 shadow-2xl sm:px-6">
+              <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-[var(--color-surface-muted)]" />
 
               <div className="flex items-center justify-between gap-3">
-                <div className="text-base font-semibold text-slate-950">Why this answer works</div>
+                <div className="text-base font-semibold token-text-primary">Why this answer works</div>
                 <button
                   type="button"
                   onClick={() => setExplanationQuestionId(null)}
@@ -1101,61 +1087,61 @@ export default function LessonPlayer({
                 </button>
               </div>
 
-              <div className="mt-4 space-y-4 text-sm leading-6 text-slate-700">
+              <div className="mt-4 space-y-3 text-sm leading-[1.5] token-text-secondary">
                 {explanationLoadingFor === explanationQuestion.id ? (
-                  <div className="rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="surface-soft-panel px-4 py-4">
                     Building a quick reasoning guide...
                   </div>
                 ) : currentExplanation ? (
                   <>
-                    <section className="rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-4">
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <section className="surface-soft-panel px-4 py-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] token-text-muted">
                         Correct answer
                       </div>
-                      <div className="mt-2 text-sm font-semibold text-slate-950">
+                      <div className="mt-2 text-sm font-semibold token-text-primary">
                         {currentExplanation.correct_answer.option}. {currentExplanation.correct_answer.text}
                       </div>
                     </section>
 
-                    <section className="rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-4">
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <section className="surface-soft-panel px-4 py-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] token-text-muted">
                         Why it is correct
                       </div>
                       <div className="mt-2">{currentExplanation.why_correct}</div>
                     </section>
 
                     {selectedWrongReason ? (
-                      <section className="rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-4">
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <section className="surface-soft-panel px-4 py-4">
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] token-text-muted">
                           Why your answer missed
                         </div>
                         <div className="mt-2">
-                          <span className="font-semibold text-slate-950">
+                          <span className="font-semibold token-text-primary">
                             {selectedWrongReason.option}. {selectedWrongReason.text}
                           </span>
-                          <div className="mt-1 text-slate-700">{selectedWrongReason.reason}</div>
+                          <div className="mt-1 token-text-secondary">{selectedWrongReason.reason}</div>
                         </div>
                       </section>
                     ) : (
-                      <section className="rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-4">
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <section className="surface-soft-panel px-4 py-4">
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] token-text-muted">
                           Why the other answers are wrong
                         </div>
                         <div className="mt-3 space-y-3">
                           {currentExplanation.why_others_wrong.map((item) => (
-                            <div key={item.option} className="rounded-2xl bg-white px-3 py-3">
-                              <div className="font-semibold text-slate-950">
+                            <div key={item.option} className="rounded-2xl bg-[var(--color-surface)] px-3 py-3">
+                              <div className="font-semibold token-text-primary">
                                 {item.option}. {item.text}
                               </div>
-                              <div className="mt-1 text-slate-700">{item.reason}</div>
+                              <div className="mt-1 token-text-secondary">{item.reason}</div>
                             </div>
                           ))}
                         </div>
                       </section>
                     )}
 
-                    <section className="rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-4">
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <section className="surface-soft-panel px-4 py-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] token-text-muted">
                         Thinking tip
                       </div>
                       <div className="mt-2">{currentExplanation.thinking_tip}</div>
@@ -1173,9 +1159,9 @@ export default function LessonPlayer({
       ) : null}
 
       {quizPhase === "quiz" ? (
-        <div className="space-y-5">
-          <div className="space-y-3.5 pt-1">
-            <div className="flex items-center justify-between gap-3 text-sm font-medium text-slate-600">
+        <div className="space-y-4">
+          <div className="space-y-3 pt-1">
+            <div className="flex items-center justify-between gap-3 text-sm font-medium token-text-secondary">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="tracking-[-0.01em]">{`Question ${index + 1} of ${questions.length}`}</span>
                 {activeComboCount >= 2 ? (
@@ -1222,16 +1208,28 @@ export default function LessonPlayer({
             </div>
           </div>
 
-          <div className="space-y-2 px-1">
+          <div className="space-y-1.5 px-1">
             <div className="drill-question">
-              {renderCaptureableText(question.question_text, "question")}
+              <InlineVocabularyCaptureText
+                as="div"
+                studentId={studentId}
+                lessonId={lessonId}
+                passageId={passageId}
+                text={question.question_text}
+                sourceType="question"
+                sourceText={question.question_text}
+                knownWords={knownWords}
+                onCaptured={onVocabularyCaptured}
+                className="select-text"
+              />
             </div>
           </div>
 
           <div className="grid gap-3">
             {options.map((option) => {
               const isPicked = selected === option.key;
-              const showCorrect = submitted && question.correct_option === option.key;
+              const showCorrect =
+                submitted && isCorrect === true && question.correct_option === option.key;
               const showWrong = submitted && isPicked && question.correct_option !== option.key;
               const optionState = showCorrect
                 ? "correct"
@@ -1266,8 +1264,19 @@ export default function LessonPlayer({
                     <div className="drill-option-indicator mt-0.5">
                       {option.key}
                     </div>
-                    <div className="flex-1 text-[0.98rem] leading-7 text-inherit sm:text-[1.05rem] sm:leading-8">
-                      {renderCaptureableText(option.text, "answer")}
+                    <div className="flex-1 text-[0.98rem] leading-6 text-inherit sm:text-[1.02rem] sm:leading-7">
+                          <InlineVocabularyCaptureText
+                            as="div"
+                            studentId={studentId}
+                            lessonId={lessonId}
+                            passageId={passageId}
+                            text={option.text}
+                            sourceType="answer"
+                            sourceText={`${question.question_text} ${option.text}`}
+                            knownWords={knownWords}
+                            onCaptured={onVocabularyCaptured}
+                            className="select-text"
+                          />
                     </div>
                   </div>
                 </button>
@@ -1299,7 +1308,7 @@ export default function LessonPlayer({
                     </div>
                   </div>
 
-                  <div className="text-sm leading-6 text-current/80">{quizFeedbackHint}</div>
+                  <div className="text-sm leading-5 text-current/80">{quizFeedbackHint}</div>
 
                   {isCorrect && activeComboCount >= 2 ? (
                     <div
@@ -1318,14 +1327,8 @@ export default function LessonPlayer({
                   ) : null}
 
                   {!isCorrect && selectedText ? (
-                    <div className="rounded-[1.1rem] border border-current/12 bg-white/70 px-3 py-3 text-sm leading-6 text-slate-700">
-                      <span className="font-semibold text-slate-950">Your answer:</span> {selectedText}
-                    </div>
-                  ) : null}
-
-                  {!isCorrect && correctText ? (
-                    <div className="rounded-[1.1rem] border border-current/12 bg-white/80 px-3 py-3 text-sm leading-6 text-slate-700">
-                      <span className="font-semibold text-slate-950">Correct answer:</span> {correctText}
+                    <div className="rounded-[1.1rem] border border-current/12 bg-[var(--color-surface)]/70 px-3 py-3 text-sm leading-5 token-text-secondary">
+                      <span className="font-semibold token-text-primary">Your answer:</span> {selectedText}
                     </div>
                   ) : null}
                 </div>
@@ -1342,14 +1345,14 @@ export default function LessonPlayer({
               <MascotCat
                 mood={mistakeItems.length === 0 ? "celebrate" : correctCount >= Math.ceil(questions.length * 0.7) ? "correct" : "incorrect"}
                 size="md"
-                className="shrink-0 bg-white/12"
+                className="shrink-0 bg-white/10"
               />
               <div className="min-w-0 flex-1 space-y-2">
-                <div className="app-kicker text-white/70">Quiz Complete</div>
-                <h2 className="text-[1.7rem] font-semibold tracking-[-0.03em] text-white sm:text-[1.9rem]">
+                <div className="app-kicker token-text-inverse-muted">Quiz Complete</div>
+                <h2 className="text-[1.7rem] font-semibold tracking-[-0.03em] token-text-inverse sm:text-[1.9rem]">
                   {mistakeItems.length > 0 ? "Repair the misses while the passage is fresh." : "Clean run. Keep the momentum."}
                 </h2>
-                <p className="text-sm leading-6 text-white/78">
+                <p className="text-sm leading-5 token-text-inverse-muted">
                   {mistakeItems.length > 0
                     ? "You can fix each miss in context right now, without leaving the lesson."
                     : "You stayed close to the text and finished this quiz with no repair needed."}
@@ -1360,18 +1363,18 @@ export default function LessonPlayer({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="app-card p-4 text-left">
-              <div className="app-kicker text-slate-500">Score</div>
-              <div className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-slate-950">
+              <div className="app-kicker token-text-muted">Score</div>
+              <div className="mt-2 text-3xl font-semibold tracking-[-0.03em] token-text-primary">
                 {correctCount}/{questions.length}
               </div>
-              <div className="mt-1 text-sm text-slate-500">
+              <div className="mt-1 text-sm token-text-muted">
                 {Math.round((correctCount / Math.max(questions.length, 1)) * 100)}% correct
               </div>
             </div>
             <div className="app-card p-4 text-left">
-              <div className="app-kicker text-slate-500">XP</div>
-              <div className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-slate-950">+{sessionXpEarned}</div>
-              <div className="mt-1 text-sm text-slate-500">
+              <div className="app-kicker token-text-muted">XP</div>
+              <div className="mt-2 text-3xl font-semibold tracking-[-0.03em] token-text-primary">+{sessionXpEarned}</div>
+              <div className="mt-1 text-sm token-text-muted">
                 {mistakeItems.length > 0 ? `${mistakeItems.length} mistakes to repair` : "Clean finish"}
               </div>
             </div>
@@ -1379,14 +1382,14 @@ export default function LessonPlayer({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="app-card-soft p-4 text-left">
-              <div className="app-kicker text-slate-500">Max combo</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">
+              <div className="app-kicker token-text-muted">Max combo</div>
+              <div className="mt-2 text-2xl font-semibold token-text-primary">
                 {maxCombo > 0 ? `x${maxCombo}` : "x0"}
               </div>
             </div>
             <div className="app-card-soft p-4 text-left">
-              <div className="app-kicker text-slate-500">Streak</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">
+              <div className="app-kicker token-text-muted">Streak</div>
+              <div className="mt-2 text-2xl font-semibold token-text-primary">
                 {levelProgress.streakDays ?? 0}
               </div>
             </div>
@@ -1394,17 +1397,17 @@ export default function LessonPlayer({
 
           {levelProgress.leveledUp ? (
             <div className="rounded-[1.5rem] border border-[var(--color-secondary)] bg-[var(--color-secondary-soft)] px-4 py-4 text-left">
-              <div className="text-sm font-semibold text-slate-950">Level up</div>
-              <div className="mt-1 text-sm leading-6 text-slate-700">
+              <div className="text-sm font-semibold token-text-primary">Level up</div>
+              <div className="mt-1 text-sm leading-6 token-text-secondary">
                 You reached level {levelProgress.currentLevel ?? levelProgress.previousLevel ?? 1}.
               </div>
             </div>
           ) : null}
 
-          {mistakeItems.length > 0 ? (
+              {mistakeItems.length > 0 ? (
             <div className="app-card-soft p-4 text-left">
-              <div className="text-sm font-semibold text-slate-950">What happens next</div>
-              <div className="mt-2 text-sm leading-6 text-slate-600">
+              <div className="text-sm font-semibold token-text-primary">What happens next</div>
+              <div className="mt-2 text-sm leading-5 token-text-secondary">
                 We will show the miss, reopen the relevant part of the passage, explain the trap,
                 and give you one short repair task.
               </div>
@@ -1442,9 +1445,9 @@ export default function LessonPlayer({
         </div>
       ) : null}
       {quizPhase === "repair" && activeRepairItem ? (
-        <div className="space-y-5">
+        <div className="space-y-4">
           <div className="space-y-3 pt-1">
-            <div className="flex items-center justify-between gap-3 text-sm font-medium text-slate-600">
+            <div className="flex items-center justify-between gap-3 text-sm font-medium token-text-secondary">
               <div className="flex flex-wrap items-center gap-2">
                 <span>{`Fix ${repairIndex + 1} of ${mistakeItems.length}`}</span>
                 {comboCount >= 2 ? (
@@ -1474,32 +1477,35 @@ export default function LessonPlayer({
           </div>
 
           {repairStep === "review" ? (
-            <div className="space-y-4 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-4 shadow-sm">
+            <div className="space-y-3.5 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <MascotCat mood="incorrect" size="sm" className="shrink-0" />
                 <div className="min-w-0">
-                  <div className="app-kicker text-slate-500">You missed this</div>
-                  <div className="mt-1 text-sm leading-6 text-slate-600">
-                    Reset the trap, reopen the line, then solve one short repair step.
+                  <div className="app-kicker token-text-muted">You missed this</div>
+                  <div className="mt-1 text-base font-semibold leading-6 token-text-primary">
+                    {activeRepairItem.microTask.reviewTitle}
+                  </div>
+                  <div className="mt-1 text-sm leading-5 token-text-secondary">
+                    {activeRepairItem.microTask.reviewCopy}
                   </div>
                 </div>
               </div>
               <div className="space-y-3">
-                <div className="rounded-[1.1rem] border border-rose-200 bg-rose-50 px-4 py-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-700">
+                <div className="repair-review-card repair-review-card--miss">
+                  <div className="repair-review-label repair-review-label--miss">
                     Your answer
                   </div>
-                  <div className="mt-2 text-sm font-semibold text-slate-950">
+                  <div className="mt-2 text-sm font-semibold token-text-primary">
                     {activeRepairItem.selectedOption}. {activeRepairItem.selectedText}
                   </div>
                 </div>
 
-                <div className="rounded-[1.1rem] border border-emerald-200 bg-emerald-50 px-4 py-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">
-                    Correct answer
+                <div className="repair-review-card repair-review-card--hold">
+                  <div className="repair-review-label repair-review-label--hold">
+                    Best answer hidden
                   </div>
-                  <div className="mt-2 text-sm font-semibold text-slate-950">
-                    {activeRepairItem.correctOption}. {activeRepairItem.correctText}
+                  <div className="mt-2 text-sm leading-5 token-text-primary">
+                    We reopened the most relevant line first. Read it, go back, and retry the original question. Use <span className="font-semibold">Explain</span> only if you need the reasoning, but the answer is not revealed here first.
                   </div>
                 </div>
               </div>
@@ -1528,6 +1534,9 @@ export default function LessonPlayer({
           ) : (
             <>
               <div className="space-y-3">
+                <div className="app-chip app-chip-secondary">
+                  {activeRepairItem.microTask.strategyLabel}
+                </div>
                 <div className="drill-question">{activeRepairItem.microTask.prompt}</div>
                 {activeRepairItem.microTask.supportText ? (
                   <div className="drill-context-surface">
@@ -1572,8 +1581,19 @@ export default function LessonPlayer({
                       ) : null}
                       <div className="flex items-start gap-3">
                         <div className="drill-option-indicator mt-0.5">{option.key}</div>
-                        <div className="flex-1 text-left text-[0.98rem] leading-7 text-inherit sm:text-[1.05rem] sm:leading-8">
-                          {option.text}
+                        <div className="flex-1 text-left text-[0.98rem] leading-6 text-inherit sm:text-[1.02rem] sm:leading-7">
+                          <InlineVocabularyCaptureText
+                            as="div"
+                            studentId={studentId}
+                            lessonId={lessonId}
+                            passageId={passageId}
+                            text={option.text}
+                            sourceType="answer"
+                            sourceText={`${activeRepairItem.microTask.prompt} ${option.text}`}
+                            knownWords={knownWords}
+                            onCaptured={onVocabularyCaptured}
+                            className="select-text"
+                          />
                         </div>
                       </div>
                     </button>
@@ -1583,11 +1603,11 @@ export default function LessonPlayer({
 
               {repairFeedback ? (
                 <div
-                  className={`rounded-[1.35rem] border px-4 py-4 ${
+                  className={
                     repairFeedback.status === "correct"
-                      ? "border-emerald-200 bg-emerald-50/80"
-                      : "border-amber-200 bg-amber-50/80"
-                  }`}
+                      ? "repair-feedback-card repair-feedback-card--correct"
+                      : "repair-feedback-card repair-feedback-card--incorrect"
+                  }
                 >
                   <div className="flex items-start gap-3">
                     <MascotCat
@@ -1596,16 +1616,16 @@ export default function LessonPlayer({
                       className="shrink-0"
                     />
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-950">
+                      <div className="text-sm font-semibold token-text-primary">
                         {repairFeedback.status === "correct" ? "Fixed" : "Try again"}
                       </div>
-                      <div className="mt-1 text-sm leading-6 text-slate-700">
+                      <div className="mt-1 text-sm leading-5 token-text-secondary">
                         {repairFeedback.message}
                       </div>
                       {repairFeedback.status === "correct" ? (
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                           {floatingReward && floatingReward.xp > 0 ? (
-                            <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-semibold text-emerald-700">
+                            <span className="repair-status-chip repair-status-chip--correct">
                               {`+${floatingReward.xp} XP`}
                             </span>
                           ) : null}
@@ -1623,7 +1643,7 @@ export default function LessonPlayer({
                           ) : null}
                         </div>
                       ) : (
-                        <div className="mt-3 inline-flex items-center rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-semibold text-amber-700">
+                        <div className="mt-3 repair-status-chip repair-status-chip--hint">
                           Hint active
                         </div>
                       )}
@@ -1649,7 +1669,7 @@ export default function LessonPlayer({
                   onClick={() => setRepairStep("microtask")}
                   className="primary-button min-h-14 flex-1"
                 >
-                  Continue
+                  {activeRepairItem.microTask.actionLabel}
                 </button>
               ) : repairFeedback?.status === "correct" ? (
                 <button
@@ -1664,7 +1684,7 @@ export default function LessonPlayer({
                   type="button"
                   onClick={submitRepairChoice}
                   disabled={!repairChoice}
-                  className="primary-button min-h-14 flex-1 disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-300 disabled:text-white"
+                  className="primary-button min-h-14 flex-1"
                 >
                   {repairFeedback?.status === "incorrect" ? "Try Again" : "Continue"}
                 </button>
@@ -1678,13 +1698,13 @@ export default function LessonPlayer({
         <div className="mx-auto flex min-h-[calc(100svh-12rem)] w-full max-w-xl flex-col justify-center gap-6 text-center">
           <div className="app-hero-panel p-5 text-left sm:p-6">
             <div className="flex items-start gap-4">
-              <MascotCat mood="celebrate" size="md" className="shrink-0 bg-white/12" />
+              <MascotCat mood="celebrate" size="md" className="shrink-0 bg-white/10" />
               <div className="min-w-0 space-y-2">
-                <div className="app-kicker text-white/70">Repair Complete</div>
-                <h2 className="text-[1.7rem] font-semibold tracking-[-0.03em] text-white sm:text-[1.9rem]">
+                <div className="app-kicker token-text-inverse-muted">Repair Complete</div>
+                <h2 className="text-[1.7rem] font-semibold tracking-[-0.03em] token-text-inverse sm:text-[1.9rem]">
                   Mistakes turned into practice.
                 </h2>
-                <p className="text-sm leading-6 text-white/78">
+                <p className="text-sm leading-5 token-text-inverse-muted">
                   You repaired {mistakeItems.length} {mistakeItems.length === 1 ? "miss" : "misses"} while
                   the passage was still in view.
                 </p>
@@ -1693,20 +1713,20 @@ export default function LessonPlayer({
           </div>
 
           <div className="app-card-soft p-4">
-            <div className="text-sm font-semibold text-slate-950">Next step</div>
-            <div className="mt-2 text-sm leading-6 text-slate-600">
+            <div className="text-sm font-semibold token-text-primary">Next step</div>
+            <div className="mt-2 text-sm leading-5 token-text-secondary">
               Save this lesson and move on to the next reading checkpoint.
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="app-card-soft p-4">
-              <div className="app-kicker text-slate-500">XP earned</div>
-              <div className="mt-2 text-3xl font-semibold text-slate-950">+{sessionXpEarned}</div>
+              <div className="app-kicker token-text-muted">XP earned</div>
+              <div className="mt-2 text-3xl font-semibold token-text-primary">+{sessionXpEarned}</div>
             </div>
             <div className="app-card-soft p-4">
-              <div className="app-kicker text-slate-500">Max combo</div>
-              <div className="mt-2 text-3xl font-semibold text-slate-950">
+              <div className="app-kicker token-text-muted">Max combo</div>
+              <div className="mt-2 text-3xl font-semibold token-text-primary">
                 {maxCombo > 0 ? `x${maxCombo}` : "x0"}
               </div>
             </div>
@@ -1714,8 +1734,8 @@ export default function LessonPlayer({
 
           {levelProgress.leveledUp ? (
             <div className="rounded-[1.5rem] border border-[var(--color-secondary)] bg-[var(--color-secondary-soft)] px-4 py-4 text-left">
-              <div className="text-sm font-semibold text-slate-950">Level up</div>
-              <div className="mt-1 text-sm leading-6 text-slate-700">
+              <div className="text-sm font-semibold token-text-primary">Level up</div>
+              <div className="mt-1 text-sm leading-6 token-text-secondary">
                 You reached level {levelProgress.currentLevel ?? levelProgress.previousLevel ?? 1}.
               </div>
             </div>
@@ -1751,7 +1771,7 @@ export default function LessonPlayer({
               type="button"
               onClick={submitted ? continueQuiz : submitAnswer}
               disabled={submitted ? saving || !quizContinueReady : !selected || saving}
-              className={`${quizPrimaryButtonClass} disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-300 disabled:text-white`}
+              className={quizPrimaryButtonClass}
             >
               {saving
                 ? "Saving..."
@@ -1765,18 +1785,12 @@ export default function LessonPlayer({
         </div>
       ) : null}
 
-      {captureToast ? (
-        <div className="pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+6rem)] z-30 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white shadow-xl sm:left-auto sm:right-6 sm:max-w-sm">
-          {captureSaving ? `Saving "${captureToast}"...` : `Added "${captureToast}" to vocabulary.`}
-        </div>
-      ) : null}
-
       {floatingReward && quizPhase !== "quiz" ? (
         <div className="pointer-events-none fixed inset-x-0 top-20 z-40 flex justify-center px-4 sm:top-24">
-          <div key={floatingReward.id} className="reward-float rounded-full border border-emerald-200 bg-white/96 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-[var(--shadow-button)] backdrop-blur">
+          <div key={floatingReward.id} className="reward-float rounded-full border border-emerald-200 bg-[var(--color-surface)]/96 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-[var(--shadow-button)] backdrop-blur">
             <span>{`+${floatingReward.xp} XP`}</span>
             {floatingReward.comboCount >= 3 ? (
-              <span className="ml-2 text-slate-500">{`Combo x${floatingReward.comboCount}`}</span>
+              <span className="ml-2 token-text-muted">{`Combo x${floatingReward.comboCount}`}</span>
             ) : null}
             {floatingReward.leveledUp ? (
               <span className="ml-2 text-[var(--color-secondary)]">Level up</span>

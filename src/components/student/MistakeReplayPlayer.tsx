@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { studentMistakeBrainPath, studentVocabularyPath } from "@/lib/routes/student";
 import { persistExerciseAttempt } from "@/services/vocabulary/exercise-attempt-client.service";
 import type {
   MistakeReplayItem,
@@ -248,10 +249,10 @@ export default function MistakeReplayPlayer({
             New replay sets appear after mistakes build into a clear repair pattern.
           </p>
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
-            <Link href={`/s/${data.student.accessCode}/mistake-brain`} className="primary-button">
+            <Link href={studentMistakeBrainPath()} className="primary-button">
               Back to Insights
             </Link>
-            <Link href={`/s/${data.student.accessCode}/vocabulary`} className="secondary-button">
+            <Link href={studentVocabularyPath()} className="secondary-button">
               Open Vocabulary
             </Link>
           </div>
@@ -562,7 +563,7 @@ export default function MistakeReplayPlayer({
           {stage === "feedback" ? (
             isLastItem ? (
               <Link
-                href={`/s/${data.student.accessCode}/mistake-brain`}
+                href={studentMistakeBrainPath()}
                 className="primary-button min-h-14 w-full"
               >
                 Finish Replay

@@ -69,7 +69,7 @@ function QuestionPreview({ question }: { question: QuestionItem }) {
 
   return (
     <div className="space-y-3">
-      <div className="text-base font-semibold leading-7 text-slate-950">
+      <div className="token-text-primary text-base font-semibold leading-7">
         {question.question_text}
       </div>
       <div className="space-y-2">
@@ -78,8 +78,8 @@ function QuestionPreview({ question }: { question: QuestionItem }) {
             key={option.key}
             className={`rounded-[1rem] border px-3 py-3 text-sm leading-6 ${
               question.correct_option === option.key
-                ? 'border-emerald-200 bg-emerald-50 text-slate-950'
-                : 'border-[var(--color-border)] bg-white text-slate-700'
+                ? 'border-[var(--color-success)] bg-[var(--color-success-soft)] text-[var(--color-text-primary)]'
+                : 'surface-panel token-text-secondary'
             }`}
           >
             <span className="font-semibold">{option.key}.</span> {option.text}
@@ -87,7 +87,7 @@ function QuestionPreview({ question }: { question: QuestionItem }) {
         ))}
       </div>
       {question.explanation ? (
-        <div className="text-sm leading-6 text-slate-600">{question.explanation}</div>
+        <div className="token-text-secondary text-sm leading-6">{question.explanation}</div>
       ) : null}
     </div>
   );
@@ -223,7 +223,7 @@ function InlineQuestionCard({ question }: { question: QuestionItem }) {
   }
 
   return (
-    <div className="rounded-[1.4rem] border border-[var(--color-border)] bg-white p-4">
+    <div className="surface-panel rounded-[1.4rem] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <span className="app-chip">{formatLabel(question.question_type)}</span>
@@ -240,7 +240,7 @@ function InlineQuestionCard({ question }: { question: QuestionItem }) {
           </span>
         </div>
 
-        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+        <div className="token-text-muted text-xs font-semibold uppercase tracking-[0.16em]">
           {question.generation_source ?? 'manual'} · v{question.generation_version ?? 1}
         </div>
       </div>
@@ -253,7 +253,7 @@ function InlineQuestionCard({ question }: { question: QuestionItem }) {
               onChange={(event) =>
                 setForm((current) => ({ ...current, questionType: event.target.value }))
               }
-              className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+              className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm"
             >
               <option value="main_idea">main_idea</option>
               <option value="detail">detail</option>
@@ -268,14 +268,14 @@ function InlineQuestionCard({ question }: { question: QuestionItem }) {
                 setForm((current) => ({ ...current, questionText: event.target.value }))
               }
               rows={3}
-              className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+              className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm"
             />
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <input value={form.optionA} onChange={(event) => setForm((current) => ({ ...current, optionA: event.target.value }))} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900" placeholder="Option A" />
-              <input value={form.optionB} onChange={(event) => setForm((current) => ({ ...current, optionB: event.target.value }))} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900" placeholder="Option B" />
-              <input value={form.optionC} onChange={(event) => setForm((current) => ({ ...current, optionC: event.target.value }))} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900" placeholder="Option C" />
-              <input value={form.optionD} onChange={(event) => setForm((current) => ({ ...current, optionD: event.target.value }))} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900" placeholder="Option D" />
+              <input value={form.optionA} onChange={(event) => setForm((current) => ({ ...current, optionA: event.target.value }))} className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm" placeholder="Option A" />
+              <input value={form.optionB} onChange={(event) => setForm((current) => ({ ...current, optionB: event.target.value }))} className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm" placeholder="Option B" />
+              <input value={form.optionC} onChange={(event) => setForm((current) => ({ ...current, optionC: event.target.value }))} className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm" placeholder="Option C" />
+              <input value={form.optionD} onChange={(event) => setForm((current) => ({ ...current, optionD: event.target.value }))} className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm" placeholder="Option D" />
             </div>
 
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
@@ -287,7 +287,7 @@ function InlineQuestionCard({ question }: { question: QuestionItem }) {
                     correctOption: event.target.value as 'A' | 'B' | 'C' | 'D',
                   }))
                 }
-                className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+                className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm"
               >
                 <option value="A">A</option>
                 <option value="B">B</option>
@@ -300,7 +300,7 @@ function InlineQuestionCard({ question }: { question: QuestionItem }) {
                 onChange={(event) =>
                   setForm((current) => ({ ...current, displayOrder: Number(event.target.value) }))
                 }
-                className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+                className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm"
               />
             </div>
 
@@ -310,7 +310,7 @@ function InlineQuestionCard({ question }: { question: QuestionItem }) {
                 setForm((current) => ({ ...current, explanation: event.target.value }))
               }
               rows={3}
-              className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+              className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm"
               placeholder="Explanation"
             />
           </div>
@@ -351,13 +351,13 @@ function InlineQuestionCard({ question }: { question: QuestionItem }) {
       </div>
 
       {feedbackOpen ? (
-        <div className="mt-4 space-y-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
+        <div className="surface-soft-panel mt-4 space-y-3 rounded-[1rem] p-3">
           <textarea
             value={feedback}
             onChange={(event) => setFeedback(event.target.value)}
             rows={4}
             placeholder="Explain what should change."
-            className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900"
+            className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm"
           />
           <button type="button" onClick={submitFeedbackRegeneration} disabled={isPending || !feedback.trim()} className="primary-button">
             {isPending ? 'Regenerating...' : 'Submit Feedback'}
@@ -407,11 +407,11 @@ function InlinePassageCard({ passage }: { passage: PassageItem }) {
   }
 
   return (
-    <div className="space-y-4 rounded-[1.4rem] border border-[var(--color-border)] bg-white p-4">
+    <div className="surface-panel space-y-4 rounded-[1.4rem] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="app-kicker text-slate-500">Chunk</div>
-          <div className="mt-1 text-lg font-semibold text-slate-950">
+          <div className="app-kicker token-text-muted">Chunk</div>
+          <div className="token-text-primary mt-1 text-lg font-semibold">
             {passage.title || `Chunk ${passage.display_order}`}
           </div>
         </div>
@@ -423,11 +423,11 @@ function InlinePassageCard({ passage }: { passage: PassageItem }) {
 
       {editOpen ? (
         <div className="space-y-3">
-          <input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm text-slate-900" placeholder="Chunk title" />
-          <textarea value={form.passageText} onChange={(event) => setForm((current) => ({ ...current, passageText: event.target.value }))} rows={18} className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-3 text-sm leading-7 text-slate-900" />
+          <input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm" placeholder="Chunk title" />
+          <textarea value={form.passageText} onChange={(event) => setForm((current) => ({ ...current, passageText: event.target.value }))} rows={18} className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-3 text-sm leading-7" />
         </div>
       ) : (
-        <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
+        <div className="token-text-secondary whitespace-pre-wrap text-sm leading-7">
           {passage.passage_text}
         </div>
       )}
@@ -519,10 +519,10 @@ export default function InlineLessonReview({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="app-kicker">Lesson Review</div>
-            <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-slate-950">
+            <h2 className="token-text-primary mt-1 text-2xl font-semibold tracking-[-0.02em]">
               Scan, fix, approve, publish
             </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            <p className="token-text-secondary mt-2 max-w-3xl text-sm leading-6">
               Review each chunk inline, edit questions without leaving the page, and publish only when the lesson is ready.
             </p>
           </div>
@@ -536,10 +536,10 @@ export default function InlineLessonReview({
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="app-card-soft p-4"><div className="app-kicker text-slate-500">Chunks</div><div className="mt-2 text-3xl font-semibold text-slate-950">{passages.length}</div></div>
-          <div className="app-card-soft p-4"><div className="app-kicker text-slate-500">Questions</div><div className="mt-2 text-3xl font-semibold text-slate-950">{questions.length}</div></div>
-          <div className="app-card-soft p-4"><div className="app-kicker text-slate-500">Approved</div><div className="mt-2 text-3xl font-semibold text-slate-950">{approvedQuestionsCount}</div></div>
-          <div className="app-card-soft p-4"><div className="app-kicker text-slate-500">Approved Chunks</div><div className="mt-2 text-3xl font-semibold text-slate-950">{approvedChunks}</div></div>
+          <div className="app-card-soft p-4"><div className="app-kicker token-text-muted">Chunks</div><div className="token-text-primary mt-2 text-3xl font-semibold">{passages.length}</div></div>
+          <div className="app-card-soft p-4"><div className="app-kicker token-text-muted">Questions</div><div className="token-text-primary mt-2 text-3xl font-semibold">{questions.length}</div></div>
+          <div className="app-card-soft p-4"><div className="app-kicker token-text-muted">Approved</div><div className="token-text-primary mt-2 text-3xl font-semibold">{approvedQuestionsCount}</div></div>
+          <div className="app-card-soft p-4"><div className="app-kicker token-text-muted">Approved Chunks</div><div className="token-text-primary mt-2 text-3xl font-semibold">{approvedChunks}</div></div>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
@@ -583,13 +583,13 @@ export default function InlineLessonReview({
                 <InlinePassageCard passage={group.passage} />
 
                 <div className="space-y-4">
-                  <div className="space-y-3 rounded-[1.4rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                  <div className="surface-soft-panel space-y-3 rounded-[1.4rem] p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="app-kicker text-slate-500">SAT Questions</div>
-                      <div className="text-sm font-semibold text-slate-500">{satQuestions.length}</div>
+                      <div className="app-kicker token-text-muted">SAT Questions</div>
+                      <div className="token-text-muted text-sm font-semibold">{satQuestions.length}</div>
                     </div>
                     {satQuestions.length === 0 ? (
-                      <div className="text-sm text-slate-500">No SAT questions in this chunk yet.</div>
+                      <div className="token-text-muted text-sm">No SAT questions in this chunk yet.</div>
                     ) : (
                       <div className="space-y-3">
                         {satQuestions.map((question) => (
@@ -599,13 +599,13 @@ export default function InlineLessonReview({
                     )}
                   </div>
 
-                  <div className="space-y-3 rounded-[1.4rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                  <div className="surface-soft-panel space-y-3 rounded-[1.4rem] p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="app-kicker text-slate-500">Vocab Questions</div>
-                      <div className="text-sm font-semibold text-slate-500">{vocabQuestions.length}</div>
+                      <div className="app-kicker token-text-muted">Vocab Questions</div>
+                      <div className="token-text-muted text-sm font-semibold">{vocabQuestions.length}</div>
                     </div>
                     {vocabQuestions.length === 0 ? (
-                      <div className="text-sm text-slate-500">No vocabulary questions in this chunk yet.</div>
+                      <div className="token-text-muted text-sm">No vocabulary questions in this chunk yet.</div>
                     ) : (
                       <div className="space-y-3">
                         {vocabQuestions.map((question) => (

@@ -5,6 +5,8 @@ import DetectStructureButton from '@/components/admin/DetectStructureButton';
 import BuildCleanTextButton from '@/components/admin/BuildCleanTextButton';
 import GeneratePassagesFromCleanTextButton from '@/components/admin/GeneratePassagesFromCleanTextButton';
 import GenerateLessonsFromSourceButton from '@/components/admin/GenerateLessonsFromSourceButton';
+import RefreshCoverButton from '@/components/admin/RefreshCoverButton';
+import ContentPipelineBatchActions from '@/components/admin/ContentPipelineBatchActions';
 import SourceChunkReview from '@/components/admin/SourceChunkReview';
 
 export default async function AdminSourceDetailPage({
@@ -131,39 +133,43 @@ export default async function AdminSourceDetailPage({
                 <img src={coverImagePath} alt={source.title} className="h-full w-full object-cover" />
               </div>
             ) : (
-              <div className="flex min-h-[16rem] items-center justify-center rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-sm font-semibold text-slate-500">
+              <div className="flex min-h-[16rem] items-center justify-center rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-sm font-semibold token-text-muted">
                 No cover
               </div>
             )}
+
+            {source.source_type === 'book' ? (
+              <RefreshCoverButton sourceId={source.id} />
+            ) : null}
           </div>
 
           <div className="space-y-5">
             <div>
               <div className="app-kicker">Content Pipeline</div>
-              <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-slate-950">
+              <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] token-text-primary">
                 Create, chunk, review, publish
               </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
+              <p className="mt-2 text-sm leading-6 token-text-secondary">
                 This source feeds the existing lesson review flow. Each chunk now goes through one AI pass for analysis, 2 SAT questions, 2 vocab questions, and short explanations before inline review.
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="app-card-soft p-4">
-                <div className="app-kicker text-slate-500">Type</div>
-                <div className="mt-2 text-xl font-semibold text-slate-950">{source.source_type}</div>
+                <div className="app-kicker token-text-muted">Type</div>
+                <div className="mt-2 text-xl font-semibold token-text-primary">{source.source_type}</div>
               </div>
               <div className="app-card-soft p-4">
-                <div className="app-kicker text-slate-500">Sections</div>
-                <div className="mt-2 text-xl font-semibold text-slate-950">{cleanTextRows?.length ?? 0}</div>
+                <div className="app-kicker token-text-muted">Sections</div>
+                <div className="mt-2 text-xl font-semibold token-text-primary">{cleanTextRows?.length ?? 0}</div>
               </div>
               <div className="app-card-soft p-4">
-                <div className="app-kicker text-slate-500">Chunks</div>
-                <div className="mt-2 text-xl font-semibold text-slate-950">{passages?.length ?? 0}</div>
+                <div className="app-kicker token-text-muted">Chunks</div>
+                <div className="mt-2 text-xl font-semibold token-text-primary">{passages?.length ?? 0}</div>
               </div>
               <div className="app-card-soft p-4">
-                <div className="app-kicker text-slate-500">Lessons</div>
-                <div className="mt-2 text-xl font-semibold text-slate-950">{linkedLessonsCount}</div>
+                <div className="app-kicker token-text-muted">Lessons</div>
+                <div className="mt-2 text-xl font-semibold token-text-primary">{linkedLessonsCount}</div>
               </div>
             </div>
 
@@ -176,7 +182,10 @@ export default async function AdminSourceDetailPage({
               ) : null}
 
               {hasCleanRows ? (
-                <GeneratePassagesFromCleanTextButton sourceDocumentId={source.id} />
+                <GeneratePassagesFromCleanTextButton
+                  sourceDocumentId={source.id}
+                  hasExistingChunks={Boolean(passages && passages.length > 0)}
+                />
               ) : null}
 
               {passages && passages.length > 0 ? (
@@ -186,48 +195,52 @@ export default async function AdminSourceDetailPage({
                 />
               ) : null}
             </div>
+
+            {reviewChunks.length > 0 ? (
+              <ContentPipelineBatchActions chunks={reviewChunks} />
+            ) : null}
           </div>
         </div>
       </section>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-2xl border bg-white p-5">
-          <div className="text-sm text-slate-500">Upload kind</div>
-          <div className="mt-2 text-xl font-semibold text-slate-900">
+        <div className="surface-panel p-5">
+          <div className="text-sm token-text-muted">Upload kind</div>
+          <div className="mt-2 text-xl font-semibold token-text-primary">
             {source.upload_kind ?? 'raw_text'}
           </div>
         </div>
 
-        <div className="rounded-2xl border bg-white p-5">
-          <div className="text-sm text-slate-500">PDF status</div>
-          <div className="mt-2 text-xl font-semibold text-slate-900">
+        <div className="surface-panel p-5">
+          <div className="text-sm token-text-muted">PDF status</div>
+          <div className="mt-2 text-xl font-semibold token-text-primary">
             {source.pdf_processing_status ?? 'uploaded'}
           </div>
         </div>
 
-        <div className="rounded-2xl border bg-white p-5">
-          <div className="text-sm text-slate-500">Extracted pages</div>
-          <div className="mt-2 text-xl font-semibold text-slate-900">
+        <div className="surface-panel p-5">
+          <div className="text-sm token-text-muted">Extracted pages</div>
+          <div className="mt-2 text-xl font-semibold token-text-primary">
             {pages?.length ?? 0}
           </div>
         </div>
 
-        <div className="rounded-2xl border bg-white p-5">
-          <div className="text-sm text-slate-500">Chunks</div>
-          <div className="mt-2 text-xl font-semibold text-slate-900">
+        <div className="surface-panel p-5">
+          <div className="text-sm token-text-muted">Chunks</div>
+          <div className="mt-2 text-xl font-semibold token-text-primary">
             {passages?.length ?? 0}
           </div>
         </div>
       </div>
 
       {source.pdf_file_path ? (
-        <section className="rounded-2xl border bg-white p-6">
-          <h2 className="mb-4 text-xl font-semibold text-slate-900">PDF File</h2>
+        <section className="surface-panel p-6">
+          <h2 className="mb-4 text-xl font-semibold token-text-primary">PDF File</h2>
           <a
             href={source.pdf_file_path}
             target="_blank"
             rel="noreferrer"
-            className="text-slate-900 underline"
+            className="token-text-primary underline"
           >
             Open uploaded PDF
           </a>
@@ -235,27 +248,27 @@ export default async function AdminSourceDetailPage({
       ) : null}
 
       {structure ? (
-        <section className="rounded-2xl border bg-white p-6">
-          <h2 className="mb-4 text-xl font-semibold text-slate-900">Detected Structure</h2>
+        <section className="surface-panel p-6">
+          <h2 className="mb-4 text-xl font-semibold token-text-primary">Detected Structure</h2>
 
           <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-xl border border-slate-200 p-4">
-              <div className="text-sm text-slate-500">Front matter ends</div>
-              <div className="mt-2 text-lg font-semibold text-slate-900">
+            <div className="surface-soft-panel p-4">
+              <div className="text-sm token-text-muted">Front matter ends</div>
+              <div className="mt-2 text-lg font-semibold token-text-primary">
                 {structure.front_matter_end_page ?? '-'}
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 p-4">
-              <div className="text-sm text-slate-500">Body starts</div>
-              <div className="mt-2 text-lg font-semibold text-slate-900">
+            <div className="surface-soft-panel p-4">
+              <div className="text-sm token-text-muted">Body starts</div>
+              <div className="mt-2 text-lg font-semibold token-text-primary">
                 {structure.body_start_page ?? '-'}
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 p-4">
-              <div className="text-sm text-slate-500">Body ends</div>
-              <div className="mt-2 text-lg font-semibold text-slate-900">
+            <div className="surface-soft-panel p-4">
+              <div className="text-sm token-text-muted">Body ends</div>
+              <div className="mt-2 text-lg font-semibold token-text-primary">
                 {structure.body_end_page ?? '-'}
               </div>
             </div>
@@ -264,14 +277,14 @@ export default async function AdminSourceDetailPage({
           {Array.isArray(structure.detected_chapters_json) &&
           structure.detected_chapters_json.length > 0 ? (
             <div className="mt-6">
-              <h3 className="mb-3 font-semibold text-slate-900">Detected Chapters</h3>
+              <h3 className="mb-3 font-semibold token-text-primary">Detected Chapters</h3>
               <div className="space-y-3">
                 {structure.detected_chapters_json.map((chapter: any) => (
-                  <div key={`${chapter.chapter_index}-${chapter.start_page}`} className="rounded-xl border border-slate-200 p-4">
-                    <div className="font-medium text-slate-900">
+                  <div key={`${chapter.chapter_index}-${chapter.start_page}`} className="surface-soft-panel p-4">
+                    <div className="font-medium token-text-primary">
                       {chapter.chapter_title || `Chapter ${chapter.chapter_index}`}
                     </div>
-                    <div className="mt-1 text-sm text-slate-600">
+                    <div className="mt-1 text-sm token-text-secondary">
                       Pages {chapter.start_page}–{chapter.end_page ?? '?'}
                     </div>
                   </div>
@@ -283,12 +296,12 @@ export default async function AdminSourceDetailPage({
           {Array.isArray(structure.excluded_sections_json) &&
           structure.excluded_sections_json.length > 0 ? (
             <div className="mt-6">
-              <h3 className="mb-3 font-semibold text-slate-900">Excluded Sections</h3>
+              <h3 className="mb-3 font-semibold token-text-primary">Excluded Sections</h3>
               <div className="space-y-3">
                 {structure.excluded_sections_json.map((section: any, i: number) => (
-                  <div key={`${section.label}-${i}`} className="rounded-xl border border-slate-200 p-4">
-                    <div className="font-medium text-slate-900">{section.label}</div>
-                    <div className="mt-1 text-sm text-slate-600">
+                  <div key={`${section.label}-${i}`} className="surface-soft-panel p-4">
+                    <div className="font-medium token-text-primary">{section.label}</div>
+                    <div className="mt-1 text-sm token-text-secondary">
                       Pages {section.start_page}–{section.end_page ?? '?'}
                     </div>
                   </div>
@@ -298,7 +311,7 @@ export default async function AdminSourceDetailPage({
           ) : null}
 
           {structure.cleaning_notes ? (
-            <div className="mt-6 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+            <div className="mt-6 surface-soft-panel p-4 text-sm token-text-secondary">
               {structure.cleaning_notes}
             </div>
           ) : null}
@@ -306,14 +319,14 @@ export default async function AdminSourceDetailPage({
       ) : null}
 
       {pages && pages.length > 0 ? (
-        <section className="rounded-2xl border bg-white p-6">
-          <h2 className="mb-4 text-xl font-semibold text-slate-900">Extracted Pages</h2>
+        <section className="surface-panel p-6">
+          <h2 className="mb-4 text-xl font-semibold token-text-primary">Extracted Pages</h2>
 
           <div className="space-y-4">
             {pages.slice(0, 10).map((page: any) => (
-              <div key={page.id} className="rounded-xl border border-slate-200 p-4">
-                <div className="font-medium text-slate-900">Page {page.page_number}</div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+              <div key={page.id} className="surface-soft-panel p-4">
+                <div className="font-medium token-text-primary">Page {page.page_number}</div>
+                <p className="mt-2 whitespace-pre-wrap text-sm token-text-secondary">
                   {(page.raw_text || '').slice(0, 1500)}
                 </p>
               </div>
@@ -326,10 +339,10 @@ export default async function AdminSourceDetailPage({
         <div className="card-surface p-5 sm:p-6">
           <div className="space-y-2">
             <div className="app-kicker">Lesson Review</div>
-            <h2 className="text-2xl font-semibold tracking-[-0.02em] text-slate-950">
+            <h2 className="text-2xl font-semibold tracking-[-0.02em] token-text-primary">
               Review generated chunks inline
             </h2>
-            <p className="text-sm leading-6 text-slate-600">
+            <p className="text-sm leading-6 token-text-secondary">
               Each chunk stays on this page. Generate once, scan the text, approve strong questions, and regenerate weak ones without opening another review screen.
             </p>
           </div>
@@ -337,7 +350,7 @@ export default async function AdminSourceDetailPage({
 
         {!reviewChunks || reviewChunks.length === 0 ? (
           <section className="card-surface p-6">
-            <p className="text-slate-600">No generated chunks yet.</p>
+            <p className="token-text-secondary">No generated chunks yet.</p>
           </section>
         ) : (
           <SourceChunkReview chunks={reviewChunks} />

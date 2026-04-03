@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { loginStudentSession } from '@/lib/auth/student';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function POST(request: Request) {
@@ -21,6 +22,12 @@ export async function POST(request: Request) {
     if (error || !student) {
       return NextResponse.json({ error: 'Неверный код доступа или студент не активен' }, { status: 401 });
     }
+
+    await loginStudentSession({
+      studentId: student.id,
+      accessCode: student.access_code,
+      fullName: student.full_name,
+    });
 
     return NextResponse.json({ ok: true, student: { id: student.id, full_name: student.full_name } });
   } catch (err) {

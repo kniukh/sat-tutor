@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createClient } from "@/lib/supabase/server";
 
 function buildContextSnippet(fullText: string, itemText: string) {
@@ -8,10 +9,10 @@ function buildContextSnippet(fullText: string, itemText: string) {
 
   if (index === -1) return null;
 
-  const start = Math.max(0, index - 80);
-  const end = Math.min(fullText.length, index + itemText.length + 80);
+  const start = Math.max(0, index - 28);
+  const end = Math.min(fullText.length, index + itemText.length + 28);
 
-  return fullText.slice(start, end).trim();
+  return fullText.slice(start, end).replace(/\s+/g, " ").trim();
 }
 
 export async function POST(request: Request) {
@@ -28,12 +29,14 @@ export async function POST(request: Request) {
       metadata,
     } = body;
 
-    if (!studentId || !itemText || !itemType) {
+    if (!itemText || !itemType) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
+
+    const sessionStudentId = await requireStudentApiStudentId(studentId);
 
     const supabase = await createClient();
 
@@ -54,7 +57,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase
       .from("vocabulary_capture_events")
       .insert({
-        student_id: studentId,
+        student_id: sessionStudentId,
         lesson_id: lessonId ?? null,
         passage_id: passageId ?? null,
         item_text: itemText,
@@ -81,6 +84,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, data });
   } catch (error) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     console.error("capture-inline route error", error);
     return NextResponse.json(
       { error: "Failed to capture inline vocabulary" },

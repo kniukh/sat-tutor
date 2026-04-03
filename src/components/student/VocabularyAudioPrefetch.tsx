@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 
 type Props = {
   studentId: string;
@@ -20,7 +19,6 @@ export default function VocabularyAudioPrefetch({
   pendingCount,
   readyCount,
 }: Props) {
-  const router = useRouter();
   const [status, setStatus] = useState<PrefetchState>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -43,35 +41,38 @@ export default function VocabularyAudioPrefetch({
       // sessionStorage can fail in strict environments; continue without caching.
     }
 
-    startTransition(async () => {
-      try {
-        setStatus("preparing");
-        setMessage("Preparing audio in the background so listen exercises can join future sessions.");
+    const timer = window.setTimeout(() => {
+      startTransition(async () => {
+        try {
+          setStatus("preparing");
+          setMessage("Preparing audio in the background so listen exercises can join future sessions.");
 
-        const response = await fetch("/api/vocabulary/generate-audio-bulk", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ studentId, lessonId }),
-        });
+          const response = await fetch("/api/vocabulary/generate-audio-bulk", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ studentId, lessonId }),
+          });
 
-        if (!response.ok) {
+          if (!response.ok) {
+            setStatus("error");
+            setMessage("Audio preparation could not be completed right now.");
+            return;
+          }
+
+          setStatus("ready");
+          setMessage("Audio preparation finished in the background.");
+        } catch (error) {
+          console.error("vocabulary audio prefetch error", error);
           setStatus("error");
-          setMessage("Audio preparation could not be completed right now.");
-          return;
+          setMessage("Audio preparation is temporarily unavailable.");
         }
+      });
+    }, 1200);
 
-        setStatus("ready");
-        setMessage("Audio preparation finished. Refreshing your vocabulary studio...");
-        router.refresh();
-      } catch (error) {
-        console.error("vocabulary audio prefetch error", error);
-        setStatus("error");
-        setMessage("Audio preparation is temporarily unavailable.");
-      }
-    });
-  }, [lessonId, pendingCount, router, studentId]);
+    return () => window.clearTimeout(timer);
+  }, [lessonId, pendingCount, studentId]);
 
   void lessonName;
   void readyCount;

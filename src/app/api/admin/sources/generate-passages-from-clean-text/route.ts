@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { chunkCleanChapterText } from '@/services/content/chapter-chunker';
+import { computeChunkFingerprint } from '@/services/ai/chunk-generation-cache';
+import { chunkCleanChapterText, normalizeChunkPassageText } from '@/services/content/chapter-chunker';
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
       ? cleanRows.map((row: any, index: number) => ({
           chapterIndex: row.chapter_index,
           chapterTitle: row.chapter_title,
-          passageText: row.clean_text,
+          passageText: String(row.clean_text ?? '').replace(/\r/g, '').trim(),
           wordCount: String(row.clean_text ?? '').split(/\s+/).filter(Boolean).length,
           chunkIndexWithinChapter: index,
         }))
@@ -64,18 +65,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
 
-  const rows = allChunks.map((chunk, globalIndex) => ({
-    source_document_id: sourceDocumentId,
-    title: chunk.chapterTitle
-      ? `${chunk.chapterTitle} — Part ${chunk.chunkIndexWithinChapter + 1}`
-      : `Part ${globalIndex + 1}`,
-    chunk_index: globalIndex,
-    chapter_index: chunk.chapterIndex,
-    chapter_title: chunk.chapterTitle,
-    passage_text: chunk.passageText,
-    word_count: chunk.wordCount,
-    status: 'draft',
-  }));
+  const rows = allChunks.map((chunk, globalIndex) => {
+    const normalizedPassageText =
+      source.source_type === 'poem'
+        ? String(chunk.passageText ?? '').replace(/\r/g, '').trim()
+        : normalizeChunkPassageText(chunk.passageText);
+
+    return {
+      source_document_id: sourceDocumentId,
+      title: chunk.chapterTitle
+        ? `${chunk.chapterTitle} — Part ${chunk.chunkIndexWithinChapter + 1}`
+        : `Part ${globalIndex + 1}`,
+      chunk_index: globalIndex,
+      chapter_index: chunk.chapterIndex,
+      chapter_title: chunk.chapterTitle,
+      passage_text: normalizedPassageText,
+      chunk_fingerprint: computeChunkFingerprint({
+        passageText: normalizedPassageText,
+        sourceType: source.source_type,
+      }),
+      word_count: normalizedPassageText.split(/\s+/).filter(Boolean).length,
+      status: 'draft',
+      ai_package_cache: null,
+      ai_cache_version: null,
+      ai_cached_at: null,
+    };
+  });
 
   if (rows.length > 0) {
     const { error: insertError } = await supabase

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { studentVocabularyPath } from "@/lib/routes/student";
 import type { VocabularyDashboardData } from "@/services/vocabulary/vocabulary-page.service";
 
 const LIFECYCLE_LABELS = {
@@ -90,13 +91,16 @@ export default function VocabularyDashboardSummary({
 
         <div className="flex flex-wrap gap-3 lg:justify-end">
           <Link
-            href={`/s/${accessCode}/vocabulary?mode=mixed_practice`}
+            href={studentVocabularyPath({ mode: "mixed_practice" })}
             className="rounded-[18px] bg-slate-950 px-4 py-3 text-sm font-semibold text-white"
           >
             Start Practice
           </Link>
           <Link
-            href={`/s/${accessCode}/vocabulary?mode=review_weak_words&phase=endless_continuation`}
+            href={studentVocabularyPath({
+              mode: "review_weak_words",
+              phase: "endless_continuation",
+            })}
             className="rounded-[18px] border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900"
           >
             Review Weak Words

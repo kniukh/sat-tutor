@@ -22,41 +22,44 @@ Student sees the passage and can collect unknown words or phrases.
 
 Current supported actions:
 - full-width mobile-first reading screen
-- long-press a passage word to preview meaning / translation and capture it quickly
+- long-press a passage word on mobile or select text on desktop to preview meaning / translation and capture it quickly
 - add vocabulary manually if needed
-- see known words underlined for the current student
-- show a compact review-submit block below the passage
+- see known words underlined for the current student without extra highlight backgrounds
+- manage captured words in a floating `W` Word Bank tray
+- use `Continue` as a checkpoint CTA instead of a submit-centric vocabulary action
 
 Current analytics hooks:
 - reading stage start is tracked client-side
 - a lesson open event updates reading progress for Books mode
 
 ## Stage 2 — Vocabulary Review
-After `Submit Vocabulary`:
-- captured items are processed in bulk
-- vocabulary cards are generated in bulk
-- audio is generated in bulk when available
-- cards are shown one by one
+After `Continue`:
+- pending Word Bank items are checkpoint-saved
+- vocabulary review opens quickly from saved/fallback data
+- cards are paged for mobile-friendly review
 - captured lesson words are stored so they can later enter Vocabulary Studio with lesson-aware context
 - capture metadata can now preserve where the word came from:
   - passage
   - question
   - answer
+  - vocab drill
 
 Vocabulary card content may include:
 - word or phrase
 - English explanation
 - translation
-- context sentence
 - example
-- audio
+
+Current performance rule:
+- card meanings and translations should come from existing preview data or shared dictionary cache first
+- heavier enrichment and audio work should not block the stage transition
 
 ## Stage 3 — Second Read
 Student rereads the passage with more support.
 
 Current behavior:
 - known words remain visible in the passage
-- double tap a saved word to play audio when available
+- hover/tap a saved word to see meaning + translation quickly
 - reading metrics are finalized when the reading stage ends
 
 ## Stage 4 — Questions
@@ -65,11 +68,18 @@ Quiz runs one question at a time.
 Current behavior:
 - select answer
 - submit
-- see correct / incorrect state
+- if correct, show success feedback
+- if wrong, show short trap-aware feedback without revealing the correct answer immediately
 - optionally open a `Why?` bottom sheet for structured reasoning help
 - open a temporary `See Passage` view and return back to the same question
-- long press words in question text or answer text to capture them into lesson vocabulary
+- select words on desktop or long press on mobile in question text / answer text to capture them into lesson vocabulary
+- captured quiz/repair words go into the same floating Word Bank tray
 - continue to next question
+
+Current repair behavior:
+- missed questions are retried in their original SAT form during repair
+- the passage opens automatically on the relevant line before retry
+- the overlay button reads `Back to Question` during repair
 
 Current analytics hooks:
 - per-question timing is saved through `/api/question-attempt`
@@ -84,6 +94,7 @@ When the lesson is completed:
 - skill tracking is updated
 - Mistake Brain runs after completion
 - lesson-derived vocabulary is automatically generated and normalized into drill-ready items
+- completion screen offers `Continue Reading` or `Back to Library` depending on whether a next lesson exists, plus `Go to Vocabulary` and `Return to Dashboard`
 
 ## Current Post-Lesson AI Layer
 
@@ -129,6 +140,7 @@ Inside the interactive passage reader:
 - short answer is returned from `gpt-4o-mini`
 - popup shows explanation
 - loading and error states are handled in the client
+- inline vocabulary popups and cards should prefer cache-first data and short fallback copy instead of blocking the reader
 
 ## Product Constraint For Books
 Books stay linear.
@@ -149,6 +161,7 @@ Current bridge behavior:
 - lesson-derived words keep their lesson linkage through `lesson_id`
 - source context comes from captured passage/question/answer snippets, `context_sentence`, and `example_text`
 - answer sets for key drill types are normalized and stored before the words become session-ready
+- shared `vocabulary_dictionary_cache` is checked before AI when a card meaning, translation, distractors, or drill answer sets are needed
 - fresh lesson words can later reappear in Vocabulary Studio through a softer first-exposure path:
   - `meaning_match`
   - `translation_match`
@@ -199,6 +212,7 @@ Current product note:
 - reading replay reuses the same reading question models and `question_attempts`
 - vocab replay reuses the same vocab attempt logging and normalized answer sets
 - replay is optional and launched from Insights or session results instead of interrupting the main learning flow
+- lesson repair in the main reading flow now follows the same “retry original item” habit instead of showing the correct answer upfront
 
 ## Current Drill Capture Layer
 Inside vocabulary drills:

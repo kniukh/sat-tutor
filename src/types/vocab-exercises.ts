@@ -49,6 +49,10 @@ export type VocabExercisePair = {
   leftId?: string;
   right_id?: string;
   rightId?: string;
+  left_audio_url?: string | null;
+  leftAudioUrl?: string | null;
+  left_kind?: "text" | "audio";
+  leftKind?: "text" | "audio";
 };
 
 export type VocabExerciseQueueBucket =
@@ -233,6 +237,10 @@ export type ListenMatchVocabExercise = VocabExerciseBase<"listen_match"> &
     variant?: "meaning" | "translation";
     promptStyle?: "best_meaning" | "best_translation";
     translationLanguageLabel?: string | null;
+    leftColumnLabel?: string;
+    left_column_label?: string;
+    rightColumnLabel?: string;
+    right_column_label?: string;
   };
 
 export type SpellingFromAudioVocabExercise =

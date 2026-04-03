@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ExercisePlayer,
@@ -46,6 +46,11 @@ export default function VocabSessionPlayer({
   const [currentCombo, setCurrentCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [floatingReward, setFloatingReward] = useState<FloatingReward | null>(null);
+  const pendingAttemptSavesRef = useRef<Set<Promise<void>>>(new Set());
+  const captureLessonId =
+    typeof (session.metadata as Record<string, unknown>)?.lesson_id === "string"
+      ? ((session.metadata as Record<string, unknown>).lesson_id as string)
+      : null;
 
   async function submitExerciseAttempt(result: ExerciseResult) {
     const sourceExercise = session.ordered_exercises.find(
@@ -118,8 +123,14 @@ export default function VocabSessionPlayer({
   }
 
   function handleExerciseComplete(result: ExerciseResult) {
+    const pendingSave = submitExerciseAttempt(result);
+    pendingAttemptSavesRef.current.add(pendingSave);
+    pendingSave.finally(() => {
+      pendingAttemptSavesRef.current.delete(pendingSave);
+    });
+
     startTransition(async () => {
-      await submitExerciseAttempt(result);
+      await pendingSave;
     });
   }
 
@@ -133,6 +144,11 @@ export default function VocabSessionPlayer({
 
     startRewardTransition(async () => {
       try {
+        const pendingSaves = Array.from(pendingAttemptSavesRef.current);
+        if (pendingSaves.length > 0) {
+          await Promise.allSettled(pendingSaves);
+        }
+
         const reward = await finalizeVocabularySession({
           studentId,
           sessionId: session.session_id,
@@ -202,6 +218,7 @@ export default function VocabSessionPlayer({
         }}
         focused={focused}
         captureStudentId={studentId}
+        captureLessonId={captureLessonId}
         comboCount={currentCombo}
         floatingReward={floatingReward}
         onExerciseComplete={handleExerciseComplete}

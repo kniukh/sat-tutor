@@ -39,7 +39,7 @@ export default function GenerateQuestionsButton({
         type="button"
         onClick={onClick}
         disabled={isPending}
-        className="rounded-xl bg-slate-900 px-5 py-3 text-white disabled:opacity-50"
+        className="primary-button disabled:opacity-50"
       >
         {isPending ? 'Generating...' : 'Generate Questions'}
       </button>

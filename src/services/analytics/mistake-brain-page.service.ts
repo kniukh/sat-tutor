@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { studentVocabularyDrillPath } from "@/lib/routes/student";
 import { getStudentVocabularyAnalytics } from "@/services/analytics/vocabulary-analytics.service";
 import {
   classifyReviewQueueCandidate,
@@ -232,7 +233,6 @@ function buildPatterns(params: {
 }
 
 function buildRecommendations(params: {
-  accessCode: string;
   hasWeakWords: boolean;
   hasContextPattern: boolean;
   hasAudioPattern: boolean;
@@ -244,7 +244,10 @@ function buildRecommendations(params: {
     recommendations.push({
       id: "review-weak-words",
       label: "Review Weak Words",
-      href: `/s/${params.accessCode}/vocabulary/drill?mode=review_weak_words&phase=endless_continuation`,
+      href: studentVocabularyDrillPath({
+        mode: "review_weak_words",
+        phase: "endless_continuation",
+      }),
       variant: "primary",
       description: "Hit the highest-friction words first.",
     });
@@ -254,7 +257,10 @@ function buildRecommendations(params: {
     recommendations.push({
       id: "practice-context",
       label: "Practice Context Meaning",
-      href: `/s/${params.accessCode}/vocabulary/drill?mode=mixed_practice&phase=endless_continuation`,
+      href: studentVocabularyDrillPath({
+        mode: "mixed_practice",
+        phase: "endless_continuation",
+      }),
       variant: "secondary",
       description: "Use a fresh mixed session to surface more context reps.",
     });
@@ -264,7 +270,10 @@ function buildRecommendations(params: {
     recommendations.push({
       id: "start-audio",
       label: "Start Audio Practice",
-      href: `/s/${params.accessCode}/vocabulary/drill?mode=mixed_practice&phase=endless_continuation`,
+      href: studentVocabularyDrillPath({
+        mode: "mixed_practice",
+        phase: "endless_continuation",
+      }),
       variant: "secondary",
       description: "Build listening accuracy with the current adaptive mix.",
     });
@@ -274,7 +283,10 @@ function buildRecommendations(params: {
     recommendations.push({
       id: "revisit-lesson",
       label: "Revisit Lesson Vocabulary",
-      href: `/s/${params.accessCode}/vocabulary/drill?mode=learn_new_words&lesson=${params.revisitLessonId}`,
+      href: studentVocabularyDrillPath({
+        mode: "learn_new_words",
+        lesson: params.revisitLessonId,
+      }),
       variant: "secondary",
       description: "Return to words connected to a recent reading lesson.",
     });
@@ -460,7 +472,6 @@ export async function getMistakeBrainPageData(code: string): Promise<MistakeBrai
   });
 
   const recommendations = buildRecommendations({
-    accessCode: student.access_code,
     hasWeakWords: weakWords.length > 0,
     hasContextPattern: patterns.some((item) => item.id === "context-meaning"),
     hasAudioPattern: patterns.some((item) => item.id === "audio-gap"),

@@ -19,7 +19,6 @@ import {
 import ExercisePlayerFooter from "./ExercisePlayerFooter";
 import ExerciseProgressHeader from "./ExerciseProgressHeader";
 import type { Exercise, ExerciseResult } from "./types";
-import DrillCaptureText from "./DrillCaptureText";
 import MeaningMatchExercise from "./renderers/MeaningMatchExercise";
 import PairMatchExercise from "./renderers/PairMatchExercise";
 import ListenMatchExercise from "./renderers/ListenMatchExercise";
@@ -36,6 +35,7 @@ import {
   triggerFeedbackCue,
 } from "@/services/feedback/feedback-effects.client";
 import { useFeedbackSettings } from "@/services/feedback/use-feedback-settings";
+import InlineVocabularyCaptureText from "../InlineVocabularyCaptureText";
 
 type Props = {
   exercises: Exercise[];
@@ -44,6 +44,7 @@ type Props = {
   sessionMetadata?: Record<string, unknown>;
   focused?: boolean;
   captureStudentId?: string;
+  captureLessonId?: string | null;
   comboCount?: number;
   floatingReward?: {
     id: string;
@@ -105,6 +106,7 @@ export default function ExercisePlayer({
   sessionMetadata,
   focused = false,
   captureStudentId,
+  captureLessonId = null,
   comboCount = 0,
   floatingReward = null,
   onExerciseComplete,
@@ -130,6 +132,8 @@ export default function ExercisePlayer({
 
   const currentExercise = exercises[currentIndex] ?? null;
   const questionText = getExerciseQuestionText(currentExercise);
+  const captureContextLessonId =
+    currentExercise?.reviewMeta?.sourceLessonId ?? captureLessonId ?? null;
 
   useEffect(() => {
     startedAtRef.current = Date.now();
@@ -177,13 +181,16 @@ export default function ExercisePlayer({
 
   const isTypedResponse = currentExercise.type === "spelling_from_audio";
   const isPairMatch = currentExercise.type === "pair_match";
+  const isListenPairMatch =
+    currentExercise.type === "listen_match" && getExercisePairs(currentExercise).length > 1;
+  const isPairStyleExercise = isPairMatch || isListenPairMatch;
   const isSentenceBuilder = currentExercise.type === "sentence_builder";
-  const selectedPairKeys = isPairMatch ? parsePairMatchResponse(responseValue) : [];
+  const selectedPairKeys = isPairStyleExercise ? parsePairMatchResponse(responseValue) : [];
   const selectedTileIds = isSentenceBuilder
     ? parseSentenceBuilderResponse(responseValue)
     : [];
-  const pairCount = isPairMatch ? getExercisePairs(currentExercise).length : 0;
-  const canSubmit = isPairMatch
+  const pairCount = isPairStyleExercise ? getExercisePairs(currentExercise).length : 0;
+  const canSubmit = isPairStyleExercise
     ? pairCount > 0 && selectedPairKeys.length === pairCount
     : isSentenceBuilder
       ? selectedTileIds.length > 0
@@ -215,7 +222,7 @@ export default function ExercisePlayer({
         !isInputLike &&
         !isButton &&
         !isTypedResponse &&
-        !isPairMatch &&
+        !isPairStyleExercise &&
         !isSentenceBuilder &&
         /^[1-9]$/.test(event.key)
       ) {
@@ -240,7 +247,7 @@ export default function ExercisePlayer({
   }, [
     canSubmit,
     currentExercise,
-    isPairMatch,
+    isPairStyleExercise,
     isSentenceBuilder,
     isTypedResponse,
     submitted,
@@ -258,25 +265,25 @@ export default function ExercisePlayer({
     const questionText = getExerciseQuestionText(currentExercise);
     const selectedOption = isTypedResponse
       ? null
-      : isPairMatch
+      : isPairStyleExercise
         ? null
       : isSentenceBuilder
         ? null
       : currentExercise.options.find((option) => option.id === responseValue) ?? null;
     const correctOption = isTypedResponse
       ? null
-      : isPairMatch
+      : isPairStyleExercise
         ? null
       : isSentenceBuilder
         ? null
       : currentExercise.options.find((option) => option.id === correctAnswerId) ?? null;
-    const correctPairs = isPairMatch
+    const correctPairs = isPairStyleExercise
       ? getExercisePairs(currentExercise).map((pair) => ({
           key: `${getExercisePairLeftId(pair)}::${getExercisePairRightId(pair)}`,
           label: `${pair.left} -> ${pair.right}`,
         }))
       : [];
-    const selectedPairLabels = isPairMatch
+    const selectedPairLabels = isPairStyleExercise
       ? selectedPairKeys.map((pairKey) => {
           const matchingPair = correctPairs.find((pair) => pair.key === pairKey);
           if (matchingPair) {
@@ -299,7 +306,7 @@ export default function ExercisePlayer({
     const builtSentence = isSentenceBuilder ? selectedTileLabels.join(" ") : null;
     const selectedAnswer = isTypedResponse
       ? responseValue.trim()
-      : isPairMatch
+      : isPairStyleExercise
         ? selectedPairLabels.join(" | ")
       : isSentenceBuilder
         ? builtSentence ?? ""
@@ -310,7 +317,7 @@ export default function ExercisePlayer({
     );
     const isCorrect = isTypedResponse
       ? normalizedAcceptableAnswers.includes(normalizedTypedAnswer)
-      : isPairMatch
+      : isPairStyleExercise
         ? JSON.stringify(sortPairMatchKeys(selectedPairKeys)) ===
           JSON.stringify(sortPairMatchKeys(correctPairs.map((pair) => pair.key)))
       : isSentenceBuilder
@@ -337,7 +344,7 @@ export default function ExercisePlayer({
       correct_answer:
         isTypedResponse
           ? correctAnswerId
-          : isPairMatch
+          : isPairStyleExercise
             ? correctPairs.map((pair) => pair.label).join(" | ")
             : isSentenceBuilder
               ? correctAnswerId
@@ -348,12 +355,12 @@ export default function ExercisePlayer({
       metadata: {
         ...(sessionMetadata ?? {}),
         selected_option_id:
-          isTypedResponse || isSentenceBuilder || isPairMatch ? null : responseValue,
+          isTypedResponse || isSentenceBuilder || isPairStyleExercise ? null : responseValue,
         correct_option_id:
-          isTypedResponse || isSentenceBuilder || isPairMatch ? null : correctAnswerId,
+          isTypedResponse || isSentenceBuilder || isPairStyleExercise ? null : correctAnswerId,
         response_kind: isTypedResponse
           ? "typed"
-          : isPairMatch
+          : isPairStyleExercise
             ? "pair_match"
             : isSentenceBuilder
             ? "tile_builder"
@@ -361,9 +368,9 @@ export default function ExercisePlayer({
         normalized_selected_answer: isSentenceBuilder
           ? (builtSentence ?? "").trim().toLowerCase()
           : normalizedTypedAnswer,
-        selected_pairs: isPairMatch ? selectedPairKeys : null,
-        correct_pairs: isPairMatch ? correctPairs.map((pair) => pair.key) : null,
-        selected_pair_labels: isPairMatch ? selectedPairLabels : null,
+        selected_pairs: isPairStyleExercise ? selectedPairKeys : null,
+        correct_pairs: isPairStyleExercise ? correctPairs.map((pair) => pair.key) : null,
+        selected_pair_labels: isPairStyleExercise ? selectedPairLabels : null,
         selected_tile_ids: isSentenceBuilder ? selectedTileIds : null,
         selected_tile_labels: isSentenceBuilder ? selectedTileLabels : null,
         correct_tile_ids: isSentenceBuilder ? getExerciseCorrectSequence(currentExercise) : null,
@@ -403,14 +410,14 @@ export default function ExercisePlayer({
       selectedAnswer: selectedAnswer,
       correctAnswer: isTypedResponse
         ? correctAnswerId
-        : isPairMatch
+        : isPairStyleExercise
           ? correctPairs.map((pair) => pair.label).join(" | ")
         : isSentenceBuilder
           ? correctAnswerId
           : correctOption?.label ?? correctAnswerId,
       answerLabel: isTypedResponse
         ? "Your spelling"
-        : isPairMatch
+        : isPairStyleExercise
           ? "Your matches"
         : isSentenceBuilder
           ? "Your sentence"
@@ -464,25 +471,26 @@ export default function ExercisePlayer({
       className?: string;
       highlightText?: string | null;
       as?: "span" | "div";
-    }) => (
-      <DrillCaptureText
-        text={text}
-        studentId={captureStudentId}
-        lessonId={currentExercise.reviewMeta?.sourceLessonId ?? null}
-        drillType={currentExercise.type}
-        contextText={contextText ?? null}
-        isDistractor={isDistractor}
-        className={className}
-        highlightText={highlightText ?? null}
-        as={as}
-        onCaptured={(itemText) => {
-          setCaptureToast(itemText);
-          window.setTimeout(() => {
-            setCaptureToast((current) => (current === itemText ? null : current));
-          }, 1600);
-        }}
-      />
-    );
+    }) =>
+      captureStudentId && captureContextLessonId ? (
+        <InlineVocabularyCaptureText
+          text={text}
+          studentId={captureStudentId}
+          lessonId={captureContextLessonId}
+          sourceType="answer"
+          sourceText={contextText ?? questionText ?? text}
+          className={className}
+          as={as}
+          onCaptured={(item) => {
+            setCaptureToast(item.itemText);
+            window.setTimeout(() => {
+              setCaptureToast((current) => (current === item.itemText ? null : current));
+            }, 1600);
+          }}
+        />
+      ) : (
+        as === "div" ? <div className={className}>{text}</div> : <span className={className}>{text}</span>
+      );
 
     switch (currentExercise.type) {
       case "meaning_match":
@@ -629,9 +637,31 @@ export default function ExercisePlayer({
 
       <div className={focused ? "space-y-1.5 pt-1" : "space-y-1"}>
         {questionText ? (
-          <div className={focused ? "drill-question" : "text-[1.6rem] font-semibold leading-[1.18] text-slate-950 sm:text-[1.9rem]"}>
-            {questionText}
-          </div>
+          captureStudentId && captureContextLessonId ? (
+            <InlineVocabularyCaptureText
+              studentId={captureStudentId}
+              lessonId={captureContextLessonId}
+              text={questionText}
+              sourceType="question"
+              sourceText={getExerciseSentenceText(currentExercise) || questionText}
+              className={
+                focused
+                  ? "drill-question"
+                  : "text-[1.6rem] font-semibold leading-[1.18] text-slate-950 sm:text-[1.9rem]"
+              }
+              as="div"
+              onCaptured={(item) => {
+                setCaptureToast(item.itemText);
+                window.setTimeout(() => {
+                  setCaptureToast((current) => (current === item.itemText ? null : current));
+                }, 1600);
+              }}
+            />
+          ) : (
+            <div className={focused ? "drill-question" : "text-[1.6rem] font-semibold leading-[1.18] text-slate-950 sm:text-[1.9rem]"}>
+              {questionText}
+            </div>
+          )
         ) : null}
       </div>
 

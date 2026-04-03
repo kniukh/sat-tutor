@@ -56,6 +56,26 @@ function normalizeAchievements(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function pickBestGamificationRow(rows: StudentGamificationRow[]) {
+  return [...rows].sort((left, right) => {
+    const leftUpdatedAt = left.updated_at ? Date.parse(left.updated_at) : 0;
+    const rightUpdatedAt = right.updated_at ? Date.parse(right.updated_at) : 0;
+
+    if (rightUpdatedAt !== leftUpdatedAt) {
+      return rightUpdatedAt - leftUpdatedAt;
+    }
+
+    const leftTotalXp = Number(left.total_xp ?? left.xp ?? 0);
+    const rightTotalXp = Number(right.total_xp ?? right.xp ?? 0);
+
+    if (rightTotalXp !== leftTotalXp) {
+      return rightTotalXp - leftTotalXp;
+    }
+
+    return String(right.id ?? "").localeCompare(String(left.id ?? ""));
+  })[0];
+}
+
 function toNormalizedGamificationRow(
   row: StudentGamificationRow,
   now: Date = new Date()
@@ -131,18 +151,27 @@ async function normalizeStoredGamificationRow(params: {
 export async function getOrCreateStudentGamification(studentId: string) {
   const supabase = await createServerSupabaseClient();
 
-  const { data: existing, error: existingError } = await supabase
+  const { data: existingRows, error: existingError } = await supabase
     .from("student_gamification")
     .select("*")
     .eq("student_id", studentId)
-    .maybeSingle<StudentGamificationRow>();
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .order("id", { ascending: false })
+    .returns<StudentGamificationRow[]>();
 
   if (existingError) {
     throw existingError;
   }
 
-  if (existing) {
-    return normalizeStoredGamificationRow({ row: existing });
+  if ((existingRows ?? []).length > 0) {
+    if ((existingRows ?? []).length > 1) {
+      console.error("Duplicate student_gamification rows detected", {
+        studentId,
+        rowIds: existingRows?.map((row) => row.id) ?? [],
+      });
+    }
+
+    return normalizeStoredGamificationRow({ row: pickBestGamificationRow(existingRows ?? []) });
   }
 
   const now = new Date();
@@ -165,6 +194,25 @@ export async function getOrCreateStudentGamification(studentId: string) {
     .single<StudentGamificationRow>();
 
   if (createError) {
+    if (createError.code === "23505") {
+      const { data: racedRows, error: racedError } = await supabase
+        .from("student_gamification")
+        .select("*")
+        .eq("student_id", studentId)
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: false })
+        .limit(1)
+        .returns<StudentGamificationRow[]>();
+
+      if (racedError) {
+        throw racedError;
+      }
+
+      if ((racedRows ?? []).length > 0) {
+        return normalizeStoredGamificationRow({ row: racedRows![0] });
+      }
+    }
+
     throw createError;
   }
 

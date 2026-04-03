@@ -39,23 +39,23 @@ export function SourcesTable({ sources }: { sources: SourceItem[] }) {
   return (
     <section className="card-surface p-6">
       <div className="app-kicker">Saved Sources</div>
-      <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-slate-950">Content library</h2>
+      <h2 className="token-text-primary mt-1 text-2xl font-semibold tracking-[-0.02em]">Content library</h2>
 
       {!sources || sources.length === 0 ? (
-        <p className="text-slate-600">No source documents yet.</p>
+        <p className="token-text-secondary">No source documents yet.</p>
       ) : (
         <div className="space-y-3">
           {sources.map((source) => (
-            <div key={source.id} className="flex items-center justify-between rounded-[1.25rem] border border-[var(--color-border)] p-4 hover:bg-[var(--color-surface-muted)]">
+            <div key={source.id} className="surface-soft-panel flex items-center justify-between rounded-[1.25rem] p-4 transition-colors hover:bg-[var(--color-surface)]">
               <Link
                 href={`/admin/sources/${source.id}`}
                 className="flex-1"
               >
-                <div className="font-semibold text-slate-900">{source.title}</div>
-                <div className="mt-1 text-sm text-slate-600">
+                <div className="token-text-primary font-semibold">{source.title}</div>
+                <div className="token-text-secondary mt-1 text-sm">
                   {source.author || 'Unknown author'} · {source.source_type}
                 </div>
-                <div className="mt-1 text-sm text-slate-500">
+                <div className="token-text-muted mt-1 text-sm">
                   Upload: {source.upload_kind ?? 'raw_text'} · Status:{' '}
                   {source.pdf_processing_status ?? 'uploaded'}
                 </div>
@@ -64,7 +64,7 @@ export function SourcesTable({ sources }: { sources: SourceItem[] }) {
                 type="button"
                 disabled={isPending}
                 onClick={() => deleteSource(source.id)}
-                className="ml-4 rounded-[1rem] bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-700 disabled:opacity-50"
+                className="ml-4 rounded-[1rem] bg-red-600 px-3 py-1 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
               >
                 Delete
               </button>

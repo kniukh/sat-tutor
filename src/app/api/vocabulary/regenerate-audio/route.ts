@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createClient } from "@/lib/supabase/server";
 import { generateVocabularyAudioBulk } from "@/services/ai/generate-vocabulary-audio-bulk";
 
@@ -7,19 +8,21 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { studentId, lessonId } = body;
 
-    if (!studentId || !lessonId) {
+    if (!lessonId) {
       return NextResponse.json(
         { error: "studentId and lessonId are required" },
         { status: 400 }
       );
     }
 
+    const sessionStudentId = await requireStudentApiStudentId(studentId);
+
     const supabase = await createClient();
 
     const { data: items, error } = await supabase
       .from("vocabulary_item_details")
       .select("id, item_text")
-      .eq("student_id", studentId)
+      .eq("student_id", sessionStudentId)
       .eq("lesson_id", lessonId);
 
     if (error) {
@@ -61,7 +64,7 @@ export async function POST(request: Request) {
     const { data: updatedItems, error: updatedItemsError } = await supabase
       .from("vocabulary_item_details")
       .select("*")
-      .eq("student_id", studentId)
+      .eq("student_id", sessionStudentId)
       .eq("lesson_id", lessonId)
       .order("created_at", { ascending: true });
 
@@ -75,6 +78,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, items: updatedItems ?? [] });
   } catch (error) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     console.error("regenerate-audio route error", error);
     return NextResponse.json(
       { error: "Failed to regenerate audio" },

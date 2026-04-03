@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { studentLessonPath } from "@/lib/routes/student";
 
 export type BookLessonListItem = {
   lessonId: string;
@@ -26,6 +27,7 @@ export type BookDetailData = {
     id: string;
     title: string;
     author: string | null;
+    coverImagePath: string | null;
   };
   progress: {
     progressPercent: number;
@@ -47,6 +49,7 @@ type SourceDocumentRow = {
   id: string;
   title: string;
   author: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 type StudentBookProgressRow = {
@@ -127,13 +130,20 @@ export async function getBookDetailData(params: {
 
   const { data: book, error: bookError } = await supabase
     .from("source_documents")
-    .select("id, title, author")
+    .select("id, title, author, metadata")
     .eq("id", params.sourceDocumentId)
     .single<SourceDocumentRow>();
 
   if (bookError || !book) {
     throw new Error("Book not found");
   }
+
+  const bookMetadata =
+    book.metadata && typeof book.metadata === "object" ? book.metadata : null;
+  const coverImagePath =
+    bookMetadata && typeof bookMetadata.cover_image_path === "string"
+      ? bookMetadata.cover_image_path
+      : null;
 
   const { data: progressRow, error: progressError } = await supabase
     .from("student_book_progress")
@@ -272,7 +282,7 @@ export async function getBookDetailData(params: {
       chapterIndex: item.chapterIndex,
       chapterTitle: item.chapterTitle,
       status,
-      href: `/s/${student.access_code}/lesson/${item.lessonId}`,
+      href: studentLessonPath(item.lessonId),
     });
   }
 
@@ -329,10 +339,11 @@ export async function getBookDetailData(params: {
       id: book.id,
       title: book.title,
       author: book.author,
+      coverImagePath,
     },
     progress,
     continueLessonHref: progress?.currentLessonId
-      ? `/s/${student.access_code}/lesson/${progress.currentLessonId}`
+      ? studentLessonPath(progress.currentLessonId)
       : null,
     chapters,
   };

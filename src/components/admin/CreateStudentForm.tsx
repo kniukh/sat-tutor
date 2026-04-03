@@ -48,8 +48,8 @@ export function CreateStudentForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border bg-white p-6">
-      <h2 className="text-xl font-semibold text-slate-900">Create Student</h2>
+    <form onSubmit={onSubmit} className="surface-panel space-y-4 rounded-2xl p-6">
+      <h2 className="token-text-primary text-xl font-semibold">Create Student</h2>
 
       <input
         value={fullName}
@@ -61,27 +61,27 @@ export function CreateStudentForm() {
           }
         }}
         placeholder="Full name"
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       />
 
       <input
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         placeholder="Email"
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       />
 
       <input
         value={accessCode}
         onChange={(e) => setAccessCode(makeAccessCode(e.target.value))}
         placeholder="Access code"
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       />
 
       <select
         value={nativeLanguage}
         onChange={(e) => setNativeLanguage(e.target.value as 'ru' | 'ro' | 'en')}
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       >
         <option value="ru">ru</option>
         <option value="ro">ro</option>
@@ -93,7 +93,7 @@ export function CreateStudentForm() {
       <button
         type="submit"
         disabled={isPending || !fullName || !accessCode}
-        className="rounded-xl bg-slate-900 px-5 py-3 text-white disabled:opacity-50"
+        className="primary-button disabled:opacity-50"
       >
         {isPending ? 'Creating...' : 'Create Student'}
       </button>

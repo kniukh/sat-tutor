@@ -107,28 +107,28 @@ export default function FeedbackSettingsButton({
         className={
           tone === "dark"
             ? "inline-flex items-center gap-2 text-sm font-semibold text-white/75 underline underline-offset-4"
-            : "inline-flex items-center gap-2 text-sm font-semibold text-slate-600 underline underline-offset-4"
+            : "hero-link inline-flex items-center gap-2 text-sm font-semibold underline underline-offset-4"
         }
       >
         <span>{label}</span>
-        <span className={tone === "dark" ? "inline-flex items-center gap-1 text-white/55" : "inline-flex items-center gap-1 text-slate-400"}>
+        <span className={tone === "dark" ? "inline-flex items-center gap-1 text-white/55" : "token-text-muted inline-flex items-center gap-1"}>
           <SoundIcon muted={!settings.soundEnabled} />
           <HapticIcon muted={!settings.hapticEnabled} />
         </span>
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-72 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-elevated)]">
-          <div className="text-sm font-semibold text-slate-950">Feedback settings</div>
-          <div className="mt-1 text-sm leading-6 text-slate-600">
+        <div className="surface-panel absolute right-0 top-[calc(100%+0.75rem)] z-50 w-72 rounded-[1.5rem] p-4 shadow-[var(--shadow-elevated)]">
+          <div className="token-text-primary text-sm font-semibold">Feedback settings</div>
+          <div className="token-text-secondary mt-1 text-sm leading-6">
             Keep answer feedback satisfying without making practice noisy.
           </div>
-          <div className="mt-2 inline-flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
-            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+          <div className="token-text-muted mt-2 inline-flex flex-wrap items-center gap-2 text-xs font-medium">
+            <span className="surface-soft-panel inline-flex items-center gap-1 rounded-full px-2.5 py-1">
               <SoundIcon muted={!settings.soundEnabled} />
               {settings.soundEnabled ? "Sound on" : "Sound muted"}
             </span>
-            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+            <span className="surface-soft-panel inline-flex items-center gap-1 rounded-full px-2.5 py-1">
               <HapticIcon muted={!settings.hapticEnabled} />
               {settings.hapticEnabled ? "Haptics on" : "Haptics muted"}
             </span>
@@ -137,11 +137,11 @@ export default function FeedbackSettingsButton({
           <div className="mt-4 space-y-3">
             <div className="app-card-soft flex items-center justify-between gap-3 p-3">
               <div>
-                <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-950">
+                <div className="token-text-primary inline-flex items-center gap-2 text-sm font-semibold">
                   <SoundIcon muted={!settings.soundEnabled} />
                   <span>Sound</span>
                 </div>
-                <div className="text-xs text-slate-500">Short answer and completion tones</div>
+                <div className="token-text-muted text-xs">Short answer and completion tones</div>
               </div>
               <button
                 type="button"
@@ -160,11 +160,11 @@ export default function FeedbackSettingsButton({
 
             <div className="app-card-soft flex items-center justify-between gap-3 p-3">
               <div>
-                <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-950">
+                <div className="token-text-primary inline-flex items-center gap-2 text-sm font-semibold">
                   <HapticIcon muted={!settings.hapticEnabled} />
                   <span>Haptics</span>
                 </div>
-                <div className="text-xs text-slate-500">Light vibration on supported devices</div>
+                <div className="token-text-muted text-xs">Light vibration on supported devices</div>
               </div>
               <button
                 type="button"

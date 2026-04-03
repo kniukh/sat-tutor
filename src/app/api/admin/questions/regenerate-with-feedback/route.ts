@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { extractCachedChunkAnalysis } from '@/services/ai/chunk-generation-cache';
+import { buildPassageExcerptForQuestion } from '@/services/ai/passage-context-window';
 import { regenerateSatQuestionWithFeedback } from '@/services/ai/regenerate-sat-question-with-feedback';
 
 export async function POST(request: Request) {
@@ -34,11 +36,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Passage not found' }, { status: 404 });
   }
 
+  const { data: generatedPassage } = await supabase
+    .from('generated_passages')
+    .select('*')
+    .eq('lesson_id', question.lesson_id)
+    .maybeSingle();
+
   let generated;
   try {
     generated = await regenerateSatQuestionWithFeedback({
       passageTitle: passage.title,
       passageText: passage.passage_text,
+      passageExcerpt: buildPassageExcerptForQuestion({
+        passageText: passage.passage_text,
+        questionType: question.question_type,
+        questionText: question.question_text,
+        correctText:
+          question.correct_option === 'A'
+            ? question.option_a
+            : question.correct_option === 'B'
+              ? question.option_b
+              : question.correct_option === 'C'
+                ? question.option_c
+                : question.option_d,
+      }),
+      cachedAnalysis: extractCachedChunkAnalysis(
+        (generatedPassage ?? null) as Record<string, unknown> | null,
+        generatedPassage?.chunk_fingerprint ?? null
+      ),
       originalQuestion: {
         question_type: question.question_type,
         question_text: question.question_text,

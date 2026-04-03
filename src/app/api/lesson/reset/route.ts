@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
@@ -6,19 +7,21 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { studentId, lessonId } = body;
 
-    if (!studentId || !lessonId) {
+    if (!lessonId) {
       return NextResponse.json(
         { error: "studentId and lessonId are required" },
         { status: 400 }
       );
     }
 
+    const sessionStudentId = await requireStudentApiStudentId(studentId);
+
     const supabase = await createClient();
 
     const { error: captureError } = await supabase
       .from("vocabulary_capture_events")
       .delete()
-      .eq("student_id", studentId)
+      .eq("student_id", sessionStudentId)
       .eq("lesson_id", lessonId);
 
     if (captureError) {
@@ -29,7 +32,7 @@ export async function POST(request: Request) {
     const { error: vocabError } = await supabase
       .from("vocabulary_item_details")
       .delete()
-      .eq("student_id", studentId)
+      .eq("student_id", sessionStudentId)
       .eq("lesson_id", lessonId);
 
     if (vocabError) {
@@ -40,7 +43,7 @@ export async function POST(request: Request) {
     const { error: attemptsError } = await supabase
       .from("lesson_attempts")
       .delete()
-      .eq("student_id", studentId)
+      .eq("student_id", sessionStudentId)
       .eq("lesson_id", lessonId);
 
     if (attemptsError) {
@@ -51,7 +54,7 @@ export async function POST(request: Request) {
     const { error: stateError } = await supabase
       .from("student_lesson_state")
       .delete()
-      .eq("student_id", studentId)
+      .eq("student_id", sessionStudentId)
       .eq("lesson_id", lessonId);
 
     if (stateError) {
@@ -61,6 +64,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     console.error("lesson reset route error", error);
     return NextResponse.json(
       { error: "Failed to reset lesson" },

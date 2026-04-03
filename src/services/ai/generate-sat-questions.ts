@@ -1,8 +1,18 @@
-import { openai } from '@/lib/openai';
+import { runAiGenerationWithRetry } from '@/services/ai/ai-generation-retry';
+import { renderAdminQuestionPromptRouter } from '@/services/ai/admin-question-prompt-router';
+import { normalizeAndValidateQuestionAnswers } from '@/services/ai/question-quality';
 import { shuffleQuestionOptions } from '@/services/ai/shuffle-question-options';
 
 type GeneratedQuestion = {
-  question_type: 'main_idea' | 'detail' | 'inference' | 'vocabulary' | 'tone';
+  question_type:
+    | 'main_idea'
+    | 'detail'
+    | 'inference'
+    | 'vocabulary'
+    | 'tone'
+    | 'vocabulary_in_context'
+    | 'vocabulary_definition'
+    | 'vocabulary_translation';
   question_text: string;
   option_a: string;
   option_b: string;
@@ -56,6 +66,12 @@ function validateQuestions(items: GeneratedQuestion[]) {
     if (typeof item.difficulty !== 'number') {
       throw new Error('Invalid difficulty');
     }
+
+    normalizeAndValidateQuestionAnswers(item, {
+      label: `${item.question_type} question`,
+      semanticMode: item.question_type.startsWith('vocabulary') ? 'vocabulary' : 'reading',
+      minPlausibleDistractors: 2,
+    });
   }
 }
 
@@ -100,13 +116,30 @@ You are an elite SAT Reading curriculum designer.
 Task:
 Generate questions for the passage.
 
+Unified prompt router:
+${renderAdminQuestionPromptRouter({
+  routeIds: types.length > 0 ? types : ['main_idea', 'detail', 'inference', 'tone'],
+})}
+
 Requirements:
 ${modeInstructions}
 ${typeInstructions}
+- Before writing questions, analyze the passage internally:
+  - main idea
+  - structure
+  - strongest inference points
+- Use that analysis so the questions require reasoning, not recall.
 - Each question must have 4 answer options.
 - Exactly one option must be correct.
-- Wrong answers must be plausible.
+- Wrong answers must be trap-based and plausible.
+- For each question_type you generate, follow the matching route from the unified prompt router.
 - Questions must be answerable from the passage alone.
+- Answers must work as best-answer choices, not merely technically true statements.
+- Normalize the answers so they are similar in length, tone, and structure.
+- Run a final quality check before returning:
+  - no obvious elimination by length or tone
+  - at least 2 plausible answer choices on a close read
+  - if keyword matching alone reveals the answer, rewrite it
 - Keep explanations short and precise.
 - Difficulty should be an integer from 1 to 5.
 - Return ONLY valid JSON array. No markdown. No commentary.
@@ -139,14 +172,23 @@ Passage:
 ${input.passageText}
 `;
 
-  const response = await openai.responses.create({
-    model: 'gpt-5',
-    input: prompt,
+  const questions = await runAiGenerationWithRetry({
+    label: 'sat question generation',
+    prompt,
+    parseAndValidate: (text) => {
+      const next = extractJson(text);
+      validateQuestions(next);
+      return next;
+    },
   });
 
-  const text = response.output_text;
-  const questions = extractJson(text);
-  validateQuestions(questions);
-
-  return questions.map((question) => shuffleQuestionOptions(question));
+  return questions.map((question) =>
+    shuffleQuestionOptions(
+      normalizeAndValidateQuestionAnswers(question, {
+        label: `${question.question_type} question`,
+        semanticMode: question.question_type.startsWith('vocabulary') ? 'vocabulary' : 'reading',
+        minPlausibleDistractors: 2,
+      })
+    )
+  );
 }

@@ -6,6 +6,7 @@ import { getLessonSequenceByCurrentLessonId } from "@/services/reading/reading.s
 import { getOrCreateLessonState } from "@/services/lesson-state/lesson-state.service";
 import { classifyReviewQueueCandidate } from "@/services/vocabulary/review-queue.service";
 import Link from "next/link";
+import { studentDashboardPath } from "@/lib/routes/student";
 
 export default async function StudentLessonPage({
   params,
@@ -34,7 +35,7 @@ export default async function StudentLessonPage({
 
   const lessonState = await getOrCreateLessonState(student.id, lesson.id);
 
-  await getLessonSequenceByCurrentLessonId(lesson.id);
+  const lessonSequence = await getLessonSequenceByCurrentLessonId(lesson.id);
 
   const passages = (lesson.lesson_passages ?? []).sort(
     (a: { display_order: number }, b: { display_order: number }) =>
@@ -113,17 +114,17 @@ export default async function StudentLessonPage({
       <div className="reading-topbar">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <Link
-            href={`/s/${code}`}
+            href={studentDashboardPath()}
             className="secondary-button min-h-10 px-3 py-2 text-xs sm:text-sm"
           >
             Back
           </Link>
 
           <div className="min-w-0 text-right">
-            <div className="truncate text-sm font-semibold text-slate-900 sm:text-base">
+            <div className="token-text-primary truncate text-sm font-semibold sm:text-base">
               {lesson.name}
             </div>
-            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+            <div className="token-text-muted text-[11px] uppercase tracking-[0.16em]">
               Reading
             </div>
           </div>
@@ -136,6 +137,7 @@ export default async function StudentLessonPage({
           studentId={student.id}
           lessonId={lesson.id}
           lessonName={lesson.name}
+          nextLessonId={lessonSequence.nextLesson?.id ?? null}
           passageId={mainPassage?.id}
           passageText={mainPassage?.passage_text ?? ""}
           state={{ stage: lessonState.stage }}

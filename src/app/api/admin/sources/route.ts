@@ -35,33 +35,109 @@ async function saveCoverFile(file: File, title: string) {
 }
 
 async function fetchCoverUrl(title: string, author: string) {
-  try {
-    const params = new URLSearchParams({
-      title,
-      author,
-      limit: '1',
+  async function searchOpenLibrary(params: Record<string, string>) {
+    const query = new URLSearchParams({
+      limit: '5',
+      ...params,
     });
 
-    const response = await fetch(`https://openlibrary.org/search.json?${params.toString()}`, {
+    const response = await fetch(`https://openlibrary.org/search.json?${query.toString()}`, {
       cache: 'no-store',
     });
 
     if (!response.ok) {
-      return null;
+      return [];
     }
 
     const json = await response.json();
-    const firstDoc = Array.isArray(json?.docs) ? json.docs[0] : null;
-    const coverId = firstDoc?.cover_i;
+    return Array.isArray(json?.docs) ? json.docs : [];
+  }
 
-    if (!coverId) {
+  function getDocCoverUrl(doc: any) {
+    if (!doc || typeof doc !== 'object') {
       return null;
     }
 
-    return `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`;
+    if (doc.cover_i) {
+      return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+    }
+
+    if (typeof doc.cover_edition_key === 'string' && doc.cover_edition_key.trim()) {
+      return `https://covers.openlibrary.org/b/olid/${doc.cover_edition_key.trim()}-L.jpg`;
+    }
+
+    if (Array.isArray(doc.edition_key) && typeof doc.edition_key[0] === 'string') {
+      return `https://covers.openlibrary.org/b/olid/${doc.edition_key[0]}-L.jpg`;
+    }
+
+    if (Array.isArray(doc.isbn) && typeof doc.isbn[0] === 'string') {
+      return `https://covers.openlibrary.org/b/isbn/${doc.isbn[0]}-L.jpg`;
+    }
+
+    return null;
+  }
+
+  function normalize(value: string) {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  function scoreDoc(doc: any, expectedTitle: string, expectedAuthor: string) {
+    let score = 0;
+    const normalizedTitle = normalize(String(doc?.title ?? ''));
+    const normalizedAuthor = normalize(
+      Array.isArray(doc?.author_name) ? String(doc.author_name[0] ?? '') : String(doc?.author_name ?? ''),
+    );
+
+    if (normalizedTitle === expectedTitle) score += 5;
+    else if (normalizedTitle.includes(expectedTitle) || expectedTitle.includes(normalizedTitle)) score += 3;
+
+    if (expectedAuthor) {
+      if (normalizedAuthor === expectedAuthor) score += 4;
+      else if (normalizedAuthor.includes(expectedAuthor) || expectedAuthor.includes(normalizedAuthor)) score += 2;
+    }
+
+    if (doc?.cover_i || doc?.cover_edition_key || (Array.isArray(doc?.edition_key) && doc.edition_key.length > 0)) {
+      score += 2;
+    }
+
+    return score;
+  }
+
+  try {
+    const expectedTitle = normalize(title);
+    const expectedAuthor = normalize(author);
+
+    const searchVariants = [
+      { title, author },
+      { title },
+      { q: author ? `${title} ${author}` : title },
+    ];
+
+    for (const variant of searchVariants) {
+      const docs = await searchOpenLibrary(
+        Object.fromEntries(
+          Object.entries(variant).filter(([, value]) => typeof value === 'string' && value.trim().length > 0),
+        ),
+      );
+
+      const bestDoc = docs
+        .map((doc) => ({
+          doc,
+          coverUrl: getDocCoverUrl(doc),
+          score: scoreDoc(doc, expectedTitle, expectedAuthor),
+        }))
+        .filter((item) => Boolean(item.coverUrl))
+        .sort((a, b) => b.score - a.score)[0];
+
+      if (bestDoc?.coverUrl) {
+        return bestDoc.coverUrl;
+      }
+    }
   } catch {
     return null;
   }
+
+  return null;
 }
 
 function normalizeManualRows(params: {
@@ -200,6 +276,68 @@ export async function POST(request: Request) {
   } catch (error: any) {
     return NextResponse.json(
       { error: error?.message ?? 'Failed to create source' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  const supabase = await createServerSupabaseClient();
+
+  try {
+    const body = await request.json();
+    const sourceId = String(body?.sourceId || '').trim();
+    const action = String(body?.action || '').trim();
+
+    if (!sourceId) {
+      return NextResponse.json({ error: 'sourceId is required' }, { status: 400 });
+    }
+
+    if (action !== 'refresh_cover') {
+      return NextResponse.json({ error: 'Unsupported action' }, { status: 400 });
+    }
+
+    const { data: source, error: sourceError } = await supabase
+      .from('source_documents')
+      .select('id, title, author, source_type, metadata')
+      .eq('id', sourceId)
+      .single();
+
+    if (sourceError || !source) {
+      return NextResponse.json({ error: sourceError?.message ?? 'Source not found' }, { status: 404 });
+    }
+
+    if (source.source_type !== 'book') {
+      return NextResponse.json({ error: 'Cover refresh is only available for books' }, { status: 400 });
+    }
+
+    const coverImagePath = await fetchCoverUrl(String(source.title ?? ''), String(source.author ?? ''));
+    const metadata =
+      source.metadata && typeof source.metadata === 'object' && !Array.isArray(source.metadata)
+        ? source.metadata
+        : {};
+
+    const { error: updateError } = await supabase
+      .from('source_documents')
+      .update({
+        metadata: {
+          ...metadata,
+          cover_image_path: coverImagePath,
+        },
+      })
+      .eq('id', sourceId);
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      coverImagePath,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error?.message ?? 'Failed to refresh cover' },
       { status: 500 },
     );
   }

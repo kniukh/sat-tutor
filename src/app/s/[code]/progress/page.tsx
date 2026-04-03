@@ -1,6 +1,11 @@
 import Link from "next/link";
 import WeeklyLeaderboardTimer from "@/components/student/WeeklyLeaderboardTimer";
 import { createClient } from "@/lib/supabase/server";
+import {
+  studentDashboardPath,
+  studentMistakeBrainPath,
+  studentVocabularyDrillPath,
+} from "@/lib/routes/student";
 import { getStudentGamificationSnapshot } from "@/services/gamification/gamification.service";
 import { getWeeklyLeaderboardForStudent } from "@/services/gamification/leaderboards.service";
 
@@ -63,7 +68,7 @@ export default async function StudentProgressPage({
           <div className="flex flex-col items-start gap-3 sm:items-end">
             <WeeklyLeaderboardTimer weekStartDate={leaderboard.weekStartDate} />
             <Link
-              href={`/s/${code}/mistake-brain`}
+              href={studentMistakeBrainPath()}
               className="text-sm font-semibold text-white/80 underline underline-offset-4"
             >
               View Insights
@@ -206,7 +211,7 @@ export default async function StudentProgressPage({
             </div>
 
             <Link
-              href={`/s/${code}/mistake-brain`}
+              href={studentMistakeBrainPath()}
               className="text-sm font-semibold text-slate-600 underline underline-offset-4"
             >
               Need help?
@@ -250,13 +255,16 @@ export default async function StudentProgressPage({
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
             <Link
-              href={`/s/${code}/vocabulary/drill?mode=mixed_practice&phase=endless_continuation`}
+              href={studentVocabularyDrillPath({
+                mode: "mixed_practice",
+                phase: "endless_continuation",
+              })}
               className="primary-button flex-1"
             >
               Keep Earning XP
             </Link>
             <Link
-              href={`/s/${code}`}
+              href={studentDashboardPath()}
               className="secondary-button flex-1 sm:flex-none"
             >
               Back to Dashboard

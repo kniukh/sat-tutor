@@ -25,16 +25,16 @@ export function StudentsTable({
   const progressMap = new Map(bookProgress.map((item) => [item.student_id, item]));
 
   return (
-    <div className="rounded-2xl border bg-white p-6">
-      <h2 className="mb-4 text-xl font-semibold text-slate-900">Students</h2>
+    <div className="surface-panel rounded-2xl p-6">
+      <h2 className="token-text-primary mb-4 text-xl font-semibold">Students</h2>
 
       {students.length === 0 ? (
-        <p className="text-slate-600">No students yet.</p>
+        <p className="token-text-secondary">No students yet.</p>
       ) : (
         <div className="overflow-auto">
           <table className="min-w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b text-left text-slate-500">
+              <tr className="token-text-muted border-b border-[var(--color-border)] text-left">
                 <th className="px-3 py-2">Name</th>
                 <th className="px-3 py-2">Email</th>
                 <th className="px-3 py-2">Access code</th>
@@ -48,22 +48,22 @@ export function StudentsTable({
                 const progress = progressMap.get(student.id);
 
                 return (
-                  <tr key={student.id} className="border-b last:border-b-0">
+                  <tr key={student.id} className="border-b border-[var(--color-border)] last:border-b-0">
                     <td className="px-3 py-3">
                       <Link
                         href={`/admin/students/${student.id}`}
-                        className="font-medium text-slate-900 hover:underline"
+                        className="token-text-primary font-medium hover:underline"
                       >
                         {student.full_name}
                       </Link>
                     </td>
-                    <td className="px-3 py-3 text-slate-600">{student.email || '-'}</td>
-                    <td className="px-3 py-3 text-slate-600">{student.access_code}</td>
-                    <td className="px-3 py-3 text-slate-600">{student.native_language}</td>
-                    <td className="px-3 py-3 text-slate-600">
+                    <td className="token-text-secondary px-3 py-3">{student.email || '-'}</td>
+                    <td className="token-text-secondary px-3 py-3">{student.access_code}</td>
+                    <td className="token-text-secondary px-3 py-3">{student.native_language}</td>
+                    <td className="token-text-secondary px-3 py-3">
                       {student.is_active ? 'yes' : 'no'}
                     </td>
-                    <td className="px-3 py-3 text-slate-600">
+                    <td className="token-text-secondary px-3 py-3">
                       {progress ? `${Math.round(Number(progress.progress_percent))}%` : '0%'}
                     </td>
                   </tr>

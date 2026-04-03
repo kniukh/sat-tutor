@@ -1,4 +1,11 @@
 import Link from "next/link";
+import {
+  studentBookDetailPath,
+  studentBookLibraryPath,
+  studentLessonPath,
+  studentProgressPath,
+  studentVocabularyPath,
+} from "@/lib/routes/student";
 
 export function StudentDashboard({
   studentName,
@@ -126,7 +133,7 @@ export function StudentDashboard({
               <div className="flex flex-wrap gap-3">
                 {currentBook?.current_lesson_id ? (
                   <Link
-                    href={`/s/${studentCode}/lesson/${currentBook.current_lesson_id}`}
+                    href={studentLessonPath(currentBook.current_lesson_id)}
                     className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white"
                   >
                     Continue Reading
@@ -134,7 +141,7 @@ export function StudentDashboard({
                 ) : null}
 
                 <Link
-                  href={`/s/${studentCode}/book`}
+                  href={studentBookLibraryPath()}
                   className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900"
                 >
                   Open Library
@@ -142,7 +149,7 @@ export function StudentDashboard({
 
                 {currentBook?.source_documents?.id ? (
                   <Link
-                    href={`/s/${studentCode}/book/${currentBook.source_documents.id}`}
+                    href={studentBookDetailPath(currentBook.source_documents.id)}
                     className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900"
                   >
                     Open Book
@@ -186,7 +193,7 @@ export function StudentDashboard({
               </div>
 
               <Link
-                href={`/s/${studentCode}/lesson/${nextLesson.id}`}
+                href={studentLessonPath(nextLesson.id)}
                 className="inline-flex rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white"
               >
                 Open next lesson
@@ -207,14 +214,14 @@ export function StudentDashboard({
 
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
-              href={`/s/${studentCode}/progress`}
+              href={studentProgressPath()}
               className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900"
             >
               Open Progress
             </Link>
 
             <Link
-              href={`/s/${studentCode}/vocabulary`}
+              href={studentVocabularyPath()}
               className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900"
             >
               Open Vocabulary

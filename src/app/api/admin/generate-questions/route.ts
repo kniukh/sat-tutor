@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { generateChunkLessonPackage } from '@/services/ai/generate-chunk-lesson-package';
+import {
+  CHUNK_PACKAGE_CACHE_VERSION,
+  buildStoredChunkPackageCache,
+  computeChunkFingerprint,
+  extractCachedChunkAnalysis,
+  readStoredChunkPackageCache,
+} from '@/services/ai/chunk-generation-cache';
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -28,8 +35,7 @@ export async function POST(request: Request) {
 
   let generatedPackage;
   try {
-    generatedPackage = await generateChunkLessonPackage({
-      title: lessonPassage.title,
+    const chunkFingerprint = computeChunkFingerprint({
       passageText: lessonPassage.passage_text,
       sourceType:
         lessonPassage.passage_kind === 'poem'
@@ -38,33 +44,61 @@ export async function POST(request: Request) {
             ? 'article'
             : 'book',
     });
+    const cachedPackage = readStoredChunkPackageCache(
+      generatedPassage?.ai_package_cache,
+      chunkFingerprint
+    );
+    const cachedAnalysis = extractCachedChunkAnalysis(
+      (generatedPassage ?? null) as Record<string, unknown> | null,
+      chunkFingerprint
+    );
+    generatedPackage =
+      cachedPackage ??
+      (await generateChunkLessonPackage({
+        title: lessonPassage.title,
+        passageText: lessonPassage.passage_text,
+        sourceType:
+          lessonPassage.passage_kind === 'poem'
+            ? 'poem'
+            : lessonPassage.passage_kind === 'article'
+              ? 'article'
+              : 'book',
+        cachedAnalysis,
+      }));
+
+    if (generatedPassage?.id) {
+      await supabase
+        .from('generated_passages')
+        .update({
+          chunk_fingerprint: chunkFingerprint,
+          passage_role: generatedPackage.passage_role,
+          question_strategy: generatedPackage.question_strategy,
+          recommended_question_count: generatedPackage.recommended_question_count,
+          recommended_question_types: generatedPackage.recommended_question_types,
+          analyzer_reason: generatedPackage.analyzer_reason,
+          analysis_main_idea: generatedPackage.analysis_main_idea,
+          analysis_structure: generatedPackage.analysis_structure,
+          analysis_inference_points: generatedPackage.analysis_inference_points,
+          difficulty_level: generatedPackage.difficulty_level,
+          text_mode: generatedPackage.text_mode,
+          vocab_density: generatedPackage.vocab_density,
+          phrase_density: generatedPackage.phrase_density,
+          writing_prompt_worthy: generatedPackage.writing_prompt_worthy,
+          recommended_vocab_questions_count: generatedPackage.recommended_vocab_questions_count,
+          recommended_vocab_target_words: generatedPackage.recommended_vocab_target_words,
+          recommended_vocab_target_phrases: generatedPackage.recommended_vocab_target_phrases,
+          ai_package_cache: buildStoredChunkPackageCache(chunkFingerprint, generatedPackage),
+          ai_cache_version: CHUNK_PACKAGE_CACHE_VERSION,
+          ai_cached_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', generatedPassage.id);
+    }
   } catch (error: any) {
     return NextResponse.json(
       { error: error?.message ?? 'Question generation failed' },
       { status: 500 },
     );
-  }
-
-  if (generatedPassage?.id) {
-    await supabase
-      .from('generated_passages')
-      .update({
-        passage_role: generatedPackage.passage_role,
-        question_strategy: generatedPackage.question_strategy,
-        recommended_question_count: generatedPackage.recommended_question_count,
-        recommended_question_types: generatedPackage.recommended_question_types,
-        analyzer_reason: generatedPackage.analyzer_reason,
-        difficulty_level: generatedPackage.difficulty_level,
-        text_mode: generatedPackage.text_mode,
-        vocab_density: generatedPackage.vocab_density,
-        phrase_density: generatedPackage.phrase_density,
-        writing_prompt_worthy: generatedPackage.writing_prompt_worthy,
-        recommended_vocab_questions_count: generatedPackage.recommended_vocab_questions_count,
-        recommended_vocab_target_words: generatedPackage.recommended_vocab_target_words,
-        recommended_vocab_target_phrases: generatedPackage.recommended_vocab_target_phrases,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', generatedPassage.id);
   }
 
   const { data: existingQuestions } = await supabase

@@ -32,6 +32,12 @@ Important fields:
 - `created_at`
 - `updated_at`
 
+Current runtime auth note:
+- student login now creates a signed `httpOnly` server cookie
+- canonical student routes use `/s/...`
+- APIs should derive student identity from the server cookie and only treat body `studentId` as a compatibility hint
+- legacy `/s/[code]/...` URLs remain as compatibility redirects
+
 ## Source / Content
 
 ### `source_documents`
@@ -69,10 +75,12 @@ Important fields:
 - `word_count`
 - `status`
 - analyzer metadata such as `difficulty_level`, `text_mode`, `vocab_density`
+- cached AI metadata such as `chunk_fingerprint`, passage analysis cache, and generated lesson package cache
 
 Important product use:
 - `generated_passages.lesson_id + generated_passages.source_document_id` link lessons back to books
 - `chapter_index` and `chapter_title` drive the chapter-grouped Books UI
+- chunk regeneration normalizes prose line breaks, preserves paragraph boundaries, avoids sentence splits around common abbreviations, and can reuse chunk-level AI caches when the fingerprint is unchanged
 
 ### `lessons`
 Main student-facing lesson unit.
@@ -248,6 +256,7 @@ Current role in product flow:
 - now also keeps source-aware capture context from reading passage, quiz question text, or answer text
 - stores normalized reusable answer sets for drill-specific rendering
 - older rows can be backfilled through the shared drill-preparation service when a student opens Vocabulary Studio and otherwise has no drill-ready items
+- student rows can now be enriched from `vocabulary_dictionary_cache` before AI fallback
 
 Current answer-set role:
 - `drill_answer_sets` is a JSONB map keyed by drill type
@@ -323,6 +332,31 @@ Current lifecycle states:
 Current role in adaptation:
 - stores the rolling difficulty band used by adaptive difficulty v1
 - anchors weak-word and mastery-distribution analytics
+
+### `vocabulary_dictionary_cache`
+Shared dictionary-style cache reused across students before AI fallback.
+
+Important fields:
+- `normalized_item_text`
+- `item_text`
+- `item_type`
+- `translation_language`
+- `english_explanation`
+- `translated_explanation`
+- `example_text`
+- `distractors`
+- `drill_answer_sets`
+- `source_quality`
+- `usage_count`
+- `last_used_at`
+
+Unique key:
+- `normalized_item_text + item_type + translation_language`
+
+Current use:
+- `/api/vocabulary/preview-inline` checks this cache first for fast popups
+- `generate-from-captures` copies cached card fields into student rows before AI
+- `prepare-drills` reuses cached distractors and answer sets before generating new drill data
 
 ### `review_queue`
 Rule-based review scheduling queue.
@@ -436,7 +470,8 @@ These same sources now also feed:
 -> `mistake_analysis`
 
 ### Vocabulary adaptive flow
-`vocabulary_capture_events`
+`vocabulary_dictionary_cache`
+-> `vocabulary_capture_events`
 -> `vocabulary_item_details`
 -> `exercise_attempts`
 -> `word_progress`
@@ -446,6 +481,7 @@ Current runtime note:
 - Vocabulary Studio first assembles a `priority_review` checkpoint from queue-backed and fresh-word candidates
 - then it can continue into `endless_continuation` using the same adaptive/session pipeline
 - if older `vocabulary_item_details` rows are missing normalized drill data, the shared prep service can backfill them on page load before session assembly
+- vocabulary session completion is resilient to async client/server races between final attempt persistence and `session-complete`
 
 ### Vocabulary analytics flow
 `exercise_attempts`
@@ -477,6 +513,8 @@ Current note:
 - lesson linkage is carried mostly through `lesson_id`, context sentence fields, and service-layer source metadata on exercises
 - lesson completion now also triggers automatic vocabulary drill preparation in the backend
 - drill capture can feed the same `vocabulary_capture_events` table without introducing a separate drill-capture table
+- a floating lesson Word Bank tray keeps captured items visible across first read, second read, quiz, and repair
+- pending captures are checkpoint-saved while already persisted items stay marked as `Saved`
 
 ### Book progress flow
 `students`
@@ -492,6 +530,7 @@ Current note:
 - Lesson vocabulary remains tied to the originating lesson through stored lesson/context fields instead of a separate session-source table.
 - `exercise_attempts` feed `word_progress`.
 - `word_progress` feeds `review_queue`.
+- `vocabulary_dictionary_cache` accelerates shared meaning/translation/drill reuse, but student progress remains anchored in `vocabulary_item_details` and `word_progress`.
 - `exercise_attempts` and `word_progress` also feed Vocabulary Analytics v1.
 - Mistake Brain writes post-lesson AI analysis into `mistake_analysis`.
 
@@ -504,6 +543,10 @@ Current note:
 - `20260330143000_expand_vocab_drill_capture_metadata.sql`
 - `20260330180000_add_robust_xp_system.sql`
 - `20260330193000_add_weekly_leaderboard_groups.sql`
+- `20260401130000_enable_rls_on_public_tables.sql`
+- `20260401210527_enforce_single_student_gamification_row.sql`
+- `20260401214500_add_generated_passage_ai_cache.sql`
+- `20260403120000_add_vocabulary_dictionary_cache.sql`
 
 ## Recent Schema Notes
 - Vocabulary drill normalization reused existing vocab tables and extended:
@@ -514,3 +557,5 @@ Current note:
 - New schema additions in this batch are focused on gamification:
   - XP ledger / totals
   - weekly leaderboard groups
+- RLS is now enabled on `public` tables and server-side app access goes through the service-role Supabase client helper.
+- Shared dictionary cache is intentionally context-light to save tokens and speed up repeated vocabulary lookups across students.

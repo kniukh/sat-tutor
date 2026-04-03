@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { awardVocabularySessionCompletionXp } from "@/services/gamification/xp-awards.service";
+import { ensureVocabularySessionForAttempt } from "@/services/vocabulary/vocab-session.service";
 import type { VocabularySessionRow } from "@/types/vocab-tracking";
 
 export async function POST(request: Request) {
@@ -22,15 +24,17 @@ export async function POST(request: Request) {
       accuracy: number;
     } = body;
 
-    if (!studentId || !sessionId || !sessionMode || !Number.isFinite(completedCount)) {
+    if (!sessionId || !sessionMode || !Number.isFinite(completedCount)) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
+
+    const sessionStudentId = await requireStudentApiStudentId(studentId);
 
     const supabase = await createServerSupabaseClient();
     const { data: existingSession, error: sessionError } = await supabase
       .from("vocab_sessions")
       .select("*")
-      .eq("student_id", studentId)
+      .eq("student_id", sessionStudentId)
       .eq("session_id", sessionId)
       .maybeSingle<VocabularySessionRow>();
 
@@ -38,16 +42,27 @@ export async function POST(request: Request) {
       throw sessionError;
     }
 
-    if (!existingSession) {
-      return NextResponse.json(
-        { error: "Vocabulary session not found" },
-        { status: 404 }
-      );
-    }
+    const safeCompletedCount = Math.max(0, Math.round(completedCount));
+    const safeCorrectCount = Math.max(0, Math.round(correctCount));
+    const safeAccuracy =
+      Number.isFinite(accuracy) && accuracy >= 0 ? Math.round(accuracy) : 0;
+    const resolvedSession =
+      existingSession ??
+      (await ensureVocabularySessionForAttempt({
+        studentId: sessionStudentId,
+        sessionId,
+        sessionMode,
+        sessionMetadata: {
+          session_mode: sessionMode,
+          completion_fallback_session: true,
+        },
+        attemptCreatedAt: new Date().toISOString(),
+        isCorrect: safeCorrectCount > 0,
+      }));
 
     const existingMetadata =
-      existingSession.metadata && typeof existingSession.metadata === "object"
-        ? (existingSession.metadata as Record<string, unknown>)
+      resolvedSession.metadata && typeof resolvedSession.metadata === "object"
+        ? (resolvedSession.metadata as Record<string, unknown>)
         : {};
 
     if (existingMetadata.reward_credited_at) {
@@ -78,13 +93,9 @@ export async function POST(request: Request) {
       });
     }
 
-    const safeCompletedCount = Math.max(0, Math.round(completedCount));
-    const safeCorrectCount = Math.max(0, Math.round(correctCount));
-    const safeAccuracy =
-      Number.isFinite(accuracy) && accuracy >= 0 ? Math.round(accuracy) : 0;
     const xpReward = await awardVocabularySessionCompletionXp({
-      studentId,
-      session: existingSession,
+      studentId: sessionStudentId,
+      session: resolvedSession,
       accuracy: safeAccuracy,
       completedCount: safeCompletedCount,
     });
@@ -117,12 +128,12 @@ export async function POST(request: Request) {
     const { error: updateError } = await supabase
       .from("vocab_sessions")
       .update({
-        completed_at: existingSession.completed_at ?? completionTimestamp,
+        completed_at: resolvedSession.completed_at ?? completionTimestamp,
         metadata: updatedMetadata,
         updated_at: completionTimestamp,
       })
       .eq("session_id", sessionId)
-      .eq("student_id", studentId);
+      .eq("student_id", sessionStudentId);
 
     if (updateError) {
       throw updateError;
@@ -147,6 +158,10 @@ export async function POST(request: Request) {
       },
     });
   } catch (error: any) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     console.error("POST /api/vocabulary/session-complete error", error);
     return NextResponse.json(
       { error: error?.message ?? "Failed to finalize vocabulary session" },

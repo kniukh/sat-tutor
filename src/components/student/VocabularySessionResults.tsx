@@ -4,6 +4,11 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import MascotCat from "@/components/student/MascotCat";
 import FeedbackSettingsButton from "@/components/student/FeedbackSettingsButton";
+import {
+  studentMistakeBrainPath,
+  studentVocabularyDrillPath,
+  studentVocabularyPath,
+} from "@/lib/routes/student";
 import type { VocabExerciseSession } from "@/services/vocabulary/session-builder";
 import type { ExerciseResult } from "@/components/student/exercise-player";
 import {
@@ -43,9 +48,15 @@ export default function VocabularySessionResults({
     rewardCredit,
     sessionGamification,
   });
-  const continueHref = `/s/${accessCode}/vocabulary/drill?mode=${session.mode}&phase=endless_continuation`;
-  const weakWordsHref = `/s/${accessCode}/vocabulary?mode=review_weak_words&phase=endless_continuation`;
-  const insightsHref = `/s/${accessCode}/mistake-brain`;
+  const continueHref = studentVocabularyDrillPath({
+    mode: session.mode,
+    phase: "endless_continuation",
+  });
+  const weakWordsHref = studentVocabularyPath({
+    mode: "review_weak_words",
+    phase: "endless_continuation",
+  });
+  const insightsHref = studentMistakeBrainPath();
 
   useEffect(() => {
     if (completionPlayedRef.current) {
@@ -128,7 +139,7 @@ export default function VocabularySessionResults({
 
   if (focused) {
     return (
-      <div className="mx-auto flex min-h-[100svh] w-full max-w-xl flex-col justify-center gap-6 bg-white px-4 py-6 text-center sm:px-6">
+      <div className="mx-auto flex min-h-[100svh] w-full max-w-xl flex-col justify-center gap-6 px-4 py-6 text-center sm:px-6">
         <div className="space-y-3">
           <div className="flex justify-center">
             <MascotCat mood="celebrate" size="md" />
@@ -137,7 +148,7 @@ export default function VocabularySessionResults({
             {summary.sessionPhase === "priority_review" ? "Checkpoint" : "Practice Checkpoint"}
           </div>
           <h2 className="app-heading-lg text-[2rem]">{summary.completionTitle}</h2>
-          <p className="text-base leading-7 text-slate-600">{summary.completionSubtitle}</p>
+          <p className="token-text-secondary text-base leading-7">{summary.completionSubtitle}</p>
           <p className="app-copy font-medium">{summary.rewardNote}</p>
           {summary.sessionGamification?.leveledUp ? (
             <div className="rounded-full border border-[var(--color-secondary)] bg-[var(--color-secondary-soft)] px-3 py-1 text-xs font-semibold text-[var(--color-secondary)]">
@@ -148,16 +159,16 @@ export default function VocabularySessionResults({
 
         <div className="grid grid-cols-2 gap-3">
           <div className="app-card-soft p-4">
-            <div className="app-kicker text-slate-500">
+            <div className="app-kicker token-text-muted">
               Accuracy
             </div>
-            <div className="mt-2 text-3xl font-semibold text-slate-950">{summary.accuracy}%</div>
+            <div className="token-text-primary mt-2 text-3xl font-semibold">{summary.accuracy}%</div>
           </div>
           <div className="app-card-soft p-4">
-            <div className="app-kicker text-slate-500">
+            <div className="app-kicker token-text-muted">
               XP
             </div>
-            <div className="mt-2 text-3xl font-semibold text-slate-950">
+            <div className="token-text-primary mt-2 text-3xl font-semibold">
               +{summary.sessionGamification?.totalXpEarned ?? summary.reward.totalXp}
             </div>
           </div>
@@ -166,14 +177,14 @@ export default function VocabularySessionResults({
         {summary.sessionGamification ? (
           <div className="grid grid-cols-2 gap-3">
             <div className="app-card-soft p-4">
-              <div className="app-kicker text-slate-500">Max combo</div>
-              <div className="mt-2 text-3xl font-semibold text-slate-950">
+              <div className="app-kicker token-text-muted">Max combo</div>
+              <div className="token-text-primary mt-2 text-3xl font-semibold">
                 {summary.sessionGamification.maxCombo > 0 ? `x${summary.sessionGamification.maxCombo}` : "x0"}
               </div>
             </div>
             <div className="app-card-soft p-4">
-              <div className="app-kicker text-slate-500">Words improved</div>
-              <div className="mt-2 text-3xl font-semibold text-slate-950">
+              <div className="app-kicker token-text-muted">Words improved</div>
+              <div className="token-text-primary mt-2 text-3xl font-semibold">
                 {summary.sessionGamification.wordsImprovedCount}
               </div>
             </div>
@@ -182,8 +193,8 @@ export default function VocabularySessionResults({
 
         {summary.sessionGamification?.leveledUp ? (
           <div className="rounded-[1.5rem] border border-[var(--color-secondary)] bg-[var(--color-secondary-soft)] px-4 py-4 text-left">
-            <div className="text-sm font-semibold text-slate-950">Level up</div>
-            <div className="mt-1 text-sm leading-6 text-slate-700">
+            <div className="token-text-primary text-sm font-semibold">Level up</div>
+            <div className="token-text-secondary mt-1 text-sm leading-6">
               You moved from level {summary.sessionGamification.previousLevel ?? 1} to level{" "}
               {summary.sessionGamification.currentLevel ?? 1}.
             </div>
@@ -204,7 +215,7 @@ export default function VocabularySessionResults({
             Review Weak Words
           </Link>
           <Link
-            href={`/s/${accessCode}/vocabulary?mode=${session.mode}`}
+            href={studentVocabularyPath({ mode: session.mode })}
             className="app-button app-button-muted flex w-full"
           >
             Back to vocabulary
@@ -243,7 +254,7 @@ export default function VocabularySessionResults({
           </div>
         ) : null}
         <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+          <span className="surface-soft-panel token-text-secondary rounded-full px-3 py-1 text-xs font-semibold">
             {summary.completedCount} exercises
           </span>
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
@@ -259,39 +270,39 @@ export default function VocabularySessionResults({
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {sessionHighlights.map((item) => (
-          <div key={item.label} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <div key={item.label} className="surface-soft-panel rounded-[22px] p-4">
+            <div className="token-text-muted text-xs font-semibold uppercase tracking-[0.16em]">
               {item.label}
             </div>
-            <div className="mt-2 text-xl font-semibold text-slate-950">{item.value}</div>
-            <div className="mt-1 text-sm text-slate-500">{item.hint}</div>
+            <div className="token-text-primary mt-2 text-xl font-semibold">{item.value}</div>
+            <div className="token-text-muted mt-1 text-sm">{item.hint}</div>
           </div>
         ))}
       </div>
 
-      <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+      <div className="surface-soft-panel rounded-[24px] p-4">
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <div className="surface-panel rounded-[20px] p-4">
+            <div className="token-text-muted text-xs font-semibold uppercase tracking-[0.16em]">
               Weak words improved
             </div>
-            <div className="mt-2 text-2xl font-semibold text-slate-950">
+            <div className="token-text-primary mt-2 text-2xl font-semibold">
               {summary.weakWordsImproved.length}
             </div>
           </div>
-          <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <div className="surface-panel rounded-[20px] p-4">
+            <div className="token-text-muted text-xs font-semibold uppercase tracking-[0.16em]">
               Lifecycle moves
             </div>
-            <div className="mt-2 text-2xl font-semibold text-slate-950">
+            <div className="token-text-primary mt-2 text-2xl font-semibold">
               {summary.sessionGamification?.wordsImprovedCount ?? summary.advancedWords.length}
             </div>
           </div>
-          <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <div className="surface-panel rounded-[20px] p-4">
+            <div className="token-text-muted text-xs font-semibold uppercase tracking-[0.16em]">
               Overdue cleared
             </div>
-            <div className="mt-2 text-2xl font-semibold text-slate-950">
+            <div className="token-text-primary mt-2 text-2xl font-semibold">
               {summary.overdueReviewsCleared.length}
             </div>
           </div>
@@ -300,8 +311,8 @@ export default function VocabularySessionResults({
 
       <div className="grid gap-4 lg:grid-cols-2">
         {progressItems.map((item) => (
-          <div key={item.label} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-            <div className="text-sm font-semibold text-slate-950">{item.label}</div>
+          <div key={item.label} className="surface-soft-panel rounded-[24px] p-4">
+            <div className="token-text-primary text-sm font-semibold">{item.label}</div>
             <div className="mt-3 flex flex-wrap gap-2">
               {item.words.length > 0 ? (
                 item.words.map((word) => (
@@ -315,7 +326,7 @@ export default function VocabularySessionResults({
                   </span>
                 ))
               ) : (
-                <span className="text-sm text-slate-500">{item.empty}</span>
+                <span className="token-text-muted text-sm">{item.empty}</span>
               )}
             </div>
           </div>
@@ -323,12 +334,12 @@ export default function VocabularySessionResults({
       </div>
 
       {sessionTags.length > 0 ? (
-        <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-          <div className="text-sm font-semibold text-slate-950">This session focused on</div>
+        <div className="surface-soft-panel rounded-[24px] p-4">
+          <div className="token-text-primary text-sm font-semibold">This session focused on</div>
           <div className="mt-4 space-y-4">
             {sessionTags.map((group) => (
               <div key={group.label}>
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <div className="token-text-muted text-xs font-semibold uppercase tracking-[0.16em]">
                   {group.label}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -349,12 +360,12 @@ export default function VocabularySessionResults({
         </div>
       ) : null}
 
-      <div className="space-y-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+      <div className="surface-soft-panel space-y-3 rounded-[24px] p-4">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+          <div className="token-text-muted text-[11px] font-semibold uppercase tracking-[0.18em]">
             What Next
           </div>
-          <div className="mt-1 text-sm text-slate-600">
+          <div className="token-text-secondary mt-1 text-sm">
             {isRewardPending
               ? "Saving your session credit..."
               : "Keep the momentum going with another adaptive checkpoint instead of stopping after today's priority words."}
@@ -374,7 +385,7 @@ export default function VocabularySessionResults({
             Review weak words
           </Link>
           <Link
-            href={`/s/${accessCode}/vocabulary?mode=${session.mode}`}
+            href={studentVocabularyPath({ mode: session.mode })}
             className="app-button app-button-muted"
           >
             Back to vocabulary
@@ -383,7 +394,7 @@ export default function VocabularySessionResults({
         <div>
           <Link
             href={insightsHref}
-            className="text-sm font-semibold text-slate-600 underline underline-offset-4"
+            className="hero-link text-sm font-semibold underline underline-offset-4"
           >
             View your weak areas
           </Link>

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import {
   getOrCreateStudentLessonState,
   updateStudentLessonStage,
@@ -30,15 +31,16 @@ export async function POST(request: Request) {
     secondReadDone?: boolean;
   } = body;
 
-  if (!studentId || !lessonId || !stage || !allowedStages.includes(stage)) {
+  if (!lessonId || !stage || !allowedStages.includes(stage)) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
   try {
-    await getOrCreateStudentLessonState(studentId, lessonId);
+    const sessionStudentId = await requireStudentApiStudentId(studentId);
+    await getOrCreateStudentLessonState(sessionStudentId, lessonId);
 
     const data = await updateStudentLessonStage({
-      studentId,
+      studentId: sessionStudentId,
       lessonId,
       stage,
       vocabSubmitted,
@@ -47,6 +49,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data });
   } catch (error: any) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       { error: error?.message ?? 'Stage update failed' },
       { status: 500 },

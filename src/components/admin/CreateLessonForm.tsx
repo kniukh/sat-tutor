@@ -91,21 +91,21 @@ export function CreateLessonForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border bg-white p-6">
+    <form onSubmit={onSubmit} className="surface-panel space-y-4 rounded-2xl p-6">
       <div>
-        <h2 className="text-xl font-semibold text-slate-900">Create Lesson</h2>
-        <p className="mt-1 text-sm text-slate-600">Minimal admin create form</p>
+        <h2 className="token-text-primary text-xl font-semibold">Create Lesson</h2>
+        <p className="token-text-secondary mt-1 text-sm">Minimal admin create form</p>
       </div>
 
       {loadingUnits ? (
-        <p className="text-sm text-slate-500">Loading units...</p>
+        <p className="token-text-muted text-sm">Loading units...</p>
       ) : (
         <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">Unit</span>
+          <span className="token-text-secondary mb-1 block text-sm font-medium">Unit</span>
           <select
             value={unitId}
             onChange={(e) => setUnitId(e.target.value)}
-            className="w-full rounded-xl border px-3 py-2 text-slate-900"
+            className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
           >
             {units.map((unit) => (
               <option key={unit.id} value={unit.id}>
@@ -118,7 +118,7 @@ export function CreateLessonForm() {
       )}
 
       <label className="block">
-        <span className="mb-1 block text-sm font-medium text-slate-700">Lesson name</span>
+        <span className="token-text-secondary mb-1 block text-sm font-medium">Lesson name</span>
         <input
           value={name}
           onChange={(e) => {
@@ -126,27 +126,27 @@ export function CreateLessonForm() {
             setName(value);
             setSlug(makeSlug(value));
           }}
-          className="w-full rounded-xl border px-3 py-2 text-slate-900"
+          className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
           placeholder="Lesson 2"
         />
       </label>
 
       <label className="block">
-        <span className="mb-1 block text-sm font-medium text-slate-700">Slug</span>
+        <span className="token-text-secondary mb-1 block text-sm font-medium">Slug</span>
         <input
           value={slug}
           onChange={(e) => setSlug(makeSlug(e.target.value))}
-          className="w-full rounded-xl border px-3 py-2 text-slate-900"
+          className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
           placeholder="lesson-2"
         />
       </label>
 
       <label className="block">
-        <span className="mb-1 block text-sm font-medium text-slate-700">Lesson type</span>
+        <span className="token-text-secondary mb-1 block text-sm font-medium">Lesson type</span>
         <select
           value={lessonType}
           onChange={(e) => setLessonType(e.target.value)}
-          className="w-full rounded-xl border px-3 py-2 text-slate-900"
+          className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
         >
           <option value="reading_vocab">reading_vocab</option>
           <option value="vocab_drill">vocab_drill</option>
@@ -157,11 +157,11 @@ export function CreateLessonForm() {
       </label>
 
       <label className="block">
-        <span className="mb-1 block text-sm font-medium text-slate-700">Status</span>
+        <span className="token-text-secondary mb-1 block text-sm font-medium">Status</span>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="w-full rounded-xl border px-3 py-2 text-slate-900"
+          className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
         >
           <option value="draft">draft</option>
           <option value="review">review</option>
@@ -175,7 +175,7 @@ export function CreateLessonForm() {
       <button
         type="submit"
         disabled={isPending || loadingUnits || !unitId || !name || !slug}
-        className="rounded-xl bg-slate-900 px-5 py-3 text-white disabled:opacity-50"
+        className="primary-button disabled:opacity-50"
       >
         {isPending ? 'Creating...' : 'Create Lesson'}
       </button>

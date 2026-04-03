@@ -4,6 +4,7 @@ export type StudentBooksListItem = {
   sourceDocumentId: string;
   title: string;
   author: string | null;
+  coverImagePath: string | null;
   progressPercent: number;
   completedLessonsCount: number;
   totalLessonsCount: number;
@@ -52,6 +53,7 @@ type SourceDocumentRow = {
   id: string;
   title: string;
   author: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 function getBookSortCategory(book: StudentBooksListItem, featuredId: string | null) {
@@ -64,6 +66,20 @@ function getBookSortCategory(book: StudentBooksListItem, featuredId: string | nu
   }
 
   return 2;
+}
+
+function pickFeaturedBookId(progressRows: StudentBookProgressRow[]) {
+  const currentRow = progressRows.find((row) => Boolean(row.current_lesson_id));
+  if (currentRow?.source_document_id) {
+    return currentRow.source_document_id;
+  }
+
+  const lastOpenedRow = progressRows.find((row) => Boolean(row.last_opened_at));
+  if (lastOpenedRow?.source_document_id) {
+    return lastOpenedRow.source_document_id;
+  }
+
+  return null;
 }
 
 export async function getBooksPageData(accessCode: string): Promise<BooksPageData> {
@@ -143,33 +159,23 @@ export async function getBooksPageData(accessCode: string): Promise<BooksPageDat
     lessonsByBook.set(row.source_document_id, existing);
   }
 
-  const sourceDocumentIds = Array.from(lessonsByBook.keys());
+  const { data: sourceDocuments, error: sourceDocumentsError } = await supabase
+    .from("source_documents")
+    .select("id, title, author, metadata")
+    .eq("source_type", "book")
+    .returns<SourceDocumentRow[]>();
 
-  let sourceDocuments: SourceDocumentRow[] = [];
-
-  if (sourceDocumentIds.length > 0) {
-    const { data, error } = await supabase
-      .from("source_documents")
-      .select("id, title, author")
-      .in("id", sourceDocumentIds)
-      .returns<SourceDocumentRow[]>();
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    sourceDocuments = data ?? [];
+  if (sourceDocumentsError) {
+    throw new Error(sourceDocumentsError.message);
   }
 
-  const sourceDocumentMap = new Map(sourceDocuments.map((row) => [row.id, row]));
+  const sourceDocumentMap = new Map((sourceDocuments ?? []).map((row) => [row.id, row]));
   const progressMap = new Map((progressRows ?? []).map((row) => [row.source_document_id, row]));
-  const featuredProgressRow =
-    (progressRows ?? []).find((row) => Boolean(row.current_lesson_id)) ?? null;
-  const featuredId = featuredProgressRow?.source_document_id ?? null;
+  const featuredId = pickFeaturedBookId(progressRows ?? []);
 
-  const books = sourceDocumentIds
-    .map((sourceDocumentId) => {
-      const sourceDocument = sourceDocumentMap.get(sourceDocumentId);
+  const books = (sourceDocuments ?? [])
+    .map((sourceDocument) => {
+      const sourceDocumentId = sourceDocument.id;
       const progressRow = progressMap.get(sourceDocumentId);
       const totalLessonsCount = lessonsByBook.get(sourceDocumentId)?.size ?? 0;
       const completedLessonsCount = progressRow?.completed_lessons_count ?? 0;
@@ -178,15 +184,20 @@ export async function getBooksPageData(accessCode: string): Promise<BooksPageDat
         (totalLessonsCount > 0
           ? Number(((completedLessonsCount / totalLessonsCount) * 100).toFixed(2))
           : 0);
-
-      if (!sourceDocument) {
-        return null;
-      }
+      const metadata =
+        sourceDocument.metadata && typeof sourceDocument.metadata === "object"
+          ? sourceDocument.metadata
+          : null;
+      const coverImagePath =
+        metadata && typeof metadata.cover_image_path === "string"
+          ? metadata.cover_image_path
+          : null;
 
       return {
         sourceDocumentId,
         title: sourceDocument.title,
         author: sourceDocument.author,
+        coverImagePath,
         progressPercent,
         completedLessonsCount,
         totalLessonsCount,
@@ -195,7 +206,6 @@ export async function getBooksPageData(accessCode: string): Promise<BooksPageDat
         isCurrent: sourceDocumentId === featuredId,
       } satisfies StudentBooksListItem;
     })
-    .filter((book): book is StudentBooksListItem => Boolean(book))
     .sort((a, b) => {
       const categoryDiff =
         getBookSortCategory(a, featuredId) - getBookSortCategory(b, featuredId);
@@ -220,7 +230,7 @@ export async function getBooksPageData(accessCode: string): Promise<BooksPageDat
       fullName: student.full_name,
       accessCode: student.access_code,
     },
-    featuredBook: books.find((book) => book.isCurrent) ?? null,
+    featuredBook: books.find((book) => book.sourceDocumentId === featuredId) ?? books[0] ?? null,
     books,
   };
 }

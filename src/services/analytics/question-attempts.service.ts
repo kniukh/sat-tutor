@@ -38,14 +38,26 @@ export async function saveQuestionAttempt(params: {
     throw error;
   }
 
-  const xpReward = await awardReadingQuestionXp({
-    studentId: params.studentId,
-    lessonId: params.lessonId,
-    questionAttemptId: data.id,
-    questionId: params.questionId,
-    questionType: question.question_type ?? null,
-    isCorrect: data.is_correct,
-  });
+  let xpReward = null;
+
+  try {
+    xpReward = await awardReadingQuestionXp({
+      studentId: params.studentId,
+      lessonId: params.lessonId,
+      questionAttemptId: data.id,
+      questionId: params.questionId,
+      questionType: question.question_type ?? null,
+      isCorrect: data.is_correct,
+    });
+  } catch (error) {
+    console.error("awardReadingQuestionXp failed", {
+      studentId: params.studentId,
+      lessonId: params.lessonId,
+      questionId: params.questionId,
+      questionAttemptId: data.id,
+      error,
+    });
+  }
 
   return {
     attempt: data,

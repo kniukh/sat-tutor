@@ -22,32 +22,32 @@ export default function LessonProgressHud({
 
   return (
     <div className="sticky top-4 z-20">
-      <div className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur">
+      <div className="surface-panel rounded-2xl p-4 shadow-lg backdrop-blur">
         <div className="grid gap-3 md:grid-cols-4">
           <div>
-            <div className="text-xs text-slate-500">Part</div>
-            <div className="mt-1 text-sm font-semibold text-slate-900">
+            <div className="token-text-muted text-xs">Part</div>
+            <div className="token-text-primary mt-1 text-sm font-semibold">
               {partLabel ?? '-'}
             </div>
           </div>
 
           <div>
-            <div className="text-xs text-slate-500">Stage</div>
-            <div className="mt-1 text-sm font-semibold capitalize text-slate-900">
+            <div className="token-text-muted text-xs">Stage</div>
+            <div className="token-text-primary mt-1 text-sm font-semibold capitalize">
               {formatStage(stage)}
             </div>
           </div>
 
           <div>
-            <div className="text-xs text-slate-500">Words collected</div>
-            <div className="mt-1 text-sm font-semibold text-slate-900">
+            <div className="token-text-muted text-xs">Words collected</div>
+            <div className="token-text-primary mt-1 text-sm font-semibold">
               {collectedWordsCount}
             </div>
           </div>
 
           <div>
-            <div className="text-xs text-slate-500">Questions left</div>
-            <div className="mt-1 text-sm font-semibold text-slate-900">
+            <div className="token-text-muted text-xs">Questions left</div>
+            <div className="token-text-primary mt-1 text-sm font-semibold">
               {questionsLeft}
             </div>
           </div>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { saveExerciseAttempt } from "@/services/vocabulary/exercise-attempts.service";
 import { applyExerciseAttemptToProgress } from "@/services/vocabulary/exercise-progress.service";
 import { awardVocabularyExerciseXp } from "@/services/gamification/xp-awards.service";
@@ -19,18 +20,14 @@ export async function POST(request: Request) {
       exercise: SupportedVocabExercise;
     } = body;
 
-    if (
-      !studentId ||
-      !result?.exercise_id ||
-      !result?.session_id ||
-      !exercise?.id ||
-      exercise.id !== result.exercise_id
-    ) {
+    if (!result?.exercise_id || !result?.session_id || !exercise?.id || exercise.id !== result.exercise_id) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
+    const sessionStudentId = await requireStudentApiStudentId(studentId);
+
     const saved = await saveExerciseAttempt({
-      studentId,
+      studentId: sessionStudentId,
       result,
       exercise,
     });
@@ -41,7 +38,7 @@ export async function POST(request: Request) {
 
     try {
       progress = await applyExerciseAttemptToProgress({
-        studentId,
+        studentId: sessionStudentId,
         attempt: saved,
       });
     } catch (error: any) {
@@ -51,7 +48,7 @@ export async function POST(request: Request) {
 
     try {
       xpReward = await awardVocabularyExerciseXp({
-        studentId,
+        studentId: sessionStudentId,
         attempt: saved,
         exercise,
         sameSessionCreditCapped: Boolean((progress as any)?.sameSessionCreditCapped),
@@ -63,6 +60,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, data: saved, progress, progressError, xpReward });
   } catch (error: any) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     console.error("POST /api/vocabulary/exercise-attempt error", error);
     return NextResponse.json(
       { error: error?.message ?? "Failed to save exercise attempt" },

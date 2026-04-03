@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { studentBookLibraryPath, studentDashboardPath } from "@/lib/routes/student";
 import { getBookDetailData } from "@/services/reading/book-detail.service";
 
 function getStatusClasses(status: "completed" | "current" | "available") {
@@ -40,21 +41,35 @@ export default async function StudentBookDetailPage({
   return (
     <div className="content-shell max-w-5xl space-y-5">
       <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-        <Link href={`/s/${code}`} className="underline underline-offset-4">
+        <Link href={studentDashboardPath()} className="underline underline-offset-4">
           Dashboard
         </Link>
         <span>/</span>
-        <Link href={`/s/${code}/book`} className="underline underline-offset-4">
+        <Link href={studentBookLibraryPath()} className="underline underline-offset-4">
           Books
         </Link>
       </div>
 
       <section className="card-surface p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="app-kicker">Book</div>
-            <h1 className="app-heading-lg mt-1">{data.book.title}</h1>
-            <p className="app-copy mt-1">{data.book.author ?? "Unknown author"}</p>
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="surface-soft-panel flex h-28 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem]">
+              {data.book.coverImagePath ? (
+                <img
+                  src={data.book.coverImagePath}
+                  alt={`${data.book.title} cover`}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="app-kicker token-text-muted text-center">Cover</div>
+              )}
+            </div>
+
+            <div className="min-w-0">
+              <div className="app-kicker">Book</div>
+              <h1 className="app-heading-lg mt-1">{data.book.title}</h1>
+              <p className="app-copy mt-1">{data.book.author ?? "Unknown author"}</p>
+            </div>
           </div>
 
           <div className="app-chip">{progressPercent}%</div>
@@ -62,18 +77,18 @@ export default async function StudentBookDetailPage({
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <div className="app-card-soft p-4">
-            <div className="app-kicker text-slate-500">Progress</div>
-            <div className="mt-2 text-2xl font-semibold text-slate-950">{progressPercent}%</div>
+            <div className="app-kicker token-text-muted">Progress</div>
+            <div className="token-text-primary mt-2 text-2xl font-semibold">{progressPercent}%</div>
           </div>
           <div className="app-card-soft p-4">
-            <div className="app-kicker text-slate-500">Completed</div>
-            <div className="mt-2 text-2xl font-semibold text-slate-950">
+            <div className="app-kicker token-text-muted">Completed</div>
+            <div className="token-text-primary mt-2 text-2xl font-semibold">
               {data.progress?.completedLessonsCount ?? 0}
             </div>
           </div>
           <div className="app-card-soft p-4">
-            <div className="app-kicker text-slate-500">Lessons</div>
-            <div className="mt-2 text-2xl font-semibold text-slate-950">
+            <div className="app-kicker token-text-muted">Lessons</div>
+            <div className="token-text-primary mt-2 text-2xl font-semibold">
               {data.progress?.totalLessonsCount ?? 0}
             </div>
           </div>

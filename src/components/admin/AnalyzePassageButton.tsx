@@ -39,7 +39,7 @@ export default function AnalyzePassageButton({
         type="button"
         onClick={onClick}
         disabled={isPending}
-        className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-slate-900 disabled:opacity-50"
+        className="secondary-button disabled:opacity-50"
       >
         {isPending ? 'Analyzing...' : 'Analyze Passage'}
       </button>

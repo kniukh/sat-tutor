@@ -1,5 +1,6 @@
 import Link from "next/link";
 import VocabSessionPlayer from "@/components/student/VocabSessionPlayer";
+import { studentVocabularyPath } from "@/lib/routes/student";
 import {
   getStudentVocabularyPageData,
   normalizeVocabularyLessonId,
@@ -59,9 +60,11 @@ export default async function FocusedVocabularyDrillPage({
 
         <div className="space-y-3">
           <Link
-            href={`/s/${data.student.accessCode}/vocabulary?mode=${selectedMode}${
-              resolvedSearchParams.phase ? `&phase=${resolvedSearchParams.phase}` : ""
-            }${preferredLessonId ? `&lesson=${preferredLessonId}` : ""}`}
+            href={studentVocabularyPath({
+              mode: selectedMode,
+              phase: resolvedSearchParams.phase ?? undefined,
+              lesson: preferredLessonId ?? undefined,
+            })}
             className="primary-button w-full"
           >
             Back to vocabulary

@@ -1,6 +1,10 @@
 import Link from "next/link";
 import VocabularyAudioPrefetch from "@/components/student/VocabularyAudioPrefetch";
 import {
+  studentMistakeBrainPath,
+  studentVocabularyDrillPath,
+} from "@/lib/routes/student";
+import {
   normalizeVocabularyLessonId,
   getStudentVocabularyPageData,
   normalizeVocabularyPageMode,
@@ -31,10 +35,16 @@ export default async function StudentVocabularyPage({
     summary,
     preparationNeeded,
   } = data;
-  const lessonQuery = summary.lessonFocus ? `&lesson=${summary.lessonFocus.lessonId}` : "";
-  const practicePhaseQuery = summary.activePhase ? `&phase=${summary.activePhase}` : "";
-  const primaryPracticeHref = `/s/${student.accessCode}/vocabulary/drill?mode=mixed_practice${practicePhaseQuery}${lessonQuery}`;
-  const weakWordsHref = `/s/${student.accessCode}/vocabulary/drill?mode=review_weak_words&phase=endless_continuation${lessonQuery}`;
+  const primaryPracticeHref = studentVocabularyDrillPath({
+    mode: "mixed_practice",
+    phase: summary.activePhase ?? undefined,
+    lesson: summary.lessonFocus?.lessonId ?? undefined,
+  });
+  const weakWordsHref = studentVocabularyDrillPath({
+    mode: "review_weak_words",
+    phase: "endless_continuation",
+    lesson: summary.lessonFocus?.lessonId ?? undefined,
+  });
   const primaryActionLabel =
     summary.activePhase === "endless_continuation" ? "Continue Practice" : "Start Practice";
 
@@ -82,7 +92,7 @@ export default async function StudentVocabularyPage({
 
           <div>
             <Link
-              href={`/s/${student.accessCode}/mistake-brain`}
+              href={studentMistakeBrainPath()}
               className="text-sm font-semibold text-slate-600 underline underline-offset-4"
             >
               View Insights

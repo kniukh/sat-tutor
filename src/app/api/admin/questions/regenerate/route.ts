@@ -1,17 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { generateSatQuestionsFromPassage } from '@/services/ai/generate-sat-questions';
-
-const TYPE_PROMPTS: Record<string, string> = {
-  main_idea: 'Generate exactly 1 SAT-style main idea question.',
-  detail: 'Generate exactly 1 SAT-style detail question.',
-  inference: 'Generate exactly 1 SAT-style inference question.',
-  vocabulary: 'Generate exactly 1 SAT-style vocabulary-in-context question.',
-  vocabulary_in_context: 'Generate exactly 1 SAT-style vocabulary-in-context question that depends on the passage context.',
-  vocabulary_definition: 'Generate exactly 1 SAT-style vocabulary question that asks for the best definition in this passage context.',
-  vocabulary_translation: 'Generate exactly 1 SAT-style vocabulary question that asks for the best translation or closest meaning in this passage context.',
-  tone: 'Generate exactly 1 SAT-style tone question.',
-};
+import { extractCachedChunkAnalysis } from '@/services/ai/chunk-generation-cache';
+import { buildPassageExcerptForQuestion } from '@/services/ai/passage-context-window';
+import { regenerateSatQuestionWithFeedback } from '@/services/ai/regenerate-sat-question-with-feedback';
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -41,14 +32,48 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Passage not found' }, { status: 404 });
   }
 
+  const { data: generatedPassage } = await supabase
+    .from('generated_passages')
+    .select('*')
+    .eq('lesson_id', question.lesson_id)
+    .maybeSingle();
+
   let generated;
   try {
-    const base = await generateSatQuestionsFromPassage({
-      title: passage.title,
-      passageText: `${TYPE_PROMPTS[question.question_type] ?? ''}\n\n${passage.passage_text}`,
+    generated = await regenerateSatQuestionWithFeedback({
+      passageTitle: passage.title,
+      passageText: passage.passage_text,
+      passageExcerpt: buildPassageExcerptForQuestion({
+        passageText: passage.passage_text,
+        questionType: question.question_type,
+        questionText: question.question_text,
+        correctText:
+          question.correct_option === 'A'
+            ? question.option_a
+            : question.correct_option === 'B'
+              ? question.option_b
+              : question.correct_option === 'C'
+                ? question.option_c
+                : question.option_d,
+      }),
+      cachedAnalysis: extractCachedChunkAnalysis(
+        (generatedPassage ?? null) as Record<string, unknown> | null,
+        generatedPassage?.chunk_fingerprint ?? null
+      ),
+      originalQuestion: {
+        question_type: question.question_type,
+        question_text: question.question_text,
+        option_a: question.option_a,
+        option_b: question.option_b,
+        option_c: question.option_c,
+        option_d: question.option_d,
+        correct_option: question.correct_option,
+        explanation: question.explanation,
+        difficulty: question.difficulty,
+      },
+      feedback:
+        'Regenerate this question with the same question type, stronger distractor control, and fresh wording. Keep the answer choices balanced and plausible.',
     });
-
-    generated = base.find((item) => item.question_type === question.question_type) ?? base[0];
   } catch (error: any) {
     return NextResponse.json(
       { error: error?.message ?? 'Regeneration failed' },

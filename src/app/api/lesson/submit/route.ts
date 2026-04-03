@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { updateWordProgress } from '@/services/vocabulary/vocabulary.service';
 import { awardStudentActivity } from '@/services/gamification/gamification.service';
@@ -17,12 +18,24 @@ export async function POST(request: Request) {
     answersJson = [],
   } = body;
 
+  let sessionStudentId: string;
+
+  try {
+    sessionStudentId = await requireStudentApiStudentId(studentId);
+  } catch (error) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
+    throw error;
+  }
+
   const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from('lesson_attempts')
     .insert({
-      student_id: studentId,
+      student_id: sessionStudentId,
       lesson_id: lessonId,
       score,
       total_questions: totalQuestions,
@@ -40,7 +53,7 @@ export async function POST(request: Request) {
 
   try {
     await updateWordProgress({
-      studentId,
+      studentId: sessionStudentId,
       lessonId,
       weakWords,
     });
@@ -50,7 +63,7 @@ export async function POST(request: Request) {
 
   try {
     await awardStudentActivity({
-      studentId,
+      studentId: sessionStudentId,
       xpToAdd: 10,
     });
   } catch (gamificationError) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { saveQuestionAttempt } from "@/services/analytics/question-attempts.service";
 
 export async function POST(request: Request) {
@@ -19,18 +20,14 @@ export async function POST(request: Request) {
       durationSec: number;
     } = body;
 
-    if (
-      !studentId ||
-      !lessonId ||
-      !questionId ||
-      !selectedOption ||
-      !Number.isFinite(durationSec)
-    ) {
+    if (!lessonId || !questionId || !selectedOption || !Number.isFinite(durationSec)) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
+    const sessionStudentId = await requireStudentApiStudentId(studentId);
+
     const result = await saveQuestionAttempt({
-      studentId,
+      studentId: sessionStudentId,
       lessonId,
       questionId,
       selectedOption,
@@ -39,6 +36,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, result });
   } catch (error) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     console.error("POST /api/question-attempt error", error);
     return NextResponse.json(
       { error: "Failed to save question attempt" },

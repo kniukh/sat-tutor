@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isStudentApiAuthError, requireStudentApiSession } from "@/lib/auth/student-api";
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { awardStudentActivity } from '@/services/gamification/gamification.service';
 import { evaluateReviewPolicy } from '@/services/vocabulary/review-policy.service';
@@ -24,6 +25,16 @@ export async function POST(request: Request) {
 
   if (existingError || !existing) {
     return NextResponse.json({ error: 'Word not found' }, { status: 404 });
+  }
+
+  try {
+    await requireStudentApiSession(existing.student_id);
+  } catch (error) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
+    throw error;
   }
 
   const timesSeen = Number(existing.times_seen ?? existing.total_attempts ?? 0) + 1;

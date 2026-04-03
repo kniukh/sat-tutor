@@ -52,8 +52,8 @@ export default function UploadPdfSourceForm() {
     <form onSubmit={onSubmit} className="card-surface space-y-4 p-6">
       <div>
         <div className="app-kicker">Upload Book PDF</div>
-        <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-slate-950">Import a full book</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
+        <h2 className="token-text-primary mt-1 text-2xl font-semibold tracking-[-0.02em]">Import a full book</h2>
+        <p className="token-text-secondary mt-2 text-sm leading-6">
           Extract pages first, then use the existing structure and chunk pipeline before generating AI lessons.
         </p>
       </div>
@@ -62,21 +62,21 @@ export default function UploadPdfSourceForm() {
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Book title"
-        className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-slate-900"
+        className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2"
       />
 
       <input
         value={author}
         onChange={(e) => setAuthor(e.target.value)}
         placeholder="Author"
-        className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-slate-900"
+        className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2"
       />
 
       <input
         type="file"
         accept="application/pdf"
         onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-slate-900"
+        className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2"
       />
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}

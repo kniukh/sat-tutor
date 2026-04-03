@@ -37,15 +37,15 @@ export default function AddWritingPromptForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border bg-white p-6">
-      <h2 className="text-xl font-semibold text-slate-900">Add Writing Prompt</h2>
+    <form onSubmit={onSubmit} className="surface-panel space-y-4 rounded-2xl p-6">
+      <h2 className="token-text-primary text-xl font-semibold">Add Writing Prompt</h2>
 
       <textarea
         value={promptText}
         onChange={(e) => setPromptText(e.target.value)}
         rows={4}
         placeholder="What is the main idea of this passage?"
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       />
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -53,7 +53,7 @@ export default function AddWritingPromptForm({
       <button
         type="submit"
         disabled={isPending || !promptText.trim()}
-        className="rounded-xl bg-slate-900 px-5 py-3 text-white disabled:opacity-50"
+        className="primary-button disabled:opacity-50"
       >
         {isPending ? 'Saving...' : 'Add Writing Prompt'}
       </button>

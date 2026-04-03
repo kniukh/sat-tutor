@@ -3,13 +3,15 @@
 SAT Tutor is a Next.js + Supabase learning app focused on SAT Reading, guided book progress, lesson analytics, and vocabulary review.
 
 The project currently has four major student surfaces:
-- Reading lessons at `/s/[code]/lesson/[lessonId]`
-- Books library and chapter-grouped book detail at `/s/[code]/book`
-- Vocabulary Studio at `/s/[code]/vocabulary`
-- Focused vocabulary drill mode at `/s/[code]/vocabulary/drill`
-- Student dashboard at `/s/[code]`
-- Insights at `/s/[code]/mistake-brain`
+- Reading lessons at `/s/lesson/[lessonId]`
+- Books library and chapter-grouped book detail at `/s/book`
+- Vocabulary Studio at `/s/vocabulary`
+- Focused vocabulary drill mode at `/s/vocabulary/drill`
+- Student dashboard at `/s`
+- Insights at `/s/mistake-brain`
 - Mistake Replay at `/s/[code]/mistake-replay`
+
+Legacy `/s/[code]/...` URLs still work as compatibility redirects after student login, but canonical student navigation now uses the session-based `/s/...` routes.
 
 ## Current Product Shape
 
@@ -17,15 +19,17 @@ The project currently has four major student surfaces:
 - Stage-based lesson flow: `first_read -> vocab_review -> second_read -> questions -> completed`
 - Mobile-first reading layout with no split view during reading
 - Long-press vocabulary capture inside the passage
-- Vocabulary cards with audio and explanations
-- Second-read audio replay on saved words
+- Shared lesson-scoped `Word Bank` tray across first read, second read, quiz, and repair
+- Vocabulary cards with fast meaning + translation review and lightweight paging
+- Second-read hover/tap meaning review on saved words
 - Question-by-question SAT practice with passage recall
 - Optional post-answer reasoning explanations in a bottom sheet during quiz
+- SAT-style repair flow that repeats the original question and auto-opens the passage on the relevant line
 - Reading analytics and per-question timing
 - AI Tutor text explanation from the passage
 - Mistake Brain analysis after lesson completion
 - Mistake Replay repair sessions built from recent reading and vocabulary mistakes
-- Automatic vocabulary drill preparation after lesson completion
+- Automatic vocabulary drill preparation after lesson completion in a best-effort background path
 
 ### Books
 - Kindle-style library page
@@ -64,7 +68,9 @@ The project currently has four major student surfaces:
 - Automatic drill preparation pipeline for new lesson captures
 - Auto-backfill drill preparation for older vocabulary rows when a student opens Vocabulary Studio with legacy items that are not drill-ready yet
 - Long-press vocabulary capture inside drills from answers, distractors, and sentence fragments
+- Shared DB-first dictionary cache for `meaning + translation + distractors + drill answer sets`
 - Normalized attempt logging and local debug telemetry
+- Session completion is race-safe: pending attempt saves are awaited client-side and the backend can create a fallback `vocab_sessions` row if completion arrives first
 - End-of-session results with weak-word and recovery summaries
 - Replay Mistakes entry points from session results and Insights
 - Vocabulary Analytics v1 on student progress and dashboard surfaces
@@ -95,6 +101,8 @@ The project currently has four major student surfaces:
   - `/admin/sources`
 - Unified source creation for books, articles, and poems
 - Inline lesson review for generated chunks and questions
+- Content Pipeline batch actions: `Approve All`, `Publish Approved`, `Redo Chunks`, `Refresh Cover`
+- Lesson deletion in `/admin/lessons` with cleanup of linked runtime/content rows
 
 ## Tech Stack
 - Next.js 16
@@ -145,16 +153,18 @@ npm run build
   - [client.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/lib/supabase/client.ts)
 - Do not break linear book order.
 - Prefer explicit typed mapping between DB rows and UI payloads.
+- Student APIs should trust the signed server cookie as the source of truth, not client-provided `studentId`.
+- RLS is enabled on `public` tables; server-side Supabase access uses the service-role client helper.
 
 ## Important Student Routes
-- `/s/[code]` — dashboard
-- `/s/[code]/book` — books library
-- `/s/[code]/book/[sourceDocumentId]` — single book detail
-- `/s/[code]/lesson/[lessonId]` — reading lesson flow
-- `/s/[code]/vocabulary` — vocabulary studio
-- `/s/[code]/vocabulary/drill` — focused full-screen drill session
-- `/s/[code]/progress` — student progress page
-- `/s/[code]/mistake-brain` — insights and weak-area analysis
+- `/s` — dashboard
+- `/s/book` — books library
+- `/s/book/[sourceDocumentId]` — single book detail
+- `/s/lesson/[lessonId]` — reading lesson flow
+- `/s/vocabulary` — vocabulary studio
+- `/s/vocabulary/drill` — focused full-screen drill session
+- `/s/progress` — student progress page
+- `/s/mistake-brain` — insights and weak-area analysis
 - `/s/[code]/mistake-replay` — focused repair session for recent mistakes
 
 ## Important Dev / Test Routes
@@ -189,6 +199,8 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
   - passage analysis
   - vocabulary generation
   - mistake analysis
+  - prompt routing and quality gates for SAT question generation
+  - chunk-level package/fingerprint caching
 
 ## Documentation Map
 - [architecture.md](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/architecture.md)
@@ -204,7 +216,10 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 - Lesson-derived vocabulary now carries source lesson/context metadata into Vocabulary Studio sessions.
 - Reading lessons can now capture vocabulary from passage, question text, and answer text with source-aware metadata.
 - Vocabulary drills can now capture words from answer choices, distractors, and sentence fragments with `vocab_drill` source metadata.
+- Shared lesson Word Bank shows `Pending / Saved` status and auto-saves on checkpoints.
+- Vocabulary cards now reuse a shared dictionary cache and avoid blocking lesson transitions on heavy AI/audio work.
 - Audio-backed vocab practice now includes `listen_match` and `spelling_from_audio`.
+- `listen_match` supports two-column audio-to-meaning/translation matching with grouped 6-8 pair sets when enough items exist.
 - Matching and SAT-style language drills now include `pair_match`, `sentence_builder`, and `error_detection`.
 - Adaptive difficulty v1 is implemented as a transparent rule-based layer in the session pipeline.
 - Vocabulary Analytics v1 is implemented for exercise totals, accuracy breakdowns, weak words, lifecycle distribution, and recent vocab sessions.
@@ -214,5 +229,6 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 - Endless vocab practice now continues past the initial priority review phase using the same adaptive/session pipeline instead of a separate system.
 - XP and weekly leaderboard groups now sit on top of the existing attempt/session flows.
 - Admin content creation now supports books, articles, and poems in one source pipeline with inline lesson review.
+- Chunking now preserves sentence boundaries, handles common abbreviations like `Mr.`, and normalizes prose line breaks without flattening real paragraph boundaries.
 - Recent vocab changes used migrations on existing tables rather than introducing brand-new tables.
 - Books mode is chapter-aware in the UI, but still linear in progression.

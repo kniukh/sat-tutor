@@ -1,4 +1,9 @@
 import Link from "next/link";
+import {
+  studentDashboardPath,
+  studentProgressPath,
+  studentVocabularyDrillPath,
+} from "@/lib/routes/student";
 import type { MistakeBrainPageData } from "@/services/analytics/mistake-brain-page.service";
 
 function formatPercent(value: number) {
@@ -54,58 +59,61 @@ export default function MistakeBrainPage({
             <h1 className="text-[1.9rem] font-semibold leading-[1.04] tracking-[-0.03em] text-white sm:text-[2.4rem]">
               Know what is weak and what to do next.
             </h1>
-            <p className="max-w-2xl text-sm leading-6 text-white/72">
+            <p className="max-w-2xl text-sm leading-6 token-text-inverse-muted">
               Weak skills, review lists, and deeper learning stats in one place.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-3">
             <Link
-              href={`/s/${data.student.accessCode}/vocabulary/drill?mode=review_weak_words&phase=endless_continuation`}
-              className="primary-button bg-white text-slate-950 hover:bg-slate-100"
+              href={studentVocabularyDrillPath({
+                mode: "review_weak_words",
+                phase: "endless_continuation",
+              })}
+              className="primary-button"
             >
               Review Weak Words
             </Link>
-            <Link href={`/s/${data.student.accessCode}`} className="secondary-button bg-white/90">
+            <Link href={studentDashboardPath()} className="secondary-button">
               Back to Dashboard
             </Link>
-            <Link href={`/s/${data.student.accessCode}/progress`} className="secondary-button bg-white/90">
+            <Link href={studentProgressPath()} className="secondary-button">
               Open Progress
             </Link>
           </div>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[1.35rem] bg-white/10 px-4 py-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/60">
+          <div className="hero-stat-card">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] token-text-inverse-muted">
               Total Attempts
             </div>
-            <div className="mt-2 text-3xl font-semibold text-white">{data.overview.totalAttempts}</div>
+            <div className="mt-2 text-3xl font-semibold token-text-inverse">{data.overview.totalAttempts}</div>
           </div>
 
-          <div className="rounded-[1.35rem] bg-white/10 px-4 py-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/60">
+          <div className="hero-stat-card">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] token-text-inverse-muted">
               Accuracy
             </div>
-            <div className="mt-2 text-3xl font-semibold text-white">
+            <div className="mt-2 text-3xl font-semibold token-text-inverse">
               {formatPercent(data.overview.accuracy)}
             </div>
           </div>
 
-          <div className="rounded-[1.35rem] bg-white/10 px-4 py-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/60">
+          <div className="hero-stat-card">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] token-text-inverse-muted">
               Sessions Completed
             </div>
-            <div className="mt-2 text-3xl font-semibold text-white">
+            <div className="mt-2 text-3xl font-semibold token-text-inverse">
               {data.overview.sessionsCompleted}
             </div>
           </div>
 
-          <div className="rounded-[1.35rem] bg-white/10 px-4 py-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/60">
+          <div className="hero-stat-card">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] token-text-inverse-muted">
               Avg. Response
             </div>
-            <div className="mt-2 text-3xl font-semibold text-white">
+            <div className="mt-2 text-3xl font-semibold token-text-inverse">
               {formatDuration(data.overview.averageResponseTimeMs)}
             </div>
           </div>
@@ -113,12 +121,15 @@ export default function MistakeBrainPage({
 
         <div className="mt-5 grid gap-3 lg:grid-cols-2">
           <Link
-            href={`/s/${data.student.accessCode}/vocabulary/drill?mode=review_weak_words&phase=endless_continuation`}
-            className="primary-button h-auto justify-between rounded-[1.25rem] bg-white text-slate-950 hover:bg-slate-100 px-4 py-4 text-left"
+            href={studentVocabularyDrillPath({
+              mode: "review_weak_words",
+              phase: "endless_continuation",
+            })}
+            className="primary-button h-auto justify-between rounded-[1.25rem] px-4 py-4 text-left"
           >
             <div className="space-y-1">
               <div>Review Weak Words</div>
-              <div className="text-xs font-medium leading-5 text-slate-600">
+              <div className="text-xs font-medium leading-5 token-text-secondary">
                 Turn weak items into fast corrective practice.
               </div>
             </div>
@@ -127,12 +138,12 @@ export default function MistakeBrainPage({
             <Link
               key={item.id}
               href={item.href}
-              className={`${item.variant === "primary" ? "primary-button bg-white text-slate-950 hover:bg-slate-100" : "secondary-button bg-white/90"} h-auto justify-between rounded-[1.25rem] px-4 py-4 text-left`}
+              className={`${item.variant === "primary" ? "primary-button" : "secondary-button"} h-auto justify-between rounded-[1.25rem] px-4 py-4 text-left`}
             >
               <div className="space-y-1">
                 <div>{item.label}</div>
                 {item.description ? (
-                  <div className="text-xs font-medium leading-5 text-slate-600">
+                  <div className="text-xs font-medium leading-5 token-text-secondary">
                     {item.description}
                   </div>
                 ) : null}
@@ -157,17 +168,17 @@ export default function MistakeBrainPage({
             weakSkills.map((item) => (
               <div key={item.skill} className="app-card-soft p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="font-semibold capitalize text-slate-950">
+                  <div className="font-semibold capitalize token-text-primary">
                     {formatLabel(item.skill)}
                   </div>
-                  <div className="text-sm font-semibold text-slate-700">
+                  <div className="text-sm font-semibold token-text-secondary">
                     {formatPercent(item.accuracy)}
                   </div>
                 </div>
                 <div className="mt-3 progress-track">
                   <div className="progress-fill" style={getProgressFillStyle(item.accuracy)} />
                 </div>
-                <div className="mt-2 text-sm text-slate-500">
+                <div className="mt-2 text-sm token-text-muted">
                   {item.correct} correct out of {item.attempts} attempts
                 </div>
               </div>
@@ -190,7 +201,10 @@ export default function MistakeBrainPage({
               <h3 className="app-heading-md mt-1">Review first</h3>
             </div>
             <Link
-              href={`/s/${data.student.accessCode}/vocabulary/drill?mode=review_weak_words&phase=endless_continuation`}
+              href={studentVocabularyDrillPath({
+                mode: "review_weak_words",
+                phase: "endless_continuation",
+              })}
               className="secondary-button px-3 py-2 text-xs"
             >
               Review
@@ -203,8 +217,8 @@ export default function MistakeBrainPage({
             ) : (
               weakWords.map((item) => (
                 <div key={`${item.wordId ?? item.word}`} className="app-card-soft p-3.5">
-                  <div className="font-semibold text-slate-950">{item.word}</div>
-                  <div className="mt-1 text-sm text-slate-500 capitalize">
+                  <div className="font-semibold token-text-primary">{item.word}</div>
+                  <div className="mt-1 text-sm token-text-muted capitalize">
                     {formatLabel(item.lifecycleState)} · {formatPercent(item.masteryScore)}
                   </div>
                 </div>
@@ -220,7 +234,10 @@ export default function MistakeBrainPage({
               <h3 className="app-heading-md mt-1">Still stabilizing</h3>
             </div>
             <Link
-              href={`/s/${data.student.accessCode}/vocabulary/drill?mode=mixed_practice&phase=endless_continuation`}
+              href={studentVocabularyDrillPath({
+                mode: "mixed_practice",
+                phase: "endless_continuation",
+              })}
               className="secondary-button px-3 py-2 text-xs"
             >
               Practice
@@ -233,8 +250,8 @@ export default function MistakeBrainPage({
             ) : (
               learningWords.map((item) => (
                 <div key={`${item.wordId ?? item.word}`} className="app-card-soft p-3.5">
-                  <div className="font-semibold text-slate-950">{item.word}</div>
-                  <div className="mt-1 text-sm text-slate-500 capitalize">
+                  <div className="font-semibold token-text-primary">{item.word}</div>
+                  <div className="mt-1 text-sm token-text-muted capitalize">
                     {formatLabel(item.lifecycleState)} · {formatPercent(item.masteryScore)}
                   </div>
                 </div>
@@ -250,7 +267,10 @@ export default function MistakeBrainPage({
               <h3 className="app-heading-md mt-1">Recurring friction</h3>
             </div>
             <Link
-              href={`/s/${data.student.accessCode}/vocabulary/drill?mode=review_weak_words&phase=endless_continuation`}
+              href={studentVocabularyDrillPath({
+                mode: "review_weak_words",
+                phase: "endless_continuation",
+              })}
               className="secondary-button px-3 py-2 text-xs"
             >
               Practice
@@ -263,8 +283,8 @@ export default function MistakeBrainPage({
             ) : (
               recentlyMissed.map((item) => (
                 <div key={`${item.wordId ?? item.word}`} className="app-card-soft p-3.5">
-                  <div className="font-semibold text-slate-950">{item.word}</div>
-                  <div className="mt-1 text-sm text-slate-500">
+                  <div className="font-semibold token-text-primary">{item.word}</div>
+                  <div className="mt-1 text-sm token-text-muted">
                     {item.wrongCount} misses · {formatPercent(item.accuracy)}
                   </div>
                 </div>
@@ -279,20 +299,20 @@ export default function MistakeBrainPage({
 
           <div className="mt-4 space-y-3">
             <div className="app-card-soft p-4">
-              <div className="text-3xl font-semibold text-slate-950">
+              <div className="text-3xl font-semibold token-text-primary">
                 {data.reviewLists.masteredSummary.count}
               </div>
-              <div className="mt-2 text-sm text-slate-600">
+              <div className="mt-2 text-sm token-text-secondary">
                 Lifetime mastered words.
               </div>
             </div>
 
             <div className="app-card-soft p-4">
-              <div className="app-kicker text-slate-500">Average Mastery</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">
+              <div className="app-kicker token-text-muted">Average Mastery</div>
+              <div className="mt-2 text-2xl font-semibold token-text-primary">
                 {formatPercent(data.reviewLists.masteredSummary.averageMasteryScore)}
               </div>
-              <div className="mt-2 text-sm text-slate-600">
+              <div className="mt-2 text-sm token-text-secondary">
                 Across words already in the mastered state.
               </div>
             </div>
@@ -308,22 +328,22 @@ export default function MistakeBrainPage({
 
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <div className="app-card-soft p-4">
-              <div className="app-kicker text-slate-500">Reading Attempts</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">
+              <div className="app-kicker token-text-muted">Reading Attempts</div>
+              <div className="mt-2 text-2xl font-semibold token-text-primary">
                 {data.overview.readingAttempts}
               </div>
             </div>
 
             <div className="app-card-soft p-4">
-              <div className="app-kicker text-slate-500">Vocab Attempts</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">
+              <div className="app-kicker token-text-muted">Vocab Attempts</div>
+              <div className="mt-2 text-2xl font-semibold token-text-primary">
                 {data.overview.vocabAttempts}
               </div>
             </div>
 
             <div className="app-card-soft p-4">
-              <div className="app-kicker text-slate-500">Practiced Today</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">
+              <div className="app-kicker token-text-muted">Practiced Today</div>
+              <div className="mt-2 text-2xl font-semibold token-text-primary">
                 {data.deeperStats.practicedTodayWords}
               </div>
             </div>
@@ -331,15 +351,15 @@ export default function MistakeBrainPage({
 
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             <div className="space-y-3">
-              <div className="text-sm font-semibold text-slate-900">Modality performance</div>
+              <div className="text-sm font-semibold token-text-primary">Modality performance</div>
               {modalityPerformance.length === 0 ? (
                 <div className="app-copy">No modality data yet.</div>
               ) : (
                 modalityPerformance.map((item) => (
                   <div key={item.key} className="app-card-soft p-3.5">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-medium capitalize text-slate-900">{item.key}</div>
-                      <div className="text-sm font-semibold text-slate-700">
+                      <div className="font-medium capitalize token-text-primary">{item.key}</div>
+                      <div className="text-sm font-semibold token-text-secondary">
                         {formatPercent(item.accuracy)}
                       </div>
                     </div>
@@ -352,17 +372,17 @@ export default function MistakeBrainPage({
             </div>
 
             <div className="space-y-3">
-              <div className="text-sm font-semibold text-slate-900">Exercise type performance</div>
+              <div className="text-sm font-semibold token-text-primary">Exercise type performance</div>
               {exerciseTypePerformance.length === 0 ? (
                 <div className="app-copy">No drill-type data yet.</div>
               ) : (
                 exerciseTypePerformance.map((item) => (
                   <div key={item.key} className="app-card-soft p-3.5">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-medium capitalize text-slate-900">
+                      <div className="font-medium capitalize token-text-primary">
                         {formatLabel(item.key)}
                       </div>
-                      <div className="text-sm font-semibold text-slate-700">
+                      <div className="text-sm font-semibold token-text-secondary">
                         {formatPercent(item.accuracy)}
                       </div>
                     </div>
@@ -383,26 +403,26 @@ export default function MistakeBrainPage({
           <div className="mt-5 space-y-3">
             {data.patterns.length === 0 ? (
               <div className="app-card-soft p-4">
-                <div className="font-semibold text-slate-900">Patterns will appear here</div>
-                <div className="mt-2 text-sm leading-6 text-slate-600">
+                <div className="font-semibold token-text-primary">Patterns will appear here</div>
+                <div className="mt-2 text-sm leading-6 token-text-secondary">
                   As more reading and vocabulary attempts accumulate, this section will surface repeatable weak spots.
                 </div>
               </div>
             ) : (
               data.patterns.map((item) => (
                 <div key={item.id} className="app-card-soft p-4">
-                  <div className="font-semibold text-slate-900">{item.title}</div>
-                  <div className="mt-2 text-sm leading-6 text-slate-600">{item.detail}</div>
+                  <div className="font-semibold token-text-primary">{item.title}</div>
+                  <div className="mt-2 text-sm leading-6 token-text-secondary">{item.detail}</div>
                 </div>
               ))
             )}
 
             <div className="app-card-soft p-4">
-              <div className="app-kicker text-slate-500">Recent Sessions</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">
+              <div className="app-kicker token-text-muted">Recent Sessions</div>
+              <div className="mt-2 text-2xl font-semibold token-text-primary">
                 {data.deeperStats.recentSessionCount7d}
               </div>
-              <div className="mt-2 text-sm text-slate-600">
+              <div className="mt-2 text-sm token-text-secondary">
                 Last 7 days · {data.deeperStats.recentSessionCount30d} in the last 30 days
               </div>
             </div>

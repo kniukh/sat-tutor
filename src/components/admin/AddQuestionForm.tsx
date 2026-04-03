@@ -56,13 +56,13 @@ export function AddQuestionForm({ lessonId }: { lessonId: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border bg-white p-6">
-      <h2 className="text-xl font-semibold text-slate-900">Add Question</h2>
+    <form onSubmit={onSubmit} className="surface-panel space-y-4 rounded-2xl p-6">
+      <h2 className="token-text-primary text-xl font-semibold">Add Question</h2>
 
       <select
         value={questionType}
         onChange={(e) => setQuestionType(e.target.value)}
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       >
         <option value="main_idea">main_idea</option>
         <option value="detail">detail</option>
@@ -75,18 +75,18 @@ export function AddQuestionForm({ lessonId }: { lessonId: string }) {
         onChange={(e) => setQuestionText(e.target.value)}
         placeholder="Question text"
         rows={4}
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       />
 
-      <input value={optionA} onChange={(e) => setOptionA(e.target.value)} placeholder="Option A" className="w-full rounded-xl border px-3 py-2 text-slate-900" />
-      <input value={optionB} onChange={(e) => setOptionB(e.target.value)} placeholder="Option B" className="w-full rounded-xl border px-3 py-2 text-slate-900" />
-      <input value={optionC} onChange={(e) => setOptionC(e.target.value)} placeholder="Option C" className="w-full rounded-xl border px-3 py-2 text-slate-900" />
-      <input value={optionD} onChange={(e) => setOptionD(e.target.value)} placeholder="Option D" className="w-full rounded-xl border px-3 py-2 text-slate-900" />
+      <input value={optionA} onChange={(e) => setOptionA(e.target.value)} placeholder="Option A" className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2" />
+      <input value={optionB} onChange={(e) => setOptionB(e.target.value)} placeholder="Option B" className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2" />
+      <input value={optionC} onChange={(e) => setOptionC(e.target.value)} placeholder="Option C" className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2" />
+      <input value={optionD} onChange={(e) => setOptionD(e.target.value)} placeholder="Option D" className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2" />
 
       <select
         value={correctOption}
         onChange={(e) => setCorrectOption(e.target.value as 'A' | 'B' | 'C' | 'D')}
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       >
         <option value="A">A</option>
         <option value="B">B</option>
@@ -98,7 +98,7 @@ export function AddQuestionForm({ lessonId }: { lessonId: string }) {
         type="number"
         value={displayOrder}
         onChange={(e) => setDisplayOrder(Number(e.target.value))}
-        className="w-full rounded-xl border px-3 py-2 text-slate-900"
+        className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       />
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -113,7 +113,7 @@ export function AddQuestionForm({ lessonId }: { lessonId: string }) {
           !optionC ||
           !optionD
         }
-        className="rounded-xl bg-slate-900 px-5 py-3 text-white disabled:opacity-50"
+        className="primary-button disabled:opacity-50"
       >
         {isPending ? 'Adding...' : 'Add Question'}
       </button>

@@ -47,15 +47,15 @@ function QuestionPreview({ question }: { question: ReviewQuestion }) {
 
   return (
     <div className="space-y-3">
-      <div className="text-base font-semibold leading-7 text-slate-950">{question.question_text}</div>
+      <div className="token-text-primary text-base font-semibold leading-7">{question.question_text}</div>
       <div className="space-y-2">
         {options.map((option) => (
           <div
             key={option.key}
             className={`rounded-[1rem] border px-3 py-3 text-sm leading-6 ${
               question.correct_option === option.key
-                ? 'border-emerald-200 bg-emerald-50 text-slate-950'
-                : 'border-[var(--color-border)] bg-white text-slate-700'
+                ? 'border-[var(--color-success)] bg-[var(--color-success-soft)] text-[var(--color-text-primary)]'
+                : 'surface-panel token-text-secondary'
             }`}
           >
             <span className="font-semibold">{option.key}.</span> {option.text}
@@ -136,7 +136,7 @@ function QuestionReviewCard({ question }: { question: ReviewQuestion }) {
   }
 
   return (
-    <div className="rounded-[1.35rem] border border-[var(--color-border)] bg-white p-4">
+    <div className="surface-panel rounded-[1.35rem] p-4">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <span className="app-chip">{formatLabel(question.question_type)}</span>
@@ -230,10 +230,10 @@ export default function SourceChunkReview({
                   ) : null}
                 </div>
                 <div>
-                  <div className="text-lg font-semibold text-slate-950">
+                  <div className="token-text-primary text-lg font-semibold">
                     {chunk.title || chunk.chapterTitle || `Chunk ${chunk.chunkIndex + 1}`}
                   </div>
-                  <div className="mt-1 text-sm text-slate-500">
+                  <div className="token-text-muted mt-1 text-sm">
                     {chunk.wordCount ?? 0} words
                     {chunk.chapterTitle ? ` · ${chunk.chapterTitle}` : ''}
                     {chunk.status ? ` · ${formatLabel(chunk.status)}` : ''}
@@ -254,24 +254,24 @@ export default function SourceChunkReview({
             </div>
 
             <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-              <div className="rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{chunk.passageText}</div>
+              <div className="surface-soft-panel rounded-[1.35rem] p-4">
+                <div className="token-text-secondary whitespace-pre-wrap text-sm leading-7">{chunk.passageText}</div>
               </div>
 
               <div className="space-y-4">
                 {!chunk.lessonId ? (
-                  <div className="rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm leading-6 text-slate-600">
-                    This chunk is ready. Use <span className="font-semibold text-slate-950">Generate AI Lessons</span> above to create reviewable questions inline.
+                  <div className="surface-soft-panel token-text-secondary rounded-[1.35rem] p-4 text-sm leading-6">
+                    This chunk is ready. Use <span className="token-text-primary font-semibold">Generate AI Lessons</span> above to create reviewable questions inline.
                   </div>
                 ) : (
                   <>
-                    <div className="space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                    <div className="surface-soft-panel space-y-3 rounded-[1.35rem] p-4">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="app-kicker text-slate-500">SAT Questions</div>
-                        <div className="text-sm font-semibold text-slate-500">{satQuestions.length}</div>
+                        <div className="app-kicker token-text-muted">SAT Questions</div>
+                        <div className="token-text-muted text-sm font-semibold">{satQuestions.length}</div>
                       </div>
                       {satQuestions.length === 0 ? (
-                        <div className="text-sm text-slate-500">No SAT questions in this chunk yet.</div>
+                        <div className="token-text-muted text-sm">No SAT questions in this chunk yet.</div>
                       ) : (
                         <div className="space-y-3">
                           {satQuestions.map((question) => (
@@ -281,13 +281,13 @@ export default function SourceChunkReview({
                       )}
                     </div>
 
-                    <div className="space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                    <div className="surface-soft-panel space-y-3 rounded-[1.35rem] p-4">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="app-kicker text-slate-500">Vocab Questions</div>
-                        <div className="text-sm font-semibold text-slate-500">{vocabQuestions.length}</div>
+                        <div className="app-kicker token-text-muted">Vocab Questions</div>
+                        <div className="token-text-muted text-sm font-semibold">{vocabQuestions.length}</div>
                       </div>
                       {vocabQuestions.length === 0 ? (
-                        <div className="text-sm text-slate-500">No vocabulary questions in this chunk yet.</div>
+                        <div className="token-text-muted text-sm">No vocabulary questions in this chunk yet.</div>
                       ) : (
                         <div className="space-y-3">
                           {vocabQuestions.map((question) => (

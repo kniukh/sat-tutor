@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { saveLessonReadingMetrics } from "@/services/reading/reading-metrics.service";
 
 export async function POST(request: Request) {
@@ -19,18 +20,14 @@ export async function POST(request: Request) {
       wordsPerMinute: number;
     } = body;
 
-    if (
-      !studentId ||
-      !lessonId ||
-      !Number.isFinite(readingDurationSec) ||
-      !Number.isFinite(wordsCount) ||
-      !Number.isFinite(wordsPerMinute)
-    ) {
+    if (!lessonId || !Number.isFinite(readingDurationSec) || !Number.isFinite(wordsCount) || !Number.isFinite(wordsPerMinute)) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
+    const sessionStudentId = await requireStudentApiStudentId(studentId);
+
     const result = await saveLessonReadingMetrics({
-      studentId,
+      studentId: sessionStudentId,
       lessonId,
       readingDurationSec: Math.max(0, Math.round(readingDurationSec)),
       wordsCount: Math.max(0, Math.round(wordsCount)),
@@ -39,6 +36,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, result });
   } catch (error) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     console.error("POST /api/reading/metrics error", error);
     return NextResponse.json(
       { error: "Failed to save reading metrics" },

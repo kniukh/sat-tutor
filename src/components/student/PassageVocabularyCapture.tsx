@@ -11,11 +11,49 @@ type VocabItem = {
   audio_url?: string | null;
 };
 
+function hasFallbackLikeVocabularyItems(items: VocabItem[]) {
+  return items.some((item) => {
+    const english = item.english_explanation?.trim().toLowerCase() ?? "";
+    const translated = item.translated_explanation?.trim().toLowerCase() ?? "";
+
+    return (
+      !english ||
+      english.startsWith(`meaning of "${item.item_text.trim().toLowerCase()}"`) ||
+      english.startsWith("meaning of this word in the passage") ||
+      english.startsWith("meaning of this phrase in the passage") ||
+      translated === item.item_text.trim().toLowerCase()
+    );
+  });
+}
+
+function buildFallbackSubmittedItems(items: CapturedVocabularyItem[], lessonId: string): VocabItem[] {
+  return items.map((item, index) => ({
+    id: `client-fallback:${lessonId}:${index}:${item.itemText.toLowerCase()}`,
+    item_text: item.itemText,
+    english_explanation:
+      item.preview?.plainEnglishMeaning?.trim() ||
+      item.preview?.contextMeaning?.trim() ||
+      `Meaning of "${item.itemText}" in the passage.`,
+    translated_explanation: item.preview?.translation?.trim() || null,
+    example_text:
+      item.contextText ??
+      item.preview?.contextMeaning?.trim() ??
+      null,
+    audio_url: null,
+  }));
+}
+
 export type CapturedVocabularyItem = {
   itemText: string;
   itemType: "word" | "phrase";
-  sourceType: "passage" | "question" | "answer";
+  sourceType: "passage" | "question" | "answer" | "vocab_drill";
   contextText?: string | null;
+  saveState?: "pending" | "saved";
+  preview?: {
+    plainEnglishMeaning?: string | null;
+    translation?: string | null;
+    contextMeaning?: string | null;
+  } | null;
 };
 
 type Props = {
@@ -25,6 +63,7 @@ type Props = {
   presetItems?: CapturedVocabularyItem[];
   onItemsChange?: (items: CapturedVocabularyItem[]) => void;
   onSubmitted?: (items: VocabItem[]) => void;
+  onContinueCheckpoint?: (items: CapturedVocabularyItem[]) => Promise<void> | void;
   compact?: boolean;
   hideManualInput?: boolean;
   immersive?: boolean;
@@ -37,6 +76,7 @@ export default function PassageVocabularyCapture({
   presetItems = [],
   onItemsChange,
   onSubmitted,
+  onContinueCheckpoint,
   compact = false,
   hideManualInput = false,
   immersive = false,
@@ -44,6 +84,12 @@ export default function PassageVocabularyCapture({
   const [items, setItems] = useState<CapturedVocabularyItem[]>(presetItems);
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
+  const pendingCount = items.filter((item) => item.saveState !== "saved").length;
+  const savedCount = items.length - pendingCount;
+
+  const preparingHelperText = saving
+    ? "Preparing cards now. Practice details can finish loading in the background."
+    : null;
 
   useEffect(() => {
     setItems(presetItems);
@@ -65,6 +111,7 @@ export default function PassageVocabularyCapture({
         itemType: trimmed.includes(" ") ? "phrase" : "word",
         sourceType: "passage",
         contextText: null,
+        saveState: "pending",
       },
     ]);
     setValue("");
@@ -78,37 +125,87 @@ export default function PassageVocabularyCapture({
     setSaving(true);
 
     try {
-      for (const item of items) {
-        await fetch("/api/vocabulary/capture-inline", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            studentId,
-            lessonId,
-            passageId,
-            itemText: item.itemText,
-            itemType: item.itemType,
-            sourceType: item.sourceType,
-            contextText: item.contextText ?? null,
-          }),
-        });
+      if (onContinueCheckpoint) {
+        await onContinueCheckpoint(items);
+        return;
       }
 
-      const generatedResponse = await fetch("/api/vocabulary/generate-from-captures", {
+      const submitResponse = await fetch("/api/lesson/submit-vocabulary", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId, lessonId }),
+        body: JSON.stringify({
+          studentId,
+          lessonId,
+          passageId,
+          items,
+        }),
       });
 
-      const generatedJson = await generatedResponse.json();
+      const submitJson = await submitResponse.json();
 
-      await fetch("/api/lesson/submit-vocabulary", {
+      if (!submitResponse.ok) {
+        throw new Error(submitJson?.error ?? "Failed to submit vocabulary");
+      }
+
+      const resolvedItems =
+        Array.isArray(submitJson?.result?.items) && submitJson.result.items.length > 0
+          ? submitJson.result.items
+          : buildFallbackSubmittedItems(items, lessonId);
+
+      onSubmitted?.(resolvedItems);
+
+      const shouldHydrateRealCards = hasFallbackLikeVocabularyItems(resolvedItems);
+
+      if (shouldHydrateRealCards) {
+        void fetch("/api/vocabulary/generate-from-captures", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ studentId, lessonId }),
+        })
+          .then((response) => response.json().catch(() => null))
+          .then((payload) => {
+            if (Array.isArray(payload?.items) && payload.items.length > 0) {
+              onSubmitted?.(payload.items);
+            }
+          })
+          .catch((error) => {
+            console.error("generate-from-captures background error", error);
+          });
+      }
+
+      void fetch("/api/vocabulary/prepare-drills", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId, lessonId }),
-      });
+      })
+        .then((response) => response.json().catch(() => null))
+        .then((payload) => {
+          if (Array.isArray(payload?.items) && payload.items.length > 0) {
+            onSubmitted?.(payload.items);
+          }
+        })
+        .catch((error) => {
+          console.error("prepare-drills background error", error);
+        });
 
-      onSubmitted?.(generatedJson.items ?? []);
+      void fetch("/api/vocabulary/regenerate-audio", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId, lessonId }),
+      })
+        .then((response) => response.json().catch(() => null))
+        .then((payload) => {
+          if (Array.isArray(payload?.items) && payload.items.length > 0) {
+            onSubmitted?.(payload.items);
+          }
+        })
+        .catch((error) => {
+          console.error("regenerate-audio background error", error);
+        });
     } catch (error) {
       console.error("submitVocabulary error", error);
       alert("Failed to submit vocabulary");
@@ -121,36 +218,66 @@ export default function PassageVocabularyCapture({
     const latestItem = items[items.length - 1]?.itemText ?? null;
 
     return (
-      <div className="reading-action-bar">
-        <div className="reading-action-bar__inner flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-slate-900">
-              {items.length > 0
-                ? `${items.length} word${items.length === 1 ? "" : "s"} saved for review`
-                : "Long press any word to save it"}
-            </div>
-            {latestItem ? (
-              <div className="mt-0.5 truncate text-sm text-slate-500">
-                Latest: {latestItem}
+      <>
+        {saving ? (
+          <div className="vocab-preparing-preview">
+            <div className="vocab-preparing-preview__inner">
+              <div className="vocab-preparing-preview__header">
+                <div className="token-text-primary text-sm font-semibold">Building your review cards</div>
+                <div className="token-text-muted text-xs">Meanings first, practice details next.</div>
               </div>
-            ) : null}
+              <div className="vocab-preparing-preview__grid">
+                {Array.from({ length: Math.min(Math.max(items.length, 2), 3) }).map((_, index) => (
+                  <div key={index} className="vocab-skeleton-card">
+                    <div className="vocab-skeleton vocab-skeleton--word" />
+                    <div className="vocab-skeleton vocab-skeleton--line" />
+                    <div className="vocab-skeleton vocab-skeleton--line-short" />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
+        ) : null}
+        <div className="reading-action-bar">
+          <div className="reading-action-bar__inner flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="token-text-primary text-sm font-medium">
+                {items.length > 0
+                  ? `${items.length} word${items.length === 1 ? "" : "s"} in Word Bank`
+                  : "Long press any word to save it"}
+              </div>
+              {preparingHelperText ? (
+                <div className="token-text-muted mt-0.5 text-sm">
+                  {preparingHelperText}
+                </div>
+              ) : items.length > 0 ? (
+                <div className="token-text-muted mt-0.5 text-sm">
+                  {pendingCount > 0 ? `${pendingCount} pending` : "All saved"}
+                  {savedCount > 0 ? ` • ${savedCount} saved` : ""}
+                </div>
+              ) : latestItem ? (
+                <div className="token-text-muted mt-0.5 truncate text-sm">
+                  Latest: {latestItem}
+                </div>
+              ) : null}
+            </div>
 
-          <button
-            onClick={submitVocabulary}
-            disabled={saving}
-            className="primary-button min-h-14 shrink-0 disabled:opacity-50"
-          >
-            {saving ? "Preparing..." : "Continue"}
-          </button>
+            <button
+              onClick={submitVocabulary}
+              disabled={saving}
+              className="primary-button min-h-14 shrink-0 disabled:opacity-50"
+            >
+              {saving ? "Preparing cards..." : "Continue"}
+            </button>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
     <div className={`space-y-4 ${compact ? "" : ""}`}>
-      <div className={compact ? "text-sm font-semibold text-slate-900" : "text-lg font-semibold"}>
+      <div className={compact ? "token-text-primary text-sm font-semibold" : "token-text-primary text-lg font-semibold"}>
         Unknown words and phrases
       </div>
 
@@ -162,12 +289,12 @@ export default function PassageVocabularyCapture({
             onKeyDown={(e) => {
               if (e.key === "Enter") addItem();
             }}
-            className="flex-1 rounded-lg border px-3 py-2"
+            className="surface-panel token-text-primary flex-1 rounded-lg border border-[var(--color-border)] px-3 py-2"
             placeholder="Type a word or phrase"
           />
           <button
             onClick={addItem}
-            className="rounded-lg bg-black px-4 py-2 text-white"
+            className="secondary-button rounded-lg px-4 py-2"
           >
             Add
           </button>
@@ -179,7 +306,7 @@ export default function PassageVocabularyCapture({
           <button
             key={`${item.sourceType}:${item.itemText}`}
             onClick={() => removeItem(item.itemText)}
-            className="px-3 py-1 rounded-full bg-blue-100 text-blue-900"
+            className="rounded-full border border-[var(--color-secondary)] bg-[var(--color-secondary-soft)] px-3 py-1 text-[var(--color-secondary)]"
           >
             {item.itemText} ×
           </button>
@@ -189,12 +316,17 @@ export default function PassageVocabularyCapture({
       <button
         onClick={submitVocabulary}
         disabled={saving}
-        className={`rounded-lg text-white disabled:opacity-50 ${
-          compact ? "px-4 py-2 text-sm bg-slate-950" : "px-4 py-2 bg-green-600"
+        className={`primary-button disabled:opacity-50 ${
+          compact ? "px-4 py-2 text-sm" : "px-4 py-2"
         }`}
       >
-        {saving ? "Submitting..." : compact ? "Review Words" : "Submit Vocabulary"}
+        {saving ? "Preparing cards..." : compact ? "Review Words" : "Submit Vocabulary"}
       </button>
+      {preparingHelperText ? (
+        <div className="token-text-muted text-sm">
+          {preparingHelperText}
+        </div>
+      ) : null}
     </div>
   );
 }
