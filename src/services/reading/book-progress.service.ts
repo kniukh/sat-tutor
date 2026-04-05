@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 export async function updateStudentBookProgress(params: {
   studentId: string;
   lessonId: string;
+  currentLessonId?: string | null;
 }) {
   const supabase = await createServerSupabaseClient();
 
@@ -76,7 +77,10 @@ export async function updateStudentBookProgress(params: {
       .insert({
         student_id: params.studentId,
         source_document_id: sourceDocumentId,
-        current_lesson_id: params.lessonId,
+        current_lesson_id:
+          params.currentLessonId === undefined
+            ? params.lessonId
+            : params.currentLessonId,
         last_opened_at: new Date().toISOString(),
         completed_lessons_count: completedLessonsCount,
         total_lessons_count: totalLessonsCount,
@@ -95,7 +99,10 @@ export async function updateStudentBookProgress(params: {
   const { data, error } = await supabase
     .from('student_book_progress')
     .update({
-      current_lesson_id: params.lessonId,
+      current_lesson_id:
+        params.currentLessonId === undefined
+          ? params.lessonId
+          : params.currentLessonId,
       last_opened_at: new Date().toISOString(),
       completed_lessons_count: completedLessonsCount,
       total_lessons_count: totalLessonsCount,

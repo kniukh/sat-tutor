@@ -293,6 +293,26 @@ Current use:
 - now also serves as the base telemetry source for Vocabulary Analytics v1
 - also supports Mistake Replay vocab repair attempts without a separate replay-attempt table
 
+### `vocab_sessions`
+Session-level vocabulary runs.
+
+Important fields:
+- `session_id`
+- `student_id`
+- `mode`
+- `sequence_index`
+- `started_at`
+- `last_activity_at`
+- `completed_at`
+- `exercise_count`
+- `correct_count`
+- `metadata`
+
+Current role:
+- anchors session-based repetition independently from day-based streaks
+- gives `word_progress` a stable session timeline for `next_review_session_index`
+- powers race-safe session completion and end-of-session summaries
+
 ### `word_progress`
 Per-student word lifecycle and review state.
 
@@ -313,8 +333,16 @@ Current adaptive-review fields:
 - `mastery_score`
 - `total_attempts`
 - `correct_attempts`
+- `sessions_seen_count`
+- `sessions_correct_count`
+- `last_seen_session_id`
+- `last_correct_session_id`
 - `last_seen_at`
+- `next_review_session_gap`
+- `next_review_session_index`
 - `next_review_at`
+- `minimum_time_gap_for_retention_check`
+- `last_progress_credited_session_id`
 - `consecutive_correct`
 - `consecutive_incorrect`
 - `last_modality`
@@ -331,6 +359,7 @@ Current lifecycle states:
 
 Current role in adaptation:
 - stores the rolling difficulty band used by adaptive difficulty v1
+- stores session-based SRS state and per-session credit caps
 - anchors weak-word and mastery-distribution analytics
 
 ### `vocabulary_dictionary_cache`
@@ -370,6 +399,7 @@ Important fields:
 - `recommended_modality`
 - `source_attempt_id`
 - `status`
+- `metadata`
 - `created_at`
 - `updated_at`
 
@@ -378,6 +408,13 @@ Current queue priorities favor:
 - `weak_again` words
 - overdue review words
 - reinforcement words
+
+Current metadata examples:
+- `due_by_session_gap`
+- `due_by_time_gap`
+- `overdue_review`
+- `weak_again_retry`
+- `same_session_credit_capped`
 
 Current product note:
 - `review_queue` remains the internal priority source for review and continuation shaping
@@ -414,6 +451,9 @@ Important fields now include:
 - `weekly_xp`
 - streak / level fields used by the student dashboard
 
+Important product note:
+- streak remains a separate day-based habit mechanic even though vocabulary repetition is now session-based
+
 ### `xp_events`
 Ledger of XP rewards and anti-abuse-aware credit decisions.
 
@@ -427,6 +467,31 @@ Current leaderboard support uses:
 - weekly leaderboard group tables added by migration
 - `student_gamification.weekly_xp` as the ranking source
 - lightweight weekly group assignment rather than a global leaderboard
+
+### `ai_usage_log`
+Best-effort AI telemetry table.
+
+Important fields:
+- `route`
+- `model`
+- `student_id`
+- `actor_type`
+- `input_tokens`
+- `output_tokens`
+- `total_tokens`
+- `cached_input_tokens`
+- `latency_ms`
+- `cache_hit`
+- `retry_count`
+- `status`
+- `error_message`
+- `metadata`
+- `created_at`
+
+Current use:
+- per-route token and latency tracking
+- optional per-student AI cost tracking for student-facing features
+- admin insights rollups such as `AI Usage by Student`
 
 ## Vocabulary Analytics v1
 
@@ -539,6 +604,11 @@ Current note:
 - `20260328173000_add_mistake_analysis.sql`
 - `20260328190000_add_vocab_exercise_tracking.sql`
 - `20260328204000_update_word_progress_lifecycle_weak_again.sql`
+- `20260329143000_add_session_based_vocab_repetition.sql`
+- `20260329183000_add_sentence_builder_exercise_type.sql`
+- `20260329190000_add_error_detection_exercise_type.sql`
+- `20260329193000_add_pair_match_exercise_type.sql`
+- `20260329200000_add_source_type_to_vocabulary_capture_events.sql`
 - `20260330120000_add_vocab_drill_answer_sets.sql`
 - `20260330143000_expand_vocab_drill_capture_metadata.sql`
 - `20260330180000_add_robust_xp_system.sql`
@@ -547,15 +617,19 @@ Current note:
 - `20260401210527_enforce_single_student_gamification_row.sql`
 - `20260401214500_add_generated_passage_ai_cache.sql`
 - `20260403120000_add_vocabulary_dictionary_cache.sql`
+- `20260403173000_add_ai_usage_log.sql`
+- `20260404103000_add_student_context_to_ai_usage_log.sql`
 
 ## Recent Schema Notes
 - Vocabulary drill normalization reused existing vocab tables and extended:
   - `vocabulary_item_details.drill_answer_sets`
   - `vocabulary_capture_events.metadata`
   - `vocabulary_capture_events.source_type` for `vocab_drill`
+- Vocabulary repetition is now primarily session-based through `vocab_sessions` plus session-aware fields on `word_progress`, while `student_gamification` streak stays day-based.
 - Endless practice, Mistake Brain page, Mistake Replay, and reasoning explanations reuse existing `question_attempts`, `exercise_attempts`, `word_progress`, `review_queue`, `question_bank`, `lesson_passages`, and `vocabulary_item_details` tables.
 - New schema additions in this batch are focused on gamification:
   - XP ledger / totals
   - weekly leaderboard groups
+- AI telemetry now has a dedicated `ai_usage_log` table with optional `student_id` ownership for student-facing usage reporting.
 - RLS is now enabled on `public` tables and server-side app access goes through the service-role Supabase client helper.
 - Shared dictionary cache is intentionally context-light to save tokens and speed up repeated vocabulary lookups across students.

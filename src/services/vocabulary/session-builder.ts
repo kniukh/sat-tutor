@@ -111,6 +111,13 @@ function defaultTargetSize(mode: VocabSessionMode, poolSize: number) {
   return Math.min(desired, poolSize);
 }
 
+function getAvailableTypeOrder(exercises: SupportedVocabExercise[], mode: VocabSessionMode) {
+  const availableTypes = new Set(exercises.map((exercise) => exercise.type));
+  return SESSION_PREFERRED_TYPE_ORDER_BY_MODE[mode].filter((type) =>
+    availableTypes.has(type)
+  );
+}
+
 function desiredDifficultyForIndex(
   index: number,
   total: number,
@@ -134,6 +141,15 @@ function getNumericDifficulty(exercise: SupportedVocabExercise) {
   if (difficultyBand === "medium") return 2;
   if (difficultyBand === "hard") return 3;
   return SESSION_DEFAULT_DIFFICULTY_BY_TYPE[exercise.type] ?? 2;
+}
+
+function getTypeOrderScore(
+  orderedTypes: SupportedVocabExerciseType[],
+  exerciseType: SupportedVocabExerciseType,
+  maxScore: number
+) {
+  const index = orderedTypes.indexOf(exerciseType);
+  return index >= 0 ? Math.max(0, maxScore - index * 2) : -6;
 }
 
 function countByType(items: SupportedVocabExercise[]) {
@@ -251,6 +267,16 @@ function getSessionDifficultyBias(exercise: SupportedVocabExercise) {
   return exercise.reviewMeta?.sessionDifficultyBias ?? "balanced";
 }
 
+function getListenMatchVariant(exercise: SupportedVocabExercise) {
+  if (exercise.type !== "listen_match") {
+    return null;
+  }
+
+  return "variant" in exercise && typeof exercise.variant === "string"
+    ? exercise.variant
+    : null;
+}
+
 type WordExerciseEntry = {
   wordId: string;
   word: string;
@@ -304,8 +330,9 @@ function chooseExerciseForWordEntry(params: {
   index: number;
   total: number;
   seed: string;
+  requiredType?: SupportedVocabExerciseType;
 }) {
-  const { entry, chosen, mode, index, total, seed } = params;
+  const { entry, chosen, mode, index, total, seed, requiredType } = params;
   const progression = getProgressionPlan(entry, mode);
   const desiredProgressionIndex = getDesiredProgressionIndex(index, total);
   const desiredType = progression.types[Math.min(desiredProgressionIndex, progression.types.length - 1)];
@@ -314,6 +341,7 @@ function chooseExerciseForWordEntry(params: {
   const secondLast = chosen[chosen.length - 2];
 
   const scoredChoices = entry.exercises
+    .filter((candidate) => !requiredType || candidate.type === requiredType)
     .map((candidate) => {
       let score = 0;
       const adaptiveDifficultyBand = getAdaptiveDifficultyBand(candidate);
@@ -321,8 +349,8 @@ function chooseExerciseForWordEntry(params: {
       const difficultyTypeOrder =
         SESSION_TYPE_ORDER_BY_ADAPTIVE_DIFFICULTY[adaptiveDifficultyBand];
 
-      score += Math.max(0, 10 - preferredOrder.indexOf(candidate.type) * 2);
-      score += Math.max(0, 10 - difficultyTypeOrder.indexOf(candidate.type) * 2);
+      score += getTypeOrderScore(preferredOrder, candidate.type, 10);
+      score += getTypeOrderScore(difficultyTypeOrder, candidate.type, 10);
 
       const desiredDifficulty =
         desiredDifficultyForIndex(index, total, sessionDifficultyBias) * 0.45 +
@@ -387,6 +415,37 @@ function chooseExerciseForWordEntry(params: {
               : 3;
       }
 
+      if (candidate.type === "listen_match") {
+        const chosenListenVariants = new Set(
+          chosen
+            .map((item) => getListenMatchVariant(item))
+            .filter(
+              (
+                variant
+              ): variant is NonNullable<ReturnType<typeof getListenMatchVariant>> =>
+                Boolean(variant)
+            )
+        );
+        const candidateVariant = getListenMatchVariant(candidate);
+
+        if (candidateVariant === "translation" && !chosenListenVariants.has("translation")) {
+          score += 8;
+        } else if (
+          candidateVariant === "english" &&
+          chosenListenVariants.has("translation") &&
+          !chosenListenVariants.has("english")
+        ) {
+          score += 10;
+        } else if (
+          candidateVariant === "english" &&
+          !chosenListenVariants.has("english")
+        ) {
+          score += 6;
+        } else if (candidateVariant === "meaning") {
+          score -= 4;
+        }
+      }
+
       if (last?.type === candidate.type) score -= 8;
       if (last?.type === candidate.type && secondLast?.type === candidate.type) score -= 40;
 
@@ -431,6 +490,7 @@ function scoreWordEntry(params: {
   index: number;
   total: number;
   seed: string;
+  requiredType?: SupportedVocabExerciseType;
 }) {
   const { mode, chosen, total, index } = params;
   const bestChoice = chooseExerciseForWordEntry(params);
@@ -523,6 +583,51 @@ function scoreWordEntry(params: {
   };
 }
 
+function pushChosenExercise(params: {
+  next: NonNullable<ReturnType<typeof scoreWordEntry>>;
+  chosen: SupportedVocabExercise[];
+  remaining: WordExerciseEntry[];
+  sequenceDebug: VocabExerciseSession["metadata"]["sequence_debug"];
+  phase: VocabularySessionPhase;
+}) {
+  const { next, chosen, remaining, sequenceDebug, phase } = params;
+
+  chosen.push(next.candidate);
+  sequenceDebug.push({
+    index: chosen.length,
+    exercise_id: next.candidate.id,
+    target_word_id: readTargetWordId(next.candidate),
+    target_word: getExerciseTargetWord(next.candidate),
+    exercise_type: next.candidate.type,
+    queue_bucket: getQueueBucket(next.candidate),
+    continuation_source_bucket:
+      next.candidate.reviewMeta?.continuationSourceBucket ?? null,
+    session_phase: next.candidate.reviewMeta?.sessionPhase ?? phase,
+    lifecycle_state: getLifecycleState(next.candidate),
+    preferred_modality: getPreferredModality(next.candidate),
+    selection_rule: getSelectionRule(next.candidate),
+    selection_reason: getSelectionReason(next.candidate),
+    source_lesson_id: next.candidate.reviewMeta?.sourceLessonId ?? null,
+    source_lesson_title: next.candidate.reviewMeta?.sourceLessonTitle ?? null,
+    source_passage_title: next.candidate.reviewMeta?.sourcePassageTitle ?? null,
+    source_context_snippet:
+      next.candidate.reviewMeta?.sourceContextSnippet ?? null,
+    source_type: next.candidate.reviewMeta?.sourceType ?? null,
+    adaptive_difficulty_band:
+      next.candidate.reviewMeta?.adaptiveDifficultyBand ?? null,
+    adaptive_difficulty_reason: getAdaptiveDifficultyReason(next.candidate),
+    session_difficulty_bias: next.candidate.reviewMeta?.sessionDifficultyBias ?? null,
+    triggered_by: next.triggeredBy,
+  });
+
+  const nextWordId = readTargetWordId(next.candidate) || next.candidate.id;
+  const nextIndex = remaining.findIndex((item) => item.wordId === nextWordId);
+
+  if (nextIndex >= 0) {
+    remaining.splice(nextIndex, 1);
+  }
+}
+
 function countByRule(
   items: Array<{
     selection_rule: string | null;
@@ -559,12 +664,49 @@ export function buildVocabExerciseSession({
   targetSize,
   seed = "default-seed",
 }: BuildSessionParams): VocabExerciseSession {
-  const requestedSize = targetSize ?? defaultTargetSize(mode, exercises.length);
   const uniquePool = Array.from(new Map(exercises.map((item) => [item.id, item])).values());
   const groupedPool = groupExercisesByWord(uniquePool);
+  const availableTypeOrder = getAvailableTypeOrder(uniquePool, mode);
+  const requestedSize = Math.min(
+    targetSize ?? Math.max(defaultTargetSize(mode, exercises.length), availableTypeOrder.length),
+    groupedPool.length
+  );
   const chosen: SupportedVocabExercise[] = [];
   const sequenceDebug: VocabExerciseSession["metadata"]["sequence_debug"] = [];
   const remaining = [...groupedPool];
+
+  for (const requiredType of availableTypeOrder) {
+    if (chosen.length >= requestedSize || remaining.length === 0) {
+      break;
+    }
+
+    const next = remaining
+      .map((entry) =>
+        scoreWordEntry({
+          entry,
+          chosen,
+          mode,
+          index: chosen.length,
+          total: requestedSize,
+          seed,
+          requiredType,
+        })
+      )
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((a, b) => b.score - a.score)[0];
+
+    if (!next) {
+      continue;
+    }
+
+    pushChosenExercise({
+      next,
+      chosen,
+      remaining,
+      sequenceDebug,
+      phase,
+    });
+  }
 
   while (chosen.length < requestedSize && remaining.length > 0) {
     const scored = remaining
@@ -584,36 +726,13 @@ export function buildVocabExerciseSession({
     const next = scored[0];
     if (!next) break;
 
-    chosen.push(next.candidate);
-    sequenceDebug.push({
-      index: chosen.length,
-      exercise_id: next.candidate.id,
-      target_word_id: readTargetWordId(next.candidate),
-      target_word: getExerciseTargetWord(next.candidate),
-      exercise_type: next.candidate.type,
-      queue_bucket: getQueueBucket(next.candidate),
-      continuation_source_bucket: next.candidate.reviewMeta?.continuationSourceBucket ?? null,
-      session_phase: next.candidate.reviewMeta?.sessionPhase ?? phase,
-      lifecycle_state: getLifecycleState(next.candidate),
-      preferred_modality: getPreferredModality(next.candidate),
-      selection_rule: getSelectionRule(next.candidate),
-      selection_reason: getSelectionReason(next.candidate),
-      source_lesson_id: next.candidate.reviewMeta?.sourceLessonId ?? null,
-      source_lesson_title: next.candidate.reviewMeta?.sourceLessonTitle ?? null,
-      source_passage_title: next.candidate.reviewMeta?.sourcePassageTitle ?? null,
-      source_context_snippet: next.candidate.reviewMeta?.sourceContextSnippet ?? null,
-      source_type: next.candidate.reviewMeta?.sourceType ?? null,
-      adaptive_difficulty_band: next.candidate.reviewMeta?.adaptiveDifficultyBand ?? null,
-      adaptive_difficulty_reason: getAdaptiveDifficultyReason(next.candidate),
-      session_difficulty_bias: next.candidate.reviewMeta?.sessionDifficultyBias ?? null,
-      triggered_by: next.triggeredBy,
+    pushChosenExercise({
+      next,
+      chosen,
+      remaining,
+      sequenceDebug,
+      phase,
     });
-
-    const nextWordId = readTargetWordId(next.candidate) || next.candidate.id;
-    const nextIndex = remaining.findIndex((item) => item.wordId === nextWordId);
-    if (nextIndex >= 0) {
-      remaining.splice(nextIndex, 1);
-    }
   }
 
   const countsByType = countByType(chosen);

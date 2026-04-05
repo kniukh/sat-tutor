@@ -1,4 +1,5 @@
-import { openai } from '@/lib/openai';
+import { AI_MODELS } from "@/services/ai/ai-models";
+import { createTrackedResponse } from "@/services/ai/openai-tracked-response";
 
 type ShortAnswerFeedback = {
   overall_score: number;
@@ -25,6 +26,7 @@ export async function evaluateShortAnswer(input: {
   passageText: string;
   promptText: string;
   studentResponse: string;
+  studentId?: string | null;
 }) {
   const prompt = `
 You are an SAT reading tutor.
@@ -67,8 +69,10 @@ JSON shape:
 }
 `;
 
-  const response = await openai.responses.create({
-    model: 'gpt-5',
+  const response = await createTrackedResponse({
+    route: "writing.evaluate_short_answer",
+    model: AI_MODELS.liveReasoning,
+    studentId: input.studentId ?? null,
     input: prompt,
   });
 

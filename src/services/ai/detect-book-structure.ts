@@ -1,4 +1,5 @@
-import { openai } from '@/lib/openai';
+import { AI_MODELS } from "@/services/ai/ai-models";
+import { createTrackedResponse } from "@/services/ai/openai-tracked-response";
 
 type DetectedChapter = {
   chapter_index: number;
@@ -96,8 +97,9 @@ JSON shape:
 }
 `;
 
-  const response = await openai.responses.create({
-    model: 'gpt-5',
+  const response = await createTrackedResponse({
+    route: "admin.detect_book_structure",
+    model: AI_MODELS.offlineQuality,
     input: prompt,
   });
 

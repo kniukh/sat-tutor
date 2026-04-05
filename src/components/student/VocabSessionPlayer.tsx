@@ -53,8 +53,14 @@ export default function VocabSessionPlayer({
       : null;
 
   async function submitExerciseAttempt(result: ExerciseResult) {
+    const retrySourceExerciseId =
+      typeof result.metadata?.retry_source_exercise_id === "string"
+        ? result.metadata.retry_source_exercise_id
+        : null;
     const sourceExercise = session.ordered_exercises.find(
-      (exercise) => exercise.id === result.exercise_id
+      (exercise) =>
+        exercise.id === result.exercise_id ||
+        exercise.id === retrySourceExerciseId
     );
     if (!sourceExercise) return;
 

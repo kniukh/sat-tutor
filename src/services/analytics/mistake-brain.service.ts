@@ -153,6 +153,7 @@ export async function runMistakeBrainForLesson(params: {
   }
 
   const analysis = await analyzeLessonMistakes({
+    studentId: params.studentId,
     wrongAnswers: payload,
   });
 

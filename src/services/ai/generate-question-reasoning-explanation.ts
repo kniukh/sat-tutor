@@ -1,4 +1,5 @@
-import { openai } from "@/lib/openai";
+import { AI_MODELS } from "@/services/ai/ai-models";
+import { createTrackedResponse } from "@/services/ai/openai-tracked-response";
 
 export type QuestionReasoningExplanation = {
   correct_answer: {
@@ -66,13 +67,16 @@ export async function generateQuestionReasoningExplanation(input: {
   options: Choice[];
   correctOption: "A" | "B" | "C" | "D";
   questionExplanation?: string | null;
+  studentId?: string | null;
 }) {
   const optionsBlock = input.options
     .map((choice) => `${choice.option}. ${choice.text}`)
     .join("\n");
 
-  const response = await openai.responses.create({
-    model: "gpt-4o-mini",
+  const response = await createTrackedResponse({
+    route: "ai.question_reasoning_explanation",
+    model: AI_MODELS.liveTutor,
+    studentId: input.studentId ?? null,
     input: `You are an expert SAT tutor.
 
 Task:

@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     const audioUrl = await generateWordAudio({
       text: item.item_text,
       itemType: item.item_type,
+      studentId: item.student_id ?? null,
     });
 
     const { error: updateError } = await supabase

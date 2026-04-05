@@ -212,7 +212,7 @@ export default function StudentDashboardOverview({
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               {featuredBook.current_lesson_id ? (
                 <Link
-                  href={studentLessonPath(featuredBook.current_lesson_id)}
+                  href={studentLessonPath(featuredBook.current_lesson_id, accessCode)}
                   className="primary-button w-full sm:w-auto"
                 >
                   Continue Reading

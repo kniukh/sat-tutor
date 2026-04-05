@@ -116,8 +116,10 @@ Main UI:
   - first-read checkpoints save pending vocabulary and move the stage forward without a submit-centric UI
 - [LessonPlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/LessonPlayer.tsx)
   - SAT-style one-question-per-screen quiz shell
+  - `quiz -> quiz_words -> repair -> quiz_complete` subflow inside the question stage
   - optional `Why?` reasoning bottom sheet backed by `/api/question-explanation`
-  - repair retries the original SAT item and does not reveal the correct answer immediately on the first wrong attempt
+  - quiz-word cards reuse the same vocabulary card system as passage words, including targeted audio generation for quiz-only captures
+  - repair retries the original SAT item directly and keeps `See Passage` as a returnable helper instead of a separate reveal screen
   - canonical session-based route now also exists at `/s/lesson/[lessonId]`
 
 ### `/s/[code]/vocabulary`
@@ -188,11 +190,14 @@ Current shape:
 - `/api/vocabulary/preview-inline`
 - `/api/vocabulary/generate-audio`
 - `/api/vocabulary/generate-audio-bulk`
+- `/api/vocabulary/regenerate-audio`
 
 Current note:
 - `prepare-drills` and `generate-from-captures` now thinly wrap shared vocabulary prep services instead of owning the orchestration directly
 - lesson completion also triggers the same preparation pipeline in the backend
 - `preview-inline`, `generate-from-captures`, and `prepare-drills` use the shared `vocabulary_dictionary_cache` before AI generation
+- `preview-inline` is no longer required just to save a selected word; lesson selection popups can add first and load meaning on demand
+- `regenerate-audio` supports targeted generation for specific vocabulary item texts so quiz-only cards do not compete with the full lesson bank
 - student-facing vocabulary session completion is guarded against async save/completion races
 
 ### AI
@@ -235,6 +240,7 @@ Current patterns:
 - focused full-screen drill mode lives on `/s/[code]/vocabulary/drill`
 - drill text can now long-press capture into shared vocabulary storage from answer choices and sentence fragments
 - grouped `listen_match` can render as a two-column audio-to-text matching exercise
+- live drill flow is now intentionally minimal: progress, question, answer area, and one `Continue` CTA with short correctness animation
 
 ## Vocab Exercise Architecture
 
@@ -253,6 +259,20 @@ Supported exercise types:
 - `context_meaning`
 - `synonym`
 - `collocation`
+
+Current live-session emphasis:
+- `meaning_match`
+- `translation_match`
+- `pair_match`
+- `listen_match`
+- `spelling_from_audio`
+- `error_detection`
+- `context_meaning`
+- `synonym`
+- `collocation`
+
+Current note:
+- `fill_blank` and `sentence_builder` remain supported in the normalized renderer system and dev gallery, but are not part of the current live student session mix
 
 ### Shared shell
 - [ExercisePlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/exercise-player/ExercisePlayer.tsx)
@@ -328,6 +348,7 @@ Current responsibilities:
 - Mistake Brain orchestration
 - Mistake Replay session selection
 - vocabulary analytics aggregation for student-facing progress surfaces and future teacher/admin reuse
+- AI usage rollups for admin insights by student
 
 Important files:
 - [question-attempts.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/question-attempts.service.ts)
@@ -336,6 +357,7 @@ Important files:
 - [mistake-replay.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/mistake-replay.service.ts)
 - [skill-tracking.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/skill-tracking.service.ts)
 - [vocabulary-analytics.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/vocabulary-analytics.service.ts)
+- [ai-usage-by-student.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/analytics/ai-usage-by-student.service.ts)
 
 ### `services/ai`
 Current responsibilities:
@@ -347,6 +369,7 @@ Current responsibilities:
 - audio generation
 - passage analysis
 - drill answer-set generation
+- AI usage logging with optional `student_id` ownership
 - prompt routing and validation for admin SAT question generation
 - chunk-level generation cache and short regenerate context windows
 
@@ -357,6 +380,8 @@ Important files:
 - [admin-question-prompt-router.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/admin-question-prompt-router.ts)
 - [question-quality.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/question-quality.ts)
 - [chunk-generation-cache.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/chunk-generation-cache.ts)
+- [openai-tracked-response.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/openai-tracked-response.ts)
+- [ai-usage-log.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/ai/ai-usage-log.service.ts)
 
 ### `services/gamification`
 Current responsibilities:

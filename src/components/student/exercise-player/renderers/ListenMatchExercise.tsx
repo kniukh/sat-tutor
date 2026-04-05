@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ExerciseOptionList from "../ExerciseOptionList";
 import AudioExercisePrompt from "../AudioExercisePrompt";
 import {
@@ -48,6 +48,43 @@ function buildFallbackOptions(
   };
 }
 
+type PairFeedbackState = {
+  leftId: string;
+  rightId: string;
+  status: "correct" | "wrong";
+};
+
+function ListenWaveIcon({ active = false }: { active?: boolean }) {
+  return (
+    <div className="flex items-center gap-2 text-[#23b8e6]">
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 shrink-0">
+        <path
+          d="M11 5.5 7.75 8H5.5A1.5 1.5 0 0 0 4 9.5v5A1.5 1.5 0 0 0 5.5 16h2.25L11 18.5a.75.75 0 0 0 1.2-.6V6.1a.75.75 0 0 0-1.2-.6Z"
+          fill="currentColor"
+        />
+        <path
+          d="M15.5 8.75a4.5 4.5 0 0 1 0 6.5M17.75 6.5a7.5 7.5 0 0 1 0 11"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.8"
+        />
+      </svg>
+      <div className="flex h-8 items-center gap-0.5" aria-hidden="true">
+        {[10, 18, 12, 26, 20, 30, 16, 24, 14, 22, 10].map((height, index) => (
+          <span
+            key={`${height}-${index}`}
+            className={`w-1 rounded-full bg-current transition-all duration-200 ${
+              active && index % 2 === 0 ? "scale-y-110" : ""
+            }`}
+            style={{ height: `${height}px` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ListenMatchExercise({
   exercise,
   selectedValue,
@@ -62,6 +99,8 @@ export default function ListenMatchExercise({
   const [activeLeftId, setActiveLeftId] = useState<string | null>(null);
   const [activeRightId, setActiveRightId] = useState<string | null>(null);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [pairFeedback, setPairFeedback] = useState<PairFeedbackState | null>(null);
+  const feedbackTimeoutRef = useRef<number | null>(null);
 
   const selectedPairKeys = parseSelectedPairKeys(selectedValue);
   const selectedPairs = selectedPairKeys.map((pairKey) => {
@@ -86,9 +125,33 @@ export default function ListenMatchExercise({
         : fallbackOptions.rightOptions,
     [exercise.options, fallbackOptions.rightOptions]
   );
+  const expectedRightByLeftId = useMemo(
+    () =>
+      new Map(
+        pairs.map((pair) => [getExercisePairLeftId(pair), getExercisePairRightId(pair)])
+      ),
+    [pairs]
+  );
 
-  const visibleLeftOptions = leftOptions.filter((option) => !matchedLeftIds.has(option.id));
-  const visibleRightOptions = rightOptions.filter((option) => !matchedRightIds.has(option.id));
+  useEffect(() => {
+    setActiveLeftId(null);
+    setActiveRightId(null);
+    setPlayingAudioId(null);
+    setPairFeedback(null);
+
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
+      feedbackTimeoutRef.current = null;
+    }
+  }, [exercise.id]);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
   async function playPairAudio(leftId: string) {
     const pair = pairs.find((entry) => getExercisePairLeftId(entry) === leftId);
@@ -126,15 +189,47 @@ export default function ListenMatchExercise({
     onSelect(serializeSelectedPairKeys(nextPairKeys));
   }
 
+  function handlePairAttempt(leftId: string, rightId: string) {
+    const isCorrect = expectedRightByLeftId.get(leftId) === rightId;
+
+    setPairFeedback({
+      leftId,
+      rightId,
+      status: isCorrect ? "correct" : "wrong",
+    });
+
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
+    }
+
+    feedbackTimeoutRef.current = window.setTimeout(() => {
+      if (isCorrect) {
+        commitPair(leftId, rightId);
+      } else {
+        setActiveLeftId(null);
+        setActiveRightId(null);
+      }
+
+      setPairFeedback(null);
+      feedbackTimeoutRef.current = null;
+    }, 280);
+  }
+
   function handleSelectLeft(leftId: string) {
-    if (submitted) {
+    if (submitted || pairFeedback || matchedLeftIds.has(leftId)) {
       return;
     }
 
     void playPairAudio(leftId);
 
     if (activeRightId) {
-      commitPair(leftId, activeRightId);
+      if (matchedRightIds.has(activeRightId)) {
+        setActiveRightId(null);
+        setActiveLeftId(leftId);
+        return;
+      }
+
+      handlePairAttempt(leftId, activeRightId);
       return;
     }
 
@@ -142,36 +237,49 @@ export default function ListenMatchExercise({
   }
 
   function handleSelectRight(rightId: string) {
-    if (submitted) {
+    if (submitted || pairFeedback || matchedRightIds.has(rightId)) {
       return;
     }
 
     if (activeLeftId) {
-      commitPair(activeLeftId, rightId);
+      if (matchedLeftIds.has(activeLeftId)) {
+        setActiveLeftId(null);
+        setActiveRightId(rightId);
+        return;
+      }
+
+      handlePairAttempt(activeLeftId, rightId);
       return;
     }
 
     setActiveRightId((current) => (current === rightId ? null : rightId));
   }
 
-  function handleRemovePair(pairKey: string) {
-    if (submitted) {
-      return;
+  function getListenPairClassName(optionId: string, side: "left" | "right", isMatched: boolean) {
+    const isActive = side === "left" ? activeLeftId === optionId : activeRightId === optionId;
+    const isFeedbackTarget =
+      pairFeedback &&
+      (side === "left"
+        ? pairFeedback.leftId === optionId
+        : pairFeedback.rightId === optionId);
+
+    if (isFeedbackTarget && pairFeedback?.status === "correct") {
+      return "border-emerald-300 bg-emerald-100 text-emerald-700 ring-2 ring-emerald-200";
     }
 
-    setActiveLeftId(null);
-    setActiveRightId(null);
-    onSelect(serializeSelectedPairKeys(selectedPairKeys.filter((key) => key !== pairKey)));
-  }
-
-  function handleReset() {
-    if (submitted || selectedPairKeys.length === 0) {
-      return;
+    if (isFeedbackTarget && pairFeedback?.status === "wrong") {
+      return "animate-pulse border-rose-300 bg-rose-100 text-rose-700 ring-2 ring-rose-200";
     }
 
-    setActiveLeftId(null);
-    setActiveRightId(null);
-    onSelect("");
+    if (isMatched) {
+      return "border-slate-200 bg-white text-slate-400";
+    }
+
+    if (isActive) {
+      return "border-[#9edbf0] bg-[#dff6fd] text-slate-900 ring-2 ring-[#bce8f7]";
+    }
+
+    return "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50";
   }
 
   if (!isPairMode) {
@@ -217,59 +325,15 @@ export default function ListenMatchExercise({
 
   return (
     <div className="space-y-4">
-      <div className="drill-context-surface p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="token-text-muted text-xs font-semibold uppercase tracking-[0.16em]">
-            Match Progress
-          </div>
-          <button
-            type="button"
-            onClick={handleReset}
-            disabled={submitted || selectedPairKeys.length === 0}
-            className="text-xs font-semibold text-slate-500 transition-colors hover:text-slate-800 disabled:cursor-not-allowed disabled:text-slate-300"
-          >
-            Reset
-          </button>
-        </div>
-
-        <div className="mt-3 flex min-h-16 flex-wrap gap-2 rounded-[18px] border border-dashed border-slate-300 bg-white p-3">
-          {selectedPairs.length > 0 ? (
-            selectedPairs.map((pair) => {
-              const leftLabel =
-                leftOptions.find((option) => option.id === pair.leftId)?.label ?? pair.leftId;
-              const rightLabel =
-                rightOptions.find((option) => option.id === pair.rightId)?.label ?? pair.rightId;
-
-              return (
-                <button
-                  key={pair.key}
-                  type="button"
-                  onClick={() => handleRemovePair(pair.key)}
-                  disabled={submitted}
-                  className="rounded-2xl border border-slate-300 bg-slate-950 px-3 py-2 text-sm font-semibold text-white transition-all hover:bg-slate-800 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  aria-label={`Remove match ${leftLabel} to ${rightLabel}`}
-                >
-                  {leftLabel} {"->"} {rightLabel}
-                </button>
-              );
-            })
-          ) : (
-            <div className="text-sm leading-6 text-slate-400">
-              Play an audio clip on the left, then tap its matching item on the right.
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] lg:items-start">
+      <div
+        className="grid grid-cols-[minmax(6.75rem,8rem)_minmax(0,1fr)] gap-3 sm:grid-cols-[minmax(7.5rem,9rem)_minmax(0,1fr)]"
+        aria-label="Matching options"
+      >
         <div className="space-y-3" role="list" aria-label="Audio column">
-          <div className="token-text-muted text-xs font-semibold uppercase tracking-[0.16em]">
-            {exercise.leftColumnLabel ?? exercise.left_column_label ?? "Audio"}
-          </div>
-          {visibleLeftOptions.map((option) => {
+          {leftOptions.map((option) => {
             const pair = pairs.find((entry) => getExercisePairLeftId(entry) === option.id);
             const audioUrl = pair?.leftAudioUrl ?? pair?.left_audio_url ?? null;
-            const isActive = activeLeftId === option.id;
+            const isMatched = matchedLeftIds.has(option.id);
             const isPlaying = playingAudioId === option.id;
 
             return (
@@ -277,24 +341,18 @@ export default function ListenMatchExercise({
                 key={option.id}
                 type="button"
                 onClick={() => handleSelectLeft(option.id)}
-                disabled={submitted}
-                className={`rounded-[18px] border px-4 py-3 text-left transition-all active:scale-[0.995] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 ${
-                  isActive
-                    ? "border-slate-950 bg-slate-950 text-white"
-                    : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50"
-                }`}
+                disabled={submitted || isMatched}
+                className={`flex min-h-16 w-full items-center justify-center rounded-2xl border px-3 py-3 shadow-[0_2px_0_rgba(15,23,42,0.08)] transition-all duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7dd3fc] focus-visible:ring-offset-2 disabled:cursor-default ${getListenPairClassName(
+                  option.id,
+                  "left",
+                  isMatched
+                )}`}
+                aria-pressed={activeLeftId === option.id || isMatched}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold">{option.label}</div>
-                    <div className={`mt-1 text-xs ${isActive ? "text-white/75" : "text-slate-500"}`}>
-                      {audioUrl ? (isPlaying ? "Playing..." : "Tap to play") : "Audio unavailable"}
-                    </div>
-                  </div>
-                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-white shadow-[var(--shadow-button)]">
-                    {isPlaying ? "..." : "▶"}
-                  </span>
-                </div>
+                <ListenWaveIcon active={isPlaying} />
+                <span className="sr-only">
+                  {audioUrl ? `Play audio ${option.label}` : "Audio unavailable"}
+                </span>
                 {audioUrl ? (
                   <audio
                     ref={(node) => {
@@ -313,31 +371,32 @@ export default function ListenMatchExercise({
         </div>
 
         <div className="space-y-3" role="list" aria-label="Meaning column">
-          <div className="token-text-muted text-xs font-semibold uppercase tracking-[0.16em]">
-            {exercise.rightColumnLabel ??
-              exercise.right_column_label ??
-              (exercise.variant === "translation" ? "Translations" : "Meanings")}
-          </div>
-          {visibleRightOptions.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => handleSelectRight(option.id)}
-              disabled={submitted}
-              className={`rounded-[18px] border px-4 py-3 text-left text-sm font-semibold transition-all active:scale-[0.995] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 ${
-                activeRightId === option.id
-                  ? "border-slate-950 bg-slate-950 text-white"
-                  : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-            >
-              {renderCaptureText
-                ? renderCaptureText({
-                    text: option.label,
-                    contextText: exercise.questionText ?? exercise.prompt ?? option.label,
-                  })
-                : option.label}
-            </button>
-          ))}
+          {rightOptions.map((option) => {
+            const isMatched = matchedRightIds.has(option.id);
+
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => handleSelectRight(option.id)}
+                disabled={submitted || isMatched}
+                className={`min-h-16 rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-[0_2px_0_rgba(15,23,42,0.08)] transition-all duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7dd3fc] focus-visible:ring-offset-2 disabled:cursor-default ${getListenPairClassName(
+                  option.id,
+                  "right",
+                  isMatched
+                )}`}
+                aria-pressed={activeRightId === option.id || isMatched}
+              >
+                {renderCaptureText
+                  ? renderCaptureText({
+                      text: option.label,
+                      contextText: exercise.questionText ?? exercise.prompt ?? option.label,
+                      className: isMatched ? "text-slate-400" : undefined,
+                    })
+                  : option.label}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -53,7 +53,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, items: items ?? [] });
     }
 
-    const generated = await generateVocabularyAudioBulk(itemsToGenerate);
+    const generated = await generateVocabularyAudioBulk(itemsToGenerate, {
+      studentId: sessionStudentId,
+    });
 
     for (const item of generated) {
       const filePath = `${sessionStudentId}/${lessonId}/${item.id}.mp3`;

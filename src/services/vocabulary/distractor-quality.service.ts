@@ -1,9 +1,13 @@
-import { generateVocabularyDrillOptions } from "@/services/ai/generate-vocabulary-drill-options";
+import {
+  generateVocabularyDrillOptions,
+  generateVocabularyDrillOptionsBatch,
+} from "@/services/ai/generate-vocabulary-drill-options";
 
 type VocabularyDistractorInput = {
   itemText: string;
   itemType: "word" | "phrase";
   correctAnswer: string;
+  studentId?: string | null;
   contextSentence?: string | null;
   exampleText?: string | null;
   existingDistractors?: string[] | null;
@@ -252,6 +256,7 @@ export async function prepareVocabularyDistractors(
       itemText: input.itemText,
       itemType: input.itemType,
       plainEnglishMeaning: input.correctAnswer,
+      studentId: input.studentId ?? null,
       contextSentence: input.contextSentence ?? null,
       exampleText: input.exampleText ?? null,
       existingDistractors: input.existingDistractors ?? [],
@@ -274,4 +279,79 @@ export async function prepareVocabularyDistractors(
   });
 
   return combined.slice(0, 4);
+}
+
+function buildDistractorCacheKey(input: {
+  itemText: string;
+  correctAnswer: string;
+}) {
+  return `${normalizeForCompare(input.itemText)}::${normalizeForCompare(input.correctAnswer)}`;
+}
+
+export async function prepareVocabularyDistractorsBatch(
+  inputs: VocabularyDistractorInput[]
+) {
+  const resolved = new Map<string, string[]>();
+  const inputsNeedingAi: VocabularyDistractorInput[] = [];
+
+  for (const input of inputs) {
+    const audit = auditVocabularyDistractors({
+      correctAnswer: input.correctAnswer,
+      distractors: input.existingDistractors,
+      itemType: input.itemType,
+    });
+
+    if (!audit.needsRefinement && audit.normalizedDistractors.length >= 3) {
+      resolved.set(
+        buildDistractorCacheKey(input),
+        audit.normalizedDistractors.slice(0, 4)
+      );
+      continue;
+    }
+
+    inputsNeedingAi.push(input);
+  }
+
+  const aiBatchMap =
+    inputsNeedingAi.length > 0
+      ? await generateVocabularyDrillOptionsBatch(
+          inputsNeedingAi.map((input) => ({
+            itemText: input.itemText,
+            itemType: input.itemType,
+            plainEnglishMeaning: input.correctAnswer,
+            studentId: input.studentId ?? null,
+            contextSentence: input.contextSentence ?? null,
+            exampleText: input.exampleText ?? null,
+            existingDistractors: input.existingDistractors ?? [],
+            fallbackPool: input.fallbackPool ?? [],
+          }))
+        ).catch((error) => {
+          console.error("prepareVocabularyDistractorsBatch ai generation failed", error);
+          return new Map<string, { correct_answer: string; distractors: string[] }>();
+        })
+      : new Map<string, { correct_answer: string; distractors: string[] }>();
+
+  for (const input of inputsNeedingAi) {
+    const fallbackCandidates = finalizeDistractorSet({
+      correctAnswer: input.correctAnswer,
+      itemType: input.itemType,
+      candidates: input.fallbackPool ?? [],
+    });
+    const aiDistractors =
+      aiBatchMap.get(normalizeForCompare(input.itemText))?.distractors ?? [];
+
+    const combined = finalizeDistractorSet({
+      correctAnswer: input.correctAnswer,
+      itemType: input.itemType,
+      candidates: [
+        ...aiDistractors,
+        ...(input.existingDistractors ?? []),
+        ...fallbackCandidates,
+      ],
+    });
+
+    resolved.set(buildDistractorCacheKey(input), combined.slice(0, 4));
+  }
+
+  return resolved;
 }

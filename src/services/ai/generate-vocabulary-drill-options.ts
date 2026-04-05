@@ -1,79 +1,145 @@
-import { openai } from '@/lib/openai';
+import { AI_MODELS } from "@/services/ai/ai-models";
+import { createTrackedResponse } from "@/services/ai/openai-tracked-response";
 
 type DrillOptionResult = {
   correct_answer: string;
   distractors: string[];
 };
 
-function extractJsonObject(text: string): DrillOptionResult {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
+export type VocabularyDrillOptionBatchInput = {
+  itemText: string;
+  itemType: "word" | "phrase";
+  plainEnglishMeaning: string;
+  studentId?: string | null;
+  contextSentence?: string | null;
+  exampleText?: string | null;
+  existingDistractors?: string[];
+  fallbackPool?: string[];
+};
+
+const VOCABULARY_DRILL_OPTIONS_SYSTEM_PROMPT = `You are creating vocabulary drill answer choices.
+
+Return ONLY valid JSON in this shape:
+{"items":[{"item_text":"string","correct_answer":"string","distractors":["string","string","string","string"]}]}
+
+Rules:
+- Preserve each item_text exactly.
+- correct_answer must match the meaning.
+- Each distractors array must contain exactly 4 plausible but wrong answer choices.
+- Distractors should match the same part of speech or answer style as the correct answer.
+- Distractors should be close in difficulty, tone, and length to the correct answer.
+- Distractors should be semantically nearby enough to feel plausible in SAT practice.
+- Avoid obvious antonyms, joke answers, trivia, and generic fillers such as "thing", "good", or "bad".
+- If context is available, keep distractors plausible in context without becoming correct.
+- Short answers only.
+- No markdown.
+- No extra text.`;
+
+function normalizeBatchItemKey(text: string) {
+  return text
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.!?;:,]+$/g, "")
+    .toLowerCase();
+}
+
+function extractBatchJsonObject(text: string) {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
 
   if (start === -1 || end === -1 || end <= start) {
-    throw new Error('Model did not return JSON object');
+    throw new Error("Model did not return JSON object");
   }
 
-  return JSON.parse(text.slice(start, end + 1));
+  const parsed = JSON.parse(text.slice(start, end + 1)) as {
+    items?: Array<{
+      item_text?: string;
+      correct_answer?: string;
+      distractors?: unknown;
+    }>;
+  };
+
+  return (parsed.items ?? [])
+    .filter(
+      (
+        item
+      ): item is {
+        item_text: string;
+        correct_answer: string;
+        distractors: string[];
+      } =>
+        typeof item?.item_text === "string" &&
+        typeof item.correct_answer === "string" &&
+        Array.isArray(item.distractors)
+    )
+    .map((item) => ({
+      item_text: item.item_text,
+      correct_answer: item.correct_answer,
+      distractors: item.distractors.filter(
+        (candidate): candidate is string => typeof candidate === "string"
+      ),
+    }));
 }
 
 export async function generateVocabularyDrillOptions(input: {
   itemText: string;
   itemType: 'word' | 'phrase';
   plainEnglishMeaning: string;
+  studentId?: string | null;
   contextSentence?: string | null;
   exampleText?: string | null;
   existingDistractors?: string[];
   fallbackPool?: string[];
 }) {
-  const prompt = `
-You are creating vocabulary drill answer choices.
+  const batchResult = await generateVocabularyDrillOptionsBatch([input]);
+  const result = batchResult.get(normalizeBatchItemKey(input.itemText));
 
-Task:
-Return one correct answer and exactly 4 plausible distractors.
+  if (result) {
+    return result;
+  }
 
-Rules:
-- correct_answer must match the meaning
-- distractors must be plausible but wrong
-- distractors should match the same part of speech or answer style as the correct answer
-- distractors should be close in difficulty and tone to the correct answer
-- distractors should be semantically nearby enough to feel plausible in SAT practice
-- avoid obvious antonyms, joke answers, trivia, and overly broad words like "thing" or "good"
-- if context is available, make distractors still plausible in context without becoming correct
-- short answers only
-- return ONLY valid JSON object
-
-Input item:
-${input.itemText}
-
-Item type:
-${input.itemType}
-
-Meaning:
-${input.plainEnglishMeaning}
-
-Context sentence:
-${input.contextSentence ?? "N/A"}
-
-Example text:
-${input.exampleText ?? "N/A"}
-
-Existing distractors to improve if useful:
-${JSON.stringify(input.existingDistractors ?? [], null, 2)}
-
-Fallback meaning pool if useful:
-${JSON.stringify(input.fallbackPool ?? [], null, 2)}
-
-JSON shape:
-{
-  "correct_answer": "string",
-  "distractors": ["string", "string", "string", "string"]
+  throw new Error("Model did not return drill options for the requested item");
 }
-`;
 
-  const response = await openai.responses.create({
-    model: 'gpt-5',
+export async function generateVocabularyDrillOptionsBatch(
+  items: VocabularyDrillOptionBatchInput[]
+) {
+  if (items.length === 0) {
+    return new Map<string, DrillOptionResult>();
+  }
+
+  const prompt = `${VOCABULARY_DRILL_OPTIONS_SYSTEM_PROMPT}
+
+INPUT_JSON:
+${JSON.stringify({
+    items: items.map((item) => ({
+      item_text: item.itemText,
+      item_type: item.itemType,
+      meaning: item.plainEnglishMeaning,
+      context_sentence: item.contextSentence ?? null,
+      example_text: item.exampleText ?? null,
+      existing_distractors: item.existingDistractors ?? [],
+      fallback_pool: item.fallbackPool ?? [],
+    })),
+  })}`;
+
+  const response = await createTrackedResponse({
+    route: "vocabulary.generate_drill_options_batch",
+    model: AI_MODELS.liveReasoning,
+    studentId: items.find((item) => item.studentId)?.studentId ?? null,
     input: prompt,
+    metadata: {
+      item_count: items.length,
+    },
   });
 
-  return extractJsonObject(response.output_text);
+  return new Map(
+    extractBatchJsonObject(response.output_text).map((item) => [
+      normalizeBatchItemKey(item.item_text),
+      {
+        correct_answer: item.correct_answer,
+        distractors: item.distractors,
+      },
+    ])
+  );
 }

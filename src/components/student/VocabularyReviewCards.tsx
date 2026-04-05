@@ -18,9 +18,21 @@ type Props = {
   onVisibleItemsChange?: (items: VocabItem[]) => void;
   onDone?: () => void;
   onBackToReading?: () => void;
-  onRequestAudio?: () => Promise<void> | void;
+  onRequestAudio?: (options?: {
+    force?: boolean;
+    itemTexts?: string[];
+  }) => Promise<void> | void;
   isAudioLoading?: boolean;
+  title?: string;
+  emptyTitle?: string;
+  emptyCopy?: string;
+  continueLabel?: string;
+  backLabel?: string;
 };
+
+function getAudioItemKey(itemText: string) {
+  return itemText.trim().toLowerCase();
+}
 
 export default function VocabularyReviewCards({
   items,
@@ -30,17 +42,31 @@ export default function VocabularyReviewCards({
   onBackToReading,
   onRequestAudio,
   isAudioLoading = false,
+  title = "Saved from this passage",
+  emptyTitle = "Nothing saved this time",
+  emptyCopy = "Continue to the second read, or go back and save a few words first.",
+  continueLabel = "Continue to Second Read",
+  backLabel = "← Back to First Read",
 }: Props) {
   const [pageIndex, setPageIndex] = useState(0);
-  const [pendingAudioItemId, setPendingAudioItemId] = useState<string | null>(null);
+  const [pendingAudioItemKey, setPendingAudioItemKey] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const CARDS_PER_PAGE = 6;
+  const itemsResetSignature = useMemo(
+    () => items.map((item) => getAudioItemKey(item.item_text)).join("|"),
+    [items]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(items.length / CARDS_PER_PAGE));
 
   useEffect(() => {
     setPageIndex(0);
-  }, [items]);
+  }, [itemsResetSignature]);
 
-  const totalPages = Math.max(1, Math.ceil(items.length / CARDS_PER_PAGE));
+  useEffect(() => {
+    setPageIndex((current) => Math.min(current, totalPages - 1));
+  }, [totalPages]);
+
   const visibleItems = useMemo(() => {
     const start = pageIndex * CARDS_PER_PAGE;
     return items.slice(start, start + CARDS_PER_PAGE);
@@ -51,12 +77,13 @@ export default function VocabularyReviewCards({
   }, [onVisibleItemsChange, visibleItems]);
 
   useEffect(() => {
-    if (!pendingAudioItemId) {
+    if (!pendingAudioItemKey) {
       return;
     }
 
     const resolvedItem = items.find(
-      (item) => item.id === pendingAudioItemId && item.audio_url
+      (item) =>
+        getAudioItemKey(item.item_text) === pendingAudioItemKey && item.audio_url
     );
 
     if (!resolvedItem?.audio_url || !audioRef.current) {
@@ -69,8 +96,8 @@ export default function VocabularyReviewCards({
     audioRef.current.play().catch((error) => {
       console.error("VocabularyReviewCards playAudio error", error);
     });
-    setPendingAudioItemId(null);
-  }, [items, pendingAudioItemId]);
+    setPendingAudioItemKey(null);
+  }, [items, pendingAudioItemKey]);
 
   function playAudio(url: string) {
     if (!audioRef.current) {
@@ -95,14 +122,56 @@ export default function VocabularyReviewCards({
       return;
     }
 
-    setPendingAudioItemId(item.id);
+    setPendingAudioItemKey(getAudioItemKey(item.item_text));
 
     try {
-      await onRequestAudio();
+      await onRequestAudio({
+        force: true,
+        itemTexts: [item.item_text],
+      });
     } catch (error) {
       console.error("VocabularyReviewCards requestAudio error", error);
-      setPendingAudioItemId(null);
+      setPendingAudioItemKey(null);
     }
+  }
+
+  function renderSpeakerButton(item: VocabItem) {
+    const isPendingThisItem =
+      pendingAudioItemKey === getAudioItemKey(item.item_text);
+    const isLoadingThisItem = isPendingThisItem && isAudioLoading && !item.audio_url;
+    const isDisabled = isLoadingThisItem || (!item.audio_url && !onRequestAudio);
+
+    return (
+      <button
+        type="button"
+        onClick={() => void handleAudioPress(item)}
+        disabled={isDisabled}
+        aria-label={
+          item.audio_url
+            ? `Play audio for ${item.item_text}`
+            : `Load and play audio for ${item.item_text}`
+        }
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-primary)] transition hover:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
+      >
+        {isLoadingThisItem ? (
+          <span className="h-4 w-4 animate-pulse rounded-full bg-[var(--color-primary)]/70" />
+        ) : (
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+            <path
+              d="M11 5.5 7.75 8H5.5A1.5 1.5 0 0 0 4 9.5v5A1.5 1.5 0 0 0 5.5 16h2.25L11 18.5a.75.75 0 0 0 1.2-.6V6.1a.75.75 0 0 0-1.2-.6Z"
+              fill="currentColor"
+            />
+            <path
+              d="M15.5 8.75a4.5 4.5 0 0 1 0 6.5M17.75 6.5a7.5 7.5 0 0 1 0 11"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeWidth="1.8"
+            />
+          </svg>
+        )}
+      </button>
+    );
   }
 
   if (!items.length) {
@@ -110,9 +179,9 @@ export default function VocabularyReviewCards({
       <div className="mx-auto flex min-h-[calc(100svh-12rem)] max-w-3xl flex-col justify-center px-4 py-8 text-center sm:px-6">
         <audio ref={audioRef} hidden />
         <div className="card-surface space-y-3 px-6 py-8">
-          <div className="text-2xl font-semibold token-text-primary">Nothing saved this time</div>
+          <div className="text-2xl font-semibold token-text-primary">{emptyTitle}</div>
           <div className="token-text-secondary text-sm leading-6">
-            Continue to the second read, or go back and save a few words first.
+            {emptyCopy}
           </div>
         </div>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -121,7 +190,7 @@ export default function VocabularyReviewCards({
               onClick={onBackToReading}
               className="app-button app-button-muted sm:flex-1"
             >
-              ← Back to First Read
+              {backLabel}
             </button>
           ) : null}
           <button
@@ -139,7 +208,7 @@ export default function VocabularyReviewCards({
     <div className="mx-auto flex min-h-[calc(100svh-12rem)] max-w-3xl flex-col px-4 py-4 sm:px-6">
       <audio ref={audioRef} hidden />
       <div className="space-y-1">
-        <h2 className="token-text-primary text-2xl font-semibold">Saved from this passage</h2>
+        <h2 className="token-text-primary text-2xl font-semibold">{title}</h2>
         {totalPages > 1 ? (
           <div className="token-text-muted text-sm leading-6">
             {`Page ${pageIndex + 1} of ${totalPages}`}
@@ -161,14 +230,7 @@ export default function VocabularyReviewCards({
           >
             <div className="flex items-start justify-between gap-3">
               <div className="token-text-primary text-xl font-semibold">{item.item_text}</div>
-              <button
-                type="button"
-                onClick={() => void handleAudioPress(item)}
-                disabled={isAudioLoading}
-                className="secondary-button min-h-9 shrink-0 px-3 py-1.5 text-xs disabled:opacity-50"
-              >
-                {item.audio_url ? "Play" : isAudioLoading ? "Loading..." : "Load audio"}
-              </button>
+              {renderSpeakerButton(item)}
             </div>
             <div className="token-text-secondary mt-2 text-sm leading-6">
               {item.english_explanation || item.translated_explanation || "Meaning will appear soon."}
@@ -211,14 +273,14 @@ export default function VocabularyReviewCards({
               onClick={onBackToReading}
               className="app-button app-button-muted sm:flex-1"
             >
-              ← Back to First Read
+              {backLabel}
             </button>
           ) : null}
           <button
             onClick={onDone}
             className="primary-button sm:flex-1"
           >
-            Continue to Second Read
+            {continueLabel}
           </button>
         </div>
       </div>

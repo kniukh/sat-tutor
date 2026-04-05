@@ -1,4 +1,5 @@
-import { openai } from '@/lib/openai';
+import { AI_MODELS } from "@/services/ai/ai-models";
+import { createTrackedResponse } from "@/services/ai/openai-tracked-response";
 
 type VocabularyExplanation = {
   item_text: string;
@@ -44,8 +45,28 @@ export async function generateVocabularyExplanations(input: {
 
   const targetLanguage = languageMap[input.nativeLanguage] ?? 'Russian';
 
-  const prompt = `
-You are helping a student understand difficult vocabulary from a literary passage.
+  const prompt = `${VOCABULARY_EXPLANATIONS_SYSTEM_PROMPT}
+
+INPUT_JSON:
+${JSON.stringify({
+  target_language: targetLanguage,
+  passage_text: input.passageText,
+  items: input.items,
+})}`;
+
+  const response = await createTrackedResponse({
+    route: "vocabulary.generate_explanations",
+    model: AI_MODELS.liveReasoning,
+    input: prompt,
+    metadata: {
+      item_count: input.items.length,
+      target_language: targetLanguage,
+    },
+  });
+
+  return extractJson(response.output_text);
+}
+const VOCABULARY_EXPLANATIONS_SYSTEM_PROMPT = `You are helping a student understand difficult vocabulary from a literary passage.
 
 Task:
 For each item, return:
@@ -58,37 +79,12 @@ For each item, return:
 - context_sentence
 
 Rules:
-- plain_english_meaning must be simple and short
-- translation must be in ${targetLanguage}
-- context_meaning must explain what the item means in THIS passage
-- example_text should be short and clear
-- context_sentence must be a short sentence from or based on the passage context containing the item
-- return ONLY valid JSON array, no markdown, no commentary
-
-Passage:
-${input.passageText}
-
-Items:
-${JSON.stringify(input.items, null, 2)}
+- plain_english_meaning must be simple and short.
+- translation must use the requested target_language.
+- context_meaning must explain what the item means in this passage.
+- example_text should be short and clear.
+- context_sentence must be a short sentence from or based on the passage context containing the item.
+- Return ONLY valid JSON array, no markdown, no commentary.
 
 JSON shape:
-[
-  {
-    "item_text": "string",
-    "item_type": "word",
-    "plain_english_meaning": "string",
-    "translation": "string",
-    "context_meaning": "string",
-    "example_text": "string",
-    "context_sentence": "string"
-  }
-]
-`;
-
-  const response = await openai.responses.create({
-    model: 'gpt-5',
-    input: prompt,
-  });
-
-  return extractJson(response.output_text);
-}
+[{"item_text":"string","item_type":"word","plain_english_meaning":"string","translation":"string","context_meaning":"string","example_text":"string","context_sentence":"string"}]`;

@@ -821,46 +821,6 @@ export function adaptPairMatchDrillsToExercises(
       .filter((exercise): exercise is PairMatchVocabExercise => Boolean(exercise))
   );
 
-  const collocationEntries = items
-    .map((item) => ({
-      item,
-      pairLead: extractCollocationLead(getSourceSentence(item), item.itemText),
-    }))
-    .filter(
-      (
-        entry
-      ): entry is {
-        item: MeaningDrillItem | ClozeDrillItem;
-        pairLead: string;
-      } => Boolean(entry.pairLead)
-    );
-  const collocationGroups = chunkItemsBalanced(collocationEntries, 6, 8, 4);
-
-  exercises.push(
-    ...collocationGroups
-      .map((group, index) =>
-        buildPairMatchExercise({
-          id: `${group[0]?.item.wordProgressId ?? index}:pair_match:collocation_pair:${index + 1}`,
-          pairEntries: group.map((entry) => ({
-            item: entry.item,
-            left: entry.pairLead,
-            right: entry.item.itemText,
-          })),
-          prompt: "Match the phrase pairs.",
-          instructions: "Tap a phrase starter, then tap the word that completes the natural pair.",
-          questionText: "Match each phrase starter to its best partner.",
-          explanation: "Natural English collocations rely on the strongest word partner.",
-          variant: "collocation_pair",
-          leftColumnLabel: "Phrase starters",
-          rightColumnLabel: "Best partners",
-          modality: "mixed",
-          difficultyBand: "medium",
-          tags: ["pair_match", "collocation_pair", "phrase_building"],
-        })
-      )
-      .filter((exercise): exercise is PairMatchVocabExercise => Boolean(exercise))
-  );
-
   return exercises;
 }
 
@@ -872,9 +832,13 @@ export function adaptClozeDrillToExerciseWithPool(
   item: ClozeDrillItem,
   allItems: ClozeDrillItem[]
 ): FillBlankVocabExercise {
-  const questionText = `Which option best completes the sentence for "${item.itemText}"?`;
+  const questionText = "Which option best completes the sentence?";
   const sentenceText = makeBlank(item.contextSentence, item.itemText);
-  const options = buildLexicalOptions(item, allItems, `distractor-${item.wordProgressId}`);
+  const answerSet = getStoredAnswerSet(item, "collocation");
+  const options = answerSet
+    ? buildStoredAnswerSetOptions(answerSet, `fill-blank-${item.wordProgressId}`)
+    : buildLexicalOptions(item, allItems, `fill-blank-${item.wordProgressId}`);
+  const drillCorrectAnswer = answerSet?.drill_correct_answer ?? item.itemText;
   const plainMeaning = getPlainMeaning(item);
   const metadata = {
     source_drill_id: item.wordProgressId,
@@ -898,10 +862,12 @@ export function adaptClozeDrillToExerciseWithPool(
     options,
     correct_answer: "correct",
     correctAnswer: "correct",
+    drill_correct_answer: drillCorrectAnswer,
+    drillCorrectAnswer: drillCorrectAnswer,
     acceptable_answers: ["correct"],
     acceptableAnswers: ["correct"],
-    distractors: item.distractors,
-    explanation: `"${item.itemText}" fits this context because it means ${plainMeaning}.`,
+    distractors: answerSet?.distractors ?? item.distractors,
+    explanation: `"${drillCorrectAnswer}" fits this context because "${item.itemText}" means ${plainMeaning}.`,
     modality: "context",
     difficulty_band: "medium",
     variant: "single_blank",
@@ -1071,7 +1037,7 @@ export function adaptListenMatchDrillToExercise(
 function buildListenPairMatchExercise(params: {
   id: string;
   items: Array<MeaningDrillItem | ClozeDrillItem>;
-  variant: "meaning" | "translation";
+  variant: "english" | "meaning" | "translation";
   rightColumnLabel: string;
 }): SupportedVocabExercise | null {
   const anchorItem = params.items[0];
@@ -1085,6 +1051,8 @@ function buildListenPairMatchExercise(params: {
     right:
       params.variant === "translation"
         ? getTranslatedMeaning(item) ?? getPlainMeaning(item)
+        : params.variant === "english"
+          ? item.itemText
         : getPlainMeaning(item),
     left_id: `left-${index + 1}`,
     right_id: `right-${index + 1}`,
@@ -1113,10 +1081,14 @@ function buildListenPairMatchExercise(params: {
     prompt:
       params.variant === "translation"
         ? "Listen and match the translations."
+        : params.variant === "english"
+          ? "Listen and match the English words."
         : "Listen and match the meanings.",
     instructions:
       params.variant === "translation"
         ? "Play each audio clip on the left, then match it to the best translation on the right."
+        : params.variant === "english"
+          ? "Play each audio clip on the left, then match it to the English word you hear."
         : "Play each audio clip on the left, then match it to the best meaning on the right.",
     target_word: anchorItem.itemText,
     target_word_id: anchorItem.vocabularyItemId,
@@ -1125,10 +1097,14 @@ function buildListenPairMatchExercise(params: {
     question_text:
       params.variant === "translation"
         ? `Match each audio clip to its ${params.rightColumnLabel.toLowerCase()}.`
+        : params.variant === "english"
+          ? "Match each audio clip to its English word."
         : "Match each audio clip to its meaning.",
     questionText:
       params.variant === "translation"
         ? `Match each audio clip to its ${params.rightColumnLabel.toLowerCase()}.`
+        : params.variant === "english"
+          ? "Match each audio clip to its English word."
         : "Match each audio clip to its meaning.",
     options: [...leftOptions, ...rightOptions],
     pairs: pairRecords,
@@ -1140,12 +1116,18 @@ function buildListenPairMatchExercise(params: {
     explanation:
       params.variant === "translation"
         ? "Each audio clip should connect to the translation that matches the spoken word."
+        : params.variant === "english"
+          ? "Each audio clip should connect to the English word being spoken."
         : "Each audio clip should connect to the meaning that matches the spoken word.",
     modality: "audio",
     difficulty_band: "medium",
     variant: params.variant,
     promptStyle:
-      params.variant === "translation" ? "best_translation" : "best_meaning",
+      params.variant === "translation"
+        ? "best_translation"
+        : params.variant === "english"
+          ? "best_word"
+          : "best_meaning",
     translationLanguageLabel:
       params.variant === "translation" ? anchorItem.translationLanguage ?? null : null,
     left_column_label: "Audio",
@@ -1158,11 +1140,17 @@ function buildListenPairMatchExercise(params: {
       pair_target_words: uniqueNonEmpty(params.items.map((item) => item.itemText)),
       pair_count: pairRecords.length,
       listen_variant:
-        params.variant === "translation" ? "translation_pairs" : "meaning_pairs",
+        params.variant === "translation"
+          ? "translation_pairs"
+          : params.variant === "english"
+            ? "english_pairs"
+            : "meaning_pairs",
     },
     tags:
       params.variant === "translation"
         ? ["audio", "translation", "pair_match", "comprehension"]
+        : params.variant === "english"
+          ? ["audio", "english", "pair_match", "dictation"]
         : ["audio", "meaning", "pair_match", "comprehension"],
     skill: "listen_match",
     audio_url: anchorItem.audioUrl ?? null,
@@ -1182,25 +1170,16 @@ export function adaptListenMatchDrillsToExercises(
   const audioReadyItems = items.filter(
     (item) => Boolean(item.audioUrl) && item.audioStatus !== "failed" && item.audioStatus !== "missing"
   );
-  const meaningGroups = chunkItemsBalanced(audioReadyItems, 6, 8, 4);
+  const englishGroups = chunkItemsBalanced(audioReadyItems, 8, 10, 4);
+  const meaningGroups = chunkItemsBalanced(audioReadyItems, 8, 10, 4);
   const translationGroups = chunkItemsBalanced(
     audioReadyItems.filter((item) => Boolean(getTranslatedMeaning(item))),
-    6,
     8,
+    10,
     4
   );
 
   const groupedExercises = [
-    ...meaningGroups
-      .map((group, index) =>
-        buildListenPairMatchExercise({
-          id: `${group[0]?.wordProgressId ?? index}:listen_match:meaning_pairs:${index + 1}`,
-          items: group,
-          variant: "meaning",
-          rightColumnLabel: "Meanings",
-        })
-      )
-      .filter((exercise): exercise is SupportedVocabExercise => Boolean(exercise)),
     ...translationGroups
       .map((group, index) =>
         buildListenPairMatchExercise({
@@ -1208,6 +1187,26 @@ export function adaptListenMatchDrillsToExercises(
           items: group,
           variant: "translation",
           rightColumnLabel: group[0]?.translationLanguage?.toUpperCase() ?? "Translations",
+        })
+      )
+      .filter((exercise): exercise is SupportedVocabExercise => Boolean(exercise)),
+    ...englishGroups
+      .map((group, index) =>
+        buildListenPairMatchExercise({
+          id: `${group[0]?.wordProgressId ?? index}:listen_match:english_pairs:${index + 1}`,
+          items: group,
+          variant: "english",
+          rightColumnLabel: "English",
+        })
+      )
+      .filter((exercise): exercise is SupportedVocabExercise => Boolean(exercise)),
+    ...meaningGroups
+      .map((group, index) =>
+        buildListenPairMatchExercise({
+          id: `${group[0]?.wordProgressId ?? index}:listen_match:meaning_pairs:${index + 1}`,
+          items: group,
+          variant: "meaning",
+          rightColumnLabel: "Meanings",
         })
       )
       .filter((exercise): exercise is SupportedVocabExercise => Boolean(exercise)),

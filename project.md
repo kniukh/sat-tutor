@@ -41,10 +41,11 @@ Key current capabilities:
 - long-press vocabulary capture on mobile and text-selection capture on desktop
 - shared floating `Word Bank` tray across first read, second read, quiz, repair, and drills
 - vocabulary card review with paged mobile-friendly cards
+- `Words Picked Up from Quiz` review step between quiz and repair when quiz words were captured
 - second-read hover/tap meaning + translation popups on saved words
 - AI Tutor explanation on text selection
 - optional coaching-style question explanations in a bottom sheet
-- SAT-style repair that retries the original question and does not expose the correct answer immediately after a mistake
+- SAT-style repair that retries the original question directly, with `See Passage` as a helper instead of a separate reveal screen
 - reading speed telemetry
 - per-question timing
 - post-lesson Mistake Brain analysis
@@ -88,12 +89,16 @@ Current foundations:
 - audio-backed modalities:
   - `listen_match`
   - `spelling_from_audio`
-- grouped two-column `listen_match` pairs when enough audio-ready items exist
+- grouped two-column `listen_match` pairs with both `audio -> English` and `audio -> translation` variants when enough audio-ready items exist
 - higher-variety drills:
   - `translation_match`
   - `pair_match`
-  - `sentence_builder`
   - `error_detection`
+  - `context_meaning`
+  - `synonym`
+  - `collocation`
+- `fill_blank` and `sentence_builder` remain supported in the normalized exercise system and dev gallery, but are not part of the current live session mix
+- one-button in-session drill flow with instant correct/incorrect feedback and auto-advance
 
 ## Current Product Decisions
 
@@ -202,7 +207,10 @@ Implemented today:
 Not implemented yet:
 - dynamic modality switching driven by long-term modeling
 - adaptive next-lesson routing inside Books
-- richer teacher/admin-facing vocabulary analytics surfaces
+- richer teacher-facing vocabulary analytics surfaces
+
+Implemented recently for admin reuse:
+- `AI Usage by Student` insights built from `ai_usage_log`
 
 ## Current Risks / Constraints
 - Vocab scheduling is intentionally simple and explainable for now.

@@ -1,4 +1,5 @@
-import { openai } from "@/lib/openai";
+import { AI_MODELS } from "@/services/ai/ai-models";
+import { createTrackedResponse } from "@/services/ai/openai-tracked-response";
 import { generateInlineVocabularyPreview } from "@/services/ai/generate-inline-vocabulary-preview";
 
 type GenerateVocabularyCardsInput = {
@@ -8,6 +9,7 @@ type GenerateVocabularyCardsInput = {
     context_text?: string | null;
   }>;
   nativeLanguage: string;
+  studentId?: string | null;
 };
 
 type GeneratedVocabularyCard = {
@@ -18,6 +20,21 @@ type GeneratedVocabularyCard = {
 };
 
 const VOCAB_CARD_TIMEOUT_MS = 20000;
+const VOCABULARY_CARDS_SYSTEM_PROMPT = `You are creating vocabulary cards for an SAT reading student.
+
+Return strict JSON only in this shape:
+{"items":[{"item_text":"string","english_explanation":"short simple English meaning","translated_explanation":"translation in the requested target_language","example_text":"one short example sentence in English"}]}
+
+Rules:
+- Keep explanations short and clear.
+- Use student-friendly English.
+- Preserve item_text exactly.
+- If item_type is "phrase", explain the full phrase meaning.
+- Do not depend on passage context.
+- Prefer the most common useful meaning for quick review.
+- Keep each explanation short enough for a flashcard.
+- No markdown.
+- No extra text.`;
 
 function normalizeKey(text: string) {
   return text.trim().toLowerCase();
@@ -105,6 +122,7 @@ function normalizeGeneratedCards(
 async function enrichPlaceholderCards(params: {
   items: GenerateVocabularyCardsInput["items"];
   nativeLanguage: string;
+  studentId?: string | null;
   cards: GeneratedVocabularyCard[];
 }) {
   const resolvedCards = [...params.cards];
@@ -122,6 +140,7 @@ async function enrichPlaceholderCards(params: {
         passageText: item.context_text?.trim() || item.item_text,
         itemText: item.item_text,
         itemType: item.item_type === "phrase" ? "phrase" : "word",
+        studentId: params.studentId ?? null,
       });
 
       if (
@@ -148,6 +167,7 @@ async function enrichPlaceholderCards(params: {
 export async function generateVocabularyCards({
   items,
   nativeLanguage,
+  studentId = null,
 }: GenerateVocabularyCardsInput): Promise<GeneratedVocabularyCard[]> {
   if (!items.length) return [];
 
@@ -156,42 +176,24 @@ export async function generateVocabularyCards({
     item_type: item.item_type,
   }));
 
-  const prompt = `
-You are creating vocabulary cards for an SAT reading student.
+  const prompt = `${VOCABULARY_CARDS_SYSTEM_PROMPT}
 
-Return strict JSON only in this format:
-{
-  "items": [
-    {
-      "item_text": "string",
-      "english_explanation": "short simple English meaning",
-      "translated_explanation": "translation in the student's native language",
-      "example_text": "one short example sentence in English"
-    }
-  ]
-}
-
-Rules:
-- Keep explanations short and clear.
-- Use student-friendly English.
-- Translation language: ${nativeLanguage}
-- Preserve the original item_text exactly.
-- If item is a phrase, explain the phrase meaning, not separate words.
-- Do not depend on passage context.
-- Give the most common useful meaning for quick review.
-- Keep each explanation short enough for a flashcard.
-- No markdown.
-- No extra text.
-
-Items:
-${JSON.stringify(promptItems, null, 2)}
-`;
+INPUT_JSON:
+${JSON.stringify({
+  target_language: nativeLanguage,
+  items: promptItems,
+})}`;
 
   try {
-    const aiRequest = openai.responses
-      .create({
-        model: "gpt-5-mini",
+    const aiRequest = createTrackedResponse({
+        route: "vocabulary.generate_cards",
+        model: AI_MODELS.liveReasoning,
+        studentId,
         input: prompt,
+        metadata: {
+          item_count: promptItems.length,
+          target_language: nativeLanguage,
+        },
       })
       .then((response) => {
         const text = response.output_text || "";
@@ -216,6 +218,7 @@ ${JSON.stringify(promptItems, null, 2)}
     return enrichPlaceholderCards({
       items,
       nativeLanguage,
+      studentId,
       cards: normalizedCards,
     });
   } catch (error) {
@@ -224,6 +227,7 @@ ${JSON.stringify(promptItems, null, 2)}
     return enrichPlaceholderCards({
       items,
       nativeLanguage,
+      studentId,
       cards: normalizedCards,
     });
   }

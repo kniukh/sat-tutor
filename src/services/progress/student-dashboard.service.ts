@@ -10,9 +10,15 @@ import {
 
 export async function getStudentDashboardData(studentId: string) {
   const supabase = await createServerSupabaseClient();
-  await generateReviewQueueForStudent({
+
+  void generateReviewQueueForStudent({
     studentId,
     limit: 100,
+  }).catch((error) => {
+    console.warn(
+      "Review queue refresh skipped on dashboard:",
+      error instanceof Error ? error.message : "Unknown review queue error"
+    );
   });
 
   const leaderboardPromise = getWeeklyLeaderboardForStudent(studentId).catch((error) => {
@@ -31,6 +37,7 @@ export async function getStudentDashboardData(studentId: string) {
     bookProgressResult,
     gamificationResult,
     leaderboardResult,
+    vocabularyAnalytics,
   ] = await Promise.all([
     supabase
       .from("skill_mastery")
@@ -85,13 +92,12 @@ export async function getStudentDashboardData(studentId: string) {
 
     getStudentGamificationSnapshot(studentId),
     leaderboardPromise,
+    getStudentVocabularyAnalytics(studentId),
   ]);
 
   if (skillResult.error) throw new Error(skillResult.error.message);
   if (lessonAttemptsResult.error) throw new Error(lessonAttemptsResult.error.message);
   if (bookProgressResult.error) throw new Error(bookProgressResult.error.message);
-  const vocabularyAnalytics = await getStudentVocabularyAnalytics(studentId);
-
   const normalizedRecentLessons = (lessonAttemptsResult.data ?? []).map((item: any) => {
     const lessonsValue = item.lessons;
     let lessonData = null;

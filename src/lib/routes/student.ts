@@ -31,7 +31,11 @@ export function studentBookDetailPath(sourceDocumentId: string) {
   return `/s/book/${sourceDocumentId}`;
 }
 
-export function studentLessonPath(lessonId: string) {
+export function studentLessonPath(lessonId: string, accessCode?: string | null) {
+  if (accessCode) {
+    return `/s/${accessCode}/lesson/${lessonId}`;
+  }
+
   return `/s/lesson/${lessonId}`;
 }
 

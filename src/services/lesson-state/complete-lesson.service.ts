@@ -4,6 +4,8 @@ import { updateSkillTrackingForAttempt } from "@/services/analytics/skill-tracki
 import { runMistakeBrainForLesson } from "@/services/analytics/mistake-brain.service";
 import { ensureLessonVocabularyDrillsReady } from "@/services/vocabulary/drill-preparation.service";
 import { awardReadingLessonCompletionXp } from "@/services/gamification/xp-awards.service";
+import { getLessonSequenceByCurrentLessonId } from "@/services/reading/reading.service";
+import { updateStudentBookProgress } from "@/services/reading/book-progress.service";
 
 export async function completeLesson(studentId: string, lessonId: string) {
   const supabase = await createClient();
@@ -75,6 +77,19 @@ export async function completeLesson(studentId: string, lessonId: string) {
     .eq("lesson_id", lessonId);
 
   if (stateError) throw stateError;
+
+  try {
+    const lessonSequence = await getLessonSequenceByCurrentLessonId(lessonId);
+
+    await updateStudentBookProgress({
+      studentId,
+      lessonId,
+      currentLessonId: lessonSequence.nextLesson?.id ?? null,
+    });
+  } catch (bookProgressError) {
+    console.error("Book progress update failed after lesson completion", bookProgressError);
+  }
+
   let xpReward = null;
 
   try {

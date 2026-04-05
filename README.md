@@ -20,11 +20,13 @@ Legacy `/s/[code]/...` URLs still work as compatibility redirects after student 
 - Mobile-first reading layout with no split view during reading
 - Long-press vocabulary capture inside the passage
 - Shared lesson-scoped `Word Bank` tray across first read, second read, quiz, and repair
+- Quiz can capture words from question text and answer text into the same Word Bank
 - Vocabulary cards with fast meaning + translation review and lightweight paging
+- `Words Picked Up from Quiz` review step now appears between quiz and quiz repair when the student captured quiz words
 - Second-read hover/tap meaning review on saved words
 - Question-by-question SAT practice with passage recall
 - Optional post-answer reasoning explanations in a bottom sheet during quiz
-- SAT-style repair flow that repeats the original question and auto-opens the passage on the relevant line
+- SAT-style repair flow that retries the original question directly, with a `See Passage` return path instead of an extra intermediate reveal screen
 - Reading analytics and per-question timing
 - AI Tutor text explanation from the passage
 - Mistake Brain analysis after lesson completion
@@ -48,7 +50,7 @@ Legacy `/s/[code]/...` URLs still work as compatibility redirects after student 
   - `review_weak_words`
   - `mixed_practice`
 - Reusable vocab exercise shell
-- Supported exercise types:
+- Supported normalized exercise types:
   - `meaning_match`
   - `translation_match`
   - `pair_match`
@@ -57,6 +59,16 @@ Legacy `/s/[code]/...` URLs still work as compatibility redirects after student 
   - `sentence_builder`
   - `error_detection`
   - `fill_blank`
+  - `context_meaning`
+  - `synonym`
+  - `collocation`
+- Current live session mix emphasizes:
+  - `meaning_match`
+  - `translation_match`
+  - `pair_match`
+  - `listen_match`
+  - `spelling_from_audio`
+  - `error_detection`
   - `context_meaning`
   - `synonym`
   - `collocation`
@@ -70,6 +82,7 @@ Legacy `/s/[code]/...` URLs still work as compatibility redirects after student 
 - Long-press vocabulary capture inside drills from answers, distractors, and sentence fragments
 - Shared DB-first dictionary cache for `meaning + translation + distractors + drill answer sets`
 - Normalized attempt logging and local debug telemetry
+- One-button drill flow: choose an answer, tap `Continue`, see a short correct/incorrect animation, then auto-advance
 - Session completion is race-safe: pending attempt saves are awaited client-side and the backend can create a fallback `vocab_sessions` row if completion arrives first
 - End-of-session results with weak-word and recovery summaries
 - Replay Mistakes entry points from session results and Insights
@@ -97,6 +110,7 @@ Legacy `/s/[code]/...` URLs still work as compatibility redirects after student 
 - Structured admin sections:
   - `/admin/students`
   - `/admin/insights`
+  - `/admin/insights/ai-usage`
   - `/admin/content` via lessons/content review
   - `/admin/sources`
 - Unified source creation for books, articles, and poems
@@ -219,8 +233,8 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 - Shared lesson Word Bank shows `Pending / Saved` status and auto-saves on checkpoints.
 - Vocabulary cards now reuse a shared dictionary cache and avoid blocking lesson transitions on heavy AI/audio work.
 - Audio-backed vocab practice now includes `listen_match` and `spelling_from_audio`.
-- `listen_match` supports two-column audio-to-meaning/translation matching with grouped 6-8 pair sets when enough items exist.
-- Matching and SAT-style language drills now include `pair_match`, `sentence_builder`, and `error_detection`.
+- `listen_match` supports grouped 8-10 pair sets and now has both `audio -> English` and `audio -> translation` variants in live sessions when enough audio-ready items exist.
+- Matching and SAT-style language drills now include `pair_match` and `error_detection`, while `sentence_builder` and `fill_blank` remain available in the normalized exercise system and dev gallery.
 - Adaptive difficulty v1 is implemented as a transparent rule-based layer in the session pipeline.
 - Vocabulary Analytics v1 is implemented for exercise totals, accuracy breakdowns, weak words, lifecycle distribution, and recent vocab sessions.
 - Vocabulary drill preparation is now automatic after lesson completion and reused by the existing vocabulary APIs.
@@ -228,6 +242,7 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 - Vocabulary Studio and dashboard metrics now lead with progress rather than due counts, while review queue logic remains active internally.
 - Endless vocab practice now continues past the initial priority review phase using the same adaptive/session pipeline instead of a separate system.
 - XP and weekly leaderboard groups now sit on top of the existing attempt/session flows.
+- AI usage is now logged per request in `ai_usage_log`, including optional `student_id` for student-facing AI costs and admin reporting.
 - Admin content creation now supports books, articles, and poems in one source pipeline with inline lesson review.
 - Chunking now preserves sentence boundaries, handles common abbreviations like `Mr.`, and normalizes prose line breaks without flattening real paragraph boundaries.
 - Recent vocab changes used migrations on existing tables rather than introducing brand-new tables.

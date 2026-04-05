@@ -5,7 +5,6 @@ type Props = {
   canSubmit: boolean;
   isLast: boolean;
   isAdvancing?: boolean;
-  continueLocked?: boolean;
   helperText?: string | null;
   focused?: boolean;
   feedback: {
@@ -16,7 +15,6 @@ type Props = {
     answerLabel?: string;
     streakCount?: number;
   } | null;
-  onCheck: () => void;
   onContinue: () => void;
 };
 
@@ -25,11 +23,9 @@ export default function ExercisePlayerFooter({
   canSubmit,
   isLast,
   isAdvancing = false,
-  continueLocked = false,
   helperText,
   focused = false,
   feedback,
-  onCheck,
   onContinue,
 }: Props) {
   const toneClass = feedback?.isCorrect
@@ -48,6 +44,15 @@ export default function ExercisePlayerFooter({
     : "You still get the next rep right away, so keep the rhythm.";
   const focusedButtonClass =
     "min-h-14 w-full rounded-[1.25rem] bg-[var(--color-primary)] px-5 py-3 text-base font-semibold text-white shadow-[var(--shadow-button)] transition-all duration-150 hover:bg-[var(--color-primary-hover)] active:translate-y-[1px] active:scale-[0.985] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-500";
+  const buttonLabel = submitted
+    ? feedback?.isCorrect
+      ? "Correct"
+      : "Incorrect"
+    : isAdvancing
+      ? "Loading..."
+      : isLast
+        ? "Finish"
+        : "Continue";
 
   return (
     <div className={focused ? "fixed-action-bar" : "-mx-4 border-t border-slate-200 bg-white/95 px-4 pb-4 pt-3 backdrop-blur sm:-mx-0 sm:rounded-b-[24px] sm:border sm:px-5 sm:pb-5"}>
@@ -121,42 +126,29 @@ export default function ExercisePlayerFooter({
               </span>
             ) : (
               <span className="text-slate-400">
-                {helperText ?? (canSubmit ? "Ready to check" : "Choose an answer to continue")}
+                {helperText ?? (canSubmit ? "Ready to continue" : "Choose an answer to continue")}
               </span>
             )}
           </div>
         ) : null}
-        {!submitted ? (
-          <button
-            type="button"
-            disabled={!canSubmit || isAdvancing}
-            onClick={onCheck}
-            className={`rounded-2xl px-5 py-3 text-sm font-semibold text-white transition-all duration-150 active:scale-[0.99] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-500 ${
-              focused
-                ? focusedButtonClass
-                : "min-w-32 bg-[var(--color-primary)] shadow-[var(--shadow-button)] hover:bg-[var(--color-primary-hover)] active:translate-y-[1px] active:scale-[0.985]"
-            }`}
-          >
-            Check
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={isAdvancing || continueLocked}
-            onClick={onContinue}
-            className={`rounded-2xl px-5 py-3 text-sm font-semibold text-white transition-all duration-150 active:scale-[0.99] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-500 ${
-              focused ? focusedButtonClass : "min-w-32"
-            } ${
-              focused
-                ? ""
-                : feedback?.isCorrect
-                  ? "bg-emerald-600 shadow-[var(--shadow-button)] hover:bg-emerald-500 active:translate-y-[1px] active:scale-[0.985]"
+        <button
+          type="button"
+          disabled={!canSubmit || submitted || isAdvancing}
+          onClick={onContinue}
+          className={`rounded-2xl px-5 py-3 text-sm font-semibold text-white transition-all duration-150 active:scale-[0.99] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-500 ${
+            focused ? focusedButtonClass : "min-w-32"
+          } ${
+            focused
+              ? ""
+              : submitted && feedback?.isCorrect
+                ? "bg-emerald-600 shadow-[var(--shadow-button)]"
+                : submitted && feedback && !feedback.isCorrect
+                  ? "bg-rose-600 shadow-[var(--shadow-button)]"
                   : "bg-[var(--color-primary)] shadow-[var(--shadow-button)] hover:bg-[var(--color-primary-hover)] active:translate-y-[1px] active:scale-[0.985]"
-            }`}
-          >
-            {isAdvancing ? "Loading..." : isLast ? "Finish" : "Continue"}
-          </button>
-        )}
+          }`}
+        >
+          {buttonLabel}
+        </button>
       </div>
     </div>
   );

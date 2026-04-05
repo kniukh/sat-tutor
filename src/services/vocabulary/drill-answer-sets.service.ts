@@ -13,6 +13,7 @@ type PrepareVocabularyDrillAnswerSetsInput = {
   itemText: string;
   itemType: "word" | "phrase";
   englishExplanation: string;
+  studentId?: string | null;
   translatedExplanation?: string | null;
   contextSentence?: string | null;
   exampleText?: string | null;
@@ -721,6 +722,7 @@ export async function prepareVocabularyDrillAnswerSets(
       itemText: input.itemText,
       itemType: input.itemType,
       englishExplanation: input.englishExplanation,
+      studentId: input.studentId ?? null,
       translatedExplanation: input.translatedExplanation ?? null,
       contextSentence: input.contextSentence ?? null,
       exampleText: input.exampleText ?? null,

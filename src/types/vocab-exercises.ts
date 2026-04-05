@@ -234,8 +234,8 @@ export type ErrorDetectionVocabExercise = VocabExerciseBase<"error_detection"> &
 // Future placeholders keep the contract ready without forcing implementation details yet.
 export type ListenMatchVocabExercise = VocabExerciseBase<"listen_match"> &
   AudioBackedExerciseFields & {
-    variant?: "meaning" | "translation";
-    promptStyle?: "best_meaning" | "best_translation";
+    variant?: "english" | "meaning" | "translation";
+    promptStyle?: "best_word" | "best_meaning" | "best_translation";
     translationLanguageLabel?: string | null;
     leftColumnLabel?: string;
     left_column_label?: string;

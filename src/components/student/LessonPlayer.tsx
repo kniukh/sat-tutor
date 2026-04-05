@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useRouter } from "next/navigation";
 import InteractivePassageReader from "./InteractivePassageReader";
 import MascotCat from "./MascotCat";
 import FeedbackSettingsButton from "./FeedbackSettingsButton";
 import InlineVocabularyCaptureText from "./InlineVocabularyCaptureText";
+import VocabularyReviewCards from "./VocabularyReviewCards";
 import type { CapturedVocabularyItem } from "./PassageVocabularyCapture";
 import {
   getAnswerFeedbackCue,
@@ -12,6 +14,11 @@ import {
   triggerFeedbackCue,
 } from "@/services/feedback/feedback-effects.client";
 import { useFeedbackSettings } from "@/services/feedback/use-feedback-settings";
+import {
+  studentDashboardPath,
+  studentLessonPath,
+  studentVocabularyPath,
+} from "@/lib/routes/student";
 
 type OptionKey = "A" | "B" | "C" | "D";
 
@@ -33,6 +40,16 @@ type KnownWord = {
   lifecycle_state?: string | null;
   review_bucket?: "recently_failed" | "weak_again" | "overdue" | "reinforcement" | "scheduled" | null;
   review_ready?: boolean;
+};
+
+type QuizVocabularyItem = {
+  id: string;
+  item_text: string;
+  english_explanation?: string | null;
+  translated_explanation?: string | null;
+  example_text?: string | null;
+  context_sentence?: string | null;
+  audio_url?: string | null;
 };
 
 type LessonCompletionPayload = {
@@ -110,15 +127,25 @@ type RepairItem = {
   microTask: RepairMicroTask;
 };
 
-type QuizPhase = "quiz" | "results" | "repair" | "repair_complete";
+type QuizPhase = "quiz" | "results" | "quiz_words" | "repair" | "repair_complete";
 
 type Props = {
   studentId: string;
   lessonId: string;
+  nextLessonId?: string | null;
   passageId?: string;
   questions: Question[];
   passageText?: string;
   knownWords?: KnownWord[];
+  quizVocabularyItems?: QuizVocabularyItem[];
+  isQuizVocabularyHydrating?: boolean;
+  onQuizVocabularyVisibleItemsChange?: (items: QuizVocabularyItem[]) => void;
+  onRequestQuizVocabularyAudio?: (options?: {
+    force?: boolean;
+    itemTexts?: string[];
+  }) => Promise<void> | void;
+  isQuizVocabularyAudioLoading?: boolean;
+  onPrepareQuizVocabularyReview?: () => Promise<void> | void;
   onVocabularyCaptured?: (item: CapturedVocabularyItem) => void;
   onBeforeComplete?: () => Promise<void>;
   onFinished?: (result: LessonCompletionPayload) => void;
@@ -166,6 +193,15 @@ const STOP_WORDS = new Set([
   "with",
   "would",
 ]);
+
+function getQuizVocabularyAudioSignature(items: QuizVocabularyItem[]) {
+  return items
+    .filter((item) => !item.audio_url)
+    .map((item) => item.item_text.trim().toLowerCase())
+    .filter(Boolean)
+    .sort()
+    .join("|");
+}
 
 function getQuestionOptions(question: Question) {
   return [
@@ -397,10 +433,17 @@ function buildRepairMicroTask(question: Question, relevantSentence: string | nul
 export default function LessonPlayer({
   studentId,
   lessonId,
+  nextLessonId = null,
   passageId,
   questions,
   passageText,
   knownWords = [],
+  quizVocabularyItems = [],
+  isQuizVocabularyHydrating = false,
+  onQuizVocabularyVisibleItemsChange,
+  onRequestQuizVocabularyAudio,
+  isQuizVocabularyAudioLoading = false,
+  onPrepareQuizVocabularyReview,
   onVocabularyCaptured,
   onBeforeComplete,
   onFinished,
@@ -408,6 +451,7 @@ export default function LessonPlayer({
   initialAnswers,
   initialQuestionIndex = 0,
 }: Props) {
+  const router = useRouter();
   const [index, setIndex] = useState(initialQuestionIndex);
   const [answerMap, setAnswerMap] = useState<Record<string, OptionKey>>(initialAnswers ?? {});
   const [selected, setSelected] = useState<string | null>(
@@ -433,7 +477,7 @@ export default function LessonPlayer({
     {}
   );
   const [repairIndex, setRepairIndex] = useState(0);
-  const [repairStep, setRepairStep] = useState<"review" | "microtask">("review");
+  const [repairStep, setRepairStep] = useState<"review" | "microtask">("microtask");
   const [repairChoice, setRepairChoice] = useState<OptionKey | null>(null);
   const [repairFeedback, setRepairFeedback] = useState<{
     status: "correct" | "incorrect";
@@ -457,6 +501,7 @@ export default function LessonPlayer({
   });
   const questionStartedAtRef = useRef<number>(Date.now());
   const completionCuePlayedRef = useRef<string | null>(null);
+  const requestedQuizAudioSignatureRef = useRef<string>("");
   const { settings: feedbackSettings } = useFeedbackSettings();
 
   const question = questions[index];
@@ -564,23 +609,48 @@ export default function LessonPlayer({
   }, [index, quizPhase, repairIndex]);
 
   useEffect(() => {
-    setRepairStep("review");
+    setRepairStep("microtask");
     setRepairChoice(null);
     setRepairFeedback(null);
   }, [repairIndex, quizPhase]);
 
   useEffect(() => {
-    if (quizPhase !== "repair" || repairStep !== "review") {
+    if (quizPhase !== "quiz_words") {
+      requestedQuizAudioSignatureRef.current = "";
       return;
     }
 
-    if (!activeRepairItem?.relevantSentence) {
+    if (
+      !onRequestQuizVocabularyAudio ||
+      isQuizVocabularyHydrating ||
+      isQuizVocabularyAudioLoading
+    ) {
       return;
     }
 
-    setPassageHighlightText(activeRepairItem.relevantSentence);
-    setShowPassage(true);
-  }, [activeRepairItem?.relevantSentence, quizPhase, repairIndex, repairStep]);
+    const missingAudioSignature = getQuizVocabularyAudioSignature(quizVocabularyItems);
+
+    if (
+      !missingAudioSignature ||
+      requestedQuizAudioSignatureRef.current === missingAudioSignature
+    ) {
+      return;
+    }
+
+    requestedQuizAudioSignatureRef.current = missingAudioSignature;
+    void onRequestQuizVocabularyAudio({
+      force: true,
+      itemTexts: quizVocabularyItems
+        .filter((item) => !item.audio_url)
+        .map((item) => item.item_text),
+    });
+  }, [
+    isQuizVocabularyAudioLoading,
+    isQuizVocabularyHydrating,
+    onRequestQuizVocabularyAudio,
+    quizPhase,
+    quizVocabularyItems,
+  ]);
 
   useEffect(() => {
     const completionState =
@@ -674,7 +744,7 @@ export default function LessonPlayer({
     }, 1700);
   }
 
-  async function completeLesson() {
+  async function completeLesson(redirectHref?: string) {
     setSaving(true);
 
     try {
@@ -719,7 +789,11 @@ export default function LessonPlayer({
         });
       }
 
-      onFinished?.(payload?.result ?? null);
+      if (redirectHref) {
+        router.push(redirectHref);
+      } else {
+        onFinished?.(payload?.result ?? null);
+      }
     } catch (error) {
       console.error("complete lesson error", error);
       alert("Failed to complete lesson");
@@ -832,13 +906,53 @@ export default function LessonPlayer({
     }
   }
 
-  function continueQuiz() {
+  async function continueQuiz() {
     if (index >= questions.length - 1) {
-      setQuizPhase("results");
+      await openQuizWordsOrRepair();
       return;
     }
 
     setIndex((current) => current + 1);
+  }
+
+  function startQuizRepair() {
+    setRepairIndex(0);
+    setRepairStep("microtask");
+    setRepairChoice(null);
+    setRepairFeedback(null);
+    setQuizPhase("repair");
+  }
+
+  async function openQuizWordsOrRepair() {
+    if (quizVocabularyItems.length > 0) {
+      setSaving(true);
+      try {
+        await onPrepareQuizVocabularyReview?.();
+        setQuizPhase("quiz_words");
+      } catch (error) {
+        console.error("prepare quiz vocabulary review error", error);
+        setQuizPhase("quiz_words");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    if (mistakeItems.length > 0) {
+      startQuizRepair();
+      return;
+    }
+
+    void completeLesson();
+  }
+
+  function continueAfterQuizWords() {
+    if (mistakeItems.length > 0) {
+      startQuizRepair();
+      return;
+    }
+
+    setQuizPhase("results");
   }
 
   async function submitRepairChoice() {
@@ -937,6 +1051,14 @@ export default function LessonPlayer({
     setRepairIndex((current) => current + 1);
   }
 
+  function selectRepairChoice(nextChoice: OptionKey) {
+    setRepairChoice(nextChoice);
+
+    if (repairFeedback?.status === "incorrect") {
+      setRepairFeedback(null);
+    }
+  }
+
   const explanationQuestion = explanationQuestionId
     ? questionLookup.get(explanationQuestionId) ?? null
     : null;
@@ -1026,6 +1148,29 @@ export default function LessonPlayer({
       ? "primary-button min-h-14 flex-1 bg-emerald-600 hover:bg-emerald-500"
       : "primary-button min-h-14 flex-1"
     : "primary-button min-h-14 flex-1";
+  const finalQuizActionLabel =
+    quizVocabularyItems.length > 0
+      ? "Review Quiz Words"
+      : mistakeItems.length > 0
+        ? "Start Repair"
+        : "See Results";
+  const continueReadingHref = nextLessonId
+    ? studentLessonPath(nextLessonId)
+    : studentDashboardPath();
+  const startWordPracticeHref = studentVocabularyPath({
+    mode: "learn_new_words",
+    lesson: lessonId,
+  });
+  const quizCompleteHeading =
+    mistakeItems.length > 0
+      ? "Mistakes turned into practice."
+      : "Clean run. Keep the momentum.";
+  const quizCompleteCopy =
+    mistakeItems.length > 0
+      ? `You repaired ${mistakeItems.length} ${
+          mistakeItems.length === 1 ? "miss" : "misses"
+        } while the passage was still in view.`
+      : "You stayed close to the text and finished this quiz with no repair needed.";
 
   return (
     <div className="relative flex min-h-full flex-1 flex-col pb-32">
@@ -1350,12 +1495,10 @@ export default function LessonPlayer({
               <div className="min-w-0 flex-1 space-y-2">
                 <div className="app-kicker token-text-inverse-muted">Quiz Complete</div>
                 <h2 className="text-[1.7rem] font-semibold tracking-[-0.03em] token-text-inverse sm:text-[1.9rem]">
-                  {mistakeItems.length > 0 ? "Repair the misses while the passage is fresh." : "Clean run. Keep the momentum."}
+                  {quizCompleteHeading}
                 </h2>
                 <p className="text-sm leading-5 token-text-inverse-muted">
-                  {mistakeItems.length > 0
-                    ? "You can fix each miss in context right now, without leaving the lesson."
-                    : "You stayed close to the text and finished this quiz with no repair needed."}
+                  {quizCompleteCopy}
                 </p>
               </div>
             </div>
@@ -1374,9 +1517,7 @@ export default function LessonPlayer({
             <div className="app-card p-4 text-left">
               <div className="app-kicker token-text-muted">XP</div>
               <div className="mt-2 text-3xl font-semibold tracking-[-0.03em] token-text-primary">+{sessionXpEarned}</div>
-              <div className="mt-1 text-sm token-text-muted">
-                {mistakeItems.length > 0 ? `${mistakeItems.length} mistakes to repair` : "Clean finish"}
-              </div>
+              <div className="mt-1 text-sm token-text-muted">Quiz finished</div>
             </div>
           </div>
 
@@ -1404,45 +1545,50 @@ export default function LessonPlayer({
             </div>
           ) : null}
 
-              {mistakeItems.length > 0 ? (
-            <div className="app-card-soft p-4 text-left">
-              <div className="text-sm font-semibold token-text-primary">What happens next</div>
-              <div className="mt-2 text-sm leading-5 token-text-secondary">
-                We will show the miss, reopen the relevant part of the passage, explain the trap,
-                and give you one short repair task.
-              </div>
-            </div>
-          ) : null}
-
           <div className="space-y-3">
-            {mistakeItems.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setRepairIndex(0);
-                  setRepairStep("review");
-                  setRepairChoice(null);
-                  setRepairFeedback(null);
-                  setQuizPhase("repair");
-                }}
-                className="primary-button min-h-14 w-full"
-              >
-                Fix Mistakes
-              </button>
-            ) : null}
             <button
               type="button"
-              onClick={completeLesson}
+              onClick={() => void completeLesson(continueReadingHref)}
+              disabled={saving}
+              className="primary-button min-h-14 w-full"
+            >
+              {saving ? "Saving..." : "Continue Reading"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void completeLesson(startWordPracticeHref)}
               disabled={saving}
               className="secondary-button min-h-14 w-full"
             >
-              {saving ? "Saving..." : "Continue"}
+              {saving ? "Saving..." : "Start Word Practice"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void completeLesson(studentDashboardPath())}
+              disabled={saving}
+              className="secondary-button min-h-14 w-full"
+            >
+              {saving ? "Saving..." : "Return to Dashboard"}
             </button>
             <div className="flex justify-center">
               <FeedbackSettingsButton label="Feedback settings" />
             </div>
           </div>
         </div>
+      ) : null}
+      {quizPhase === "quiz_words" ? (
+        <VocabularyReviewCards
+          items={quizVocabularyItems}
+          isHydrating={isQuizVocabularyHydrating}
+          onVisibleItemsChange={onQuizVocabularyVisibleItemsChange}
+          onRequestAudio={onRequestQuizVocabularyAudio}
+          isAudioLoading={isQuizVocabularyAudioLoading}
+          title="Words Picked Up from Quiz"
+          emptyTitle="No quiz words this time"
+          emptyCopy="Continue to repair, or finish the lesson if there are no mistakes to fix."
+          continueLabel={mistakeItems.length > 0 ? "Continue to Quiz Repair" : "Finish Lesson"}
+          onDone={continueAfterQuizWords}
+        />
       ) : null}
       {quizPhase === "repair" && activeRepairItem ? (
         <div className="space-y-4">
@@ -1476,183 +1622,124 @@ export default function LessonPlayer({
             </div>
           </div>
 
-          {repairStep === "review" ? (
-            <div className="space-y-3.5 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-4 shadow-sm">
+          <div className="space-y-3">
+            <div className="app-chip app-chip-secondary">
+              {activeRepairItem.microTask.strategyLabel}
+            </div>
+            <div className="drill-question">{activeRepairItem.microTask.prompt}</div>
+            {activeRepairItem.microTask.supportText ? (
+              <div className="drill-context-surface">
+                <div className="drill-context-inline">
+                  {activeRepairItem.microTask.supportText}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="grid gap-3">
+            {activeRepairItem.microTask.options.map((option) => {
+              const isPicked = repairChoice === option.key;
+              const showCorrect =
+                repairFeedback?.status === "correct" &&
+                activeRepairItem.microTask.correctOption === option.key;
+              const showWrong =
+                repairFeedback?.status === "incorrect" && isPicked;
+              const optionState = showCorrect
+                ? "correct"
+                : showWrong
+                  ? "incorrect"
+                  : isPicked
+                    ? "selected"
+                    : "idle";
+
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => selectRepairChoice(option.key)}
+                  data-state={optionState}
+                  className="drill-option relative min-h-16 overflow-visible"
+                >
+                  {repairFeedback?.status === "correct" && isPicked && floatingReward && floatingReward.xp > 0 ? (
+                    <div className="drill-option-reward reward-float reward-float--inline">
+                      <span>{`+${floatingReward.xp} XP`}</span>
+                      {floatingReward.comboCount >= 3 ? (
+                        <span className="drill-option-reward__combo">{`🔥 x${floatingReward.comboCount}`}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <div className="flex items-start gap-3">
+                    <div className="drill-option-indicator mt-0.5">{option.key}</div>
+                    <div className="flex-1 text-left text-[0.98rem] leading-6 text-inherit sm:text-[1.02rem] sm:leading-7">
+                      <InlineVocabularyCaptureText
+                        as="div"
+                        studentId={studentId}
+                        lessonId={lessonId}
+                        passageId={passageId}
+                        text={option.text}
+                        sourceType="answer"
+                        sourceText={`${activeRepairItem.microTask.prompt} ${option.text}`}
+                        knownWords={knownWords}
+                        onCaptured={onVocabularyCaptured}
+                        className="select-text"
+                      />
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {repairFeedback ? (
+            <div
+              className={
+                repairFeedback.status === "correct"
+                  ? "repair-feedback-card repair-feedback-card--correct"
+                  : "repair-feedback-card repair-feedback-card--incorrect"
+              }
+            >
               <div className="flex items-start gap-3">
-                <MascotCat mood="incorrect" size="sm" className="shrink-0" />
+                <MascotCat
+                  mood={repairFeedback.status === "correct" ? "correct" : "incorrect"}
+                  size="sm"
+                  className="shrink-0"
+                />
                 <div className="min-w-0">
-                  <div className="app-kicker token-text-muted">You missed this</div>
-                  <div className="mt-1 text-base font-semibold leading-6 token-text-primary">
-                    {activeRepairItem.microTask.reviewTitle}
+                  <div className="text-sm font-semibold token-text-primary">
+                    {repairFeedback.status === "correct" ? "Fixed" : "Try again"}
                   </div>
                   <div className="mt-1 text-sm leading-5 token-text-secondary">
-                    {activeRepairItem.microTask.reviewCopy}
+                    {repairFeedback.message}
                   </div>
+                  {repairFeedback.status === "correct" ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {floatingReward && floatingReward.xp > 0 ? (
+                        <span className="repair-status-chip repair-status-chip--correct">
+                          {`+${floatingReward.xp} XP`}
+                        </span>
+                      ) : null}
+                      {comboCount >= 2 ? (
+                        <span
+                          className="combo-chip"
+                          data-active={
+                            floatingReward && floatingReward.comboCount === comboCount
+                              ? "true"
+                              : "false"
+                          }
+                        >
+                          <span>{`🔥 Combo x${comboCount}`}</span>
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="mt-3 repair-status-chip repair-status-chip--hint">
+                      Hint active
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="space-y-3">
-                <div className="repair-review-card repair-review-card--miss">
-                  <div className="repair-review-label repair-review-label--miss">
-                    Your answer
-                  </div>
-                  <div className="mt-2 text-sm font-semibold token-text-primary">
-                    {activeRepairItem.selectedOption}. {activeRepairItem.selectedText}
-                  </div>
-                </div>
-
-                <div className="repair-review-card repair-review-card--hold">
-                  <div className="repair-review-label repair-review-label--hold">
-                    Best answer hidden
-                  </div>
-                  <div className="mt-2 text-sm leading-5 token-text-primary">
-                    We reopened the most relevant line first. Read it, go back, and retry the original question. Use <span className="font-semibold">Explain</span> only if you need the reasoning, but the answer is not revealed here first.
-                  </div>
-                </div>
-              </div>
-
-              {activeRepairItem.relevantSentence ? (
-                <div className="drill-context-surface">
-                  <div className="drill-context-inline">
-                    {activeRepairItem.relevantSentence}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="flex flex-wrap gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPassageHighlightText(activeRepairItem.relevantSentence);
-                    setShowPassage(true);
-                  }}
-                  className="secondary-button min-h-12"
-                >
-                  See Passage
-                </button>
               </div>
             </div>
-          ) : (
-            <>
-              <div className="space-y-3">
-                <div className="app-chip app-chip-secondary">
-                  {activeRepairItem.microTask.strategyLabel}
-                </div>
-                <div className="drill-question">{activeRepairItem.microTask.prompt}</div>
-                {activeRepairItem.microTask.supportText ? (
-                  <div className="drill-context-surface">
-                    <div className="drill-context-inline">
-                      {activeRepairItem.microTask.supportText}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="grid gap-3">
-                {activeRepairItem.microTask.options.map((option) => {
-                  const isPicked = repairChoice === option.key;
-                  const showCorrect =
-                    repairFeedback?.status === "correct" &&
-                    activeRepairItem.microTask.correctOption === option.key;
-                  const showWrong =
-                    repairFeedback?.status === "incorrect" && isPicked;
-                  const optionState = showCorrect
-                    ? "correct"
-                    : showWrong
-                      ? "incorrect"
-                      : isPicked
-                        ? "selected"
-                        : "idle";
-
-                  return (
-                    <button
-                      key={option.key}
-                      type="button"
-                      onClick={() => setRepairChoice(option.key)}
-                      data-state={optionState}
-                      className="drill-option relative min-h-16 overflow-visible"
-                    >
-                      {repairFeedback?.status === "correct" && isPicked && floatingReward && floatingReward.xp > 0 ? (
-                        <div className="drill-option-reward reward-float reward-float--inline">
-                          <span>{`+${floatingReward.xp} XP`}</span>
-                          {floatingReward.comboCount >= 3 ? (
-                            <span className="drill-option-reward__combo">{`🔥 x${floatingReward.comboCount}`}</span>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      <div className="flex items-start gap-3">
-                        <div className="drill-option-indicator mt-0.5">{option.key}</div>
-                        <div className="flex-1 text-left text-[0.98rem] leading-6 text-inherit sm:text-[1.02rem] sm:leading-7">
-                          <InlineVocabularyCaptureText
-                            as="div"
-                            studentId={studentId}
-                            lessonId={lessonId}
-                            passageId={passageId}
-                            text={option.text}
-                            sourceType="answer"
-                            sourceText={`${activeRepairItem.microTask.prompt} ${option.text}`}
-                            knownWords={knownWords}
-                            onCaptured={onVocabularyCaptured}
-                            className="select-text"
-                          />
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {repairFeedback ? (
-                <div
-                  className={
-                    repairFeedback.status === "correct"
-                      ? "repair-feedback-card repair-feedback-card--correct"
-                      : "repair-feedback-card repair-feedback-card--incorrect"
-                  }
-                >
-                  <div className="flex items-start gap-3">
-                    <MascotCat
-                      mood={repairFeedback.status === "correct" ? "correct" : "incorrect"}
-                      size="sm"
-                      className="shrink-0"
-                    />
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold token-text-primary">
-                        {repairFeedback.status === "correct" ? "Fixed" : "Try again"}
-                      </div>
-                      <div className="mt-1 text-sm leading-5 token-text-secondary">
-                        {repairFeedback.message}
-                      </div>
-                      {repairFeedback.status === "correct" ? (
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          {floatingReward && floatingReward.xp > 0 ? (
-                            <span className="repair-status-chip repair-status-chip--correct">
-                              {`+${floatingReward.xp} XP`}
-                            </span>
-                          ) : null}
-                          {comboCount >= 2 ? (
-                            <span
-                              className="combo-chip"
-                              data-active={
-                                floatingReward && floatingReward.comboCount === comboCount
-                                  ? "true"
-                                  : "false"
-                              }
-                            >
-                              <span>{`🔥 Combo x${comboCount}`}</span>
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div className="mt-3 repair-status-chip repair-status-chip--hint">
-                          Hint active
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </>
-          )}
+          ) : null}
 
           <div className="fixed-action-bar">
             <div className="fixed-action-bar__inner flex items-center gap-3">
@@ -1663,15 +1750,7 @@ export default function LessonPlayer({
               >
                 Explain
               </button>
-              {repairStep === "review" ? (
-                <button
-                  type="button"
-                  onClick={() => setRepairStep("microtask")}
-                  className="primary-button min-h-14 flex-1"
-                >
-                  {activeRepairItem.microTask.actionLabel}
-                </button>
-              ) : repairFeedback?.status === "correct" ? (
+              {repairFeedback?.status === "correct" ? (
                 <button
                   type="button"
                   onClick={continueRepair}
@@ -1700,22 +1779,14 @@ export default function LessonPlayer({
             <div className="flex items-start gap-4">
               <MascotCat mood="celebrate" size="md" className="shrink-0 bg-white/10" />
               <div className="min-w-0 space-y-2">
-                <div className="app-kicker token-text-inverse-muted">Repair Complete</div>
+                  <div className="app-kicker token-text-inverse-muted">Quiz Complete</div>
                 <h2 className="text-[1.7rem] font-semibold tracking-[-0.03em] token-text-inverse sm:text-[1.9rem]">
-                  Mistakes turned into practice.
+                  {quizCompleteHeading}
                 </h2>
                 <p className="text-sm leading-5 token-text-inverse-muted">
-                  You repaired {mistakeItems.length} {mistakeItems.length === 1 ? "miss" : "misses"} while
-                  the passage was still in view.
+                  {quizCompleteCopy}
                 </p>
               </div>
-            </div>
-          </div>
-
-          <div className="app-card-soft p-4">
-            <div className="text-sm font-semibold token-text-primary">Next step</div>
-            <div className="mt-2 text-sm leading-5 token-text-secondary">
-              Save this lesson and move on to the next reading checkpoint.
             </div>
           </div>
 
@@ -1741,14 +1812,32 @@ export default function LessonPlayer({
             </div>
           ) : null}
 
-          <button
-            type="button"
-            onClick={completeLesson}
-            disabled={saving}
-            className="primary-button min-h-14 w-full"
-          >
-            {saving ? "Saving..." : "Continue"}
-          </button>
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => void completeLesson(continueReadingHref)}
+              disabled={saving}
+              className="primary-button min-h-14 w-full"
+            >
+              {saving ? "Saving..." : "Continue Reading"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void completeLesson(startWordPracticeHref)}
+              disabled={saving}
+              className="secondary-button min-h-14 w-full"
+            >
+              {saving ? "Saving..." : "Start Word Practice"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void completeLesson(studentDashboardPath())}
+              disabled={saving}
+              className="secondary-button min-h-14 w-full"
+            >
+              {saving ? "Saving..." : "Return to Dashboard"}
+            </button>
+          </div>
           <div className="flex justify-center">
             <FeedbackSettingsButton label="Feedback settings" />
           </div>
@@ -1769,7 +1858,7 @@ export default function LessonPlayer({
             ) : null}
             <button
               type="button"
-              onClick={submitted ? continueQuiz : submitAnswer}
+              onClick={submitted ? () => void continueQuiz() : submitAnswer}
               disabled={submitted ? saving || !quizContinueReady : !selected || saving}
               className={quizPrimaryButtonClass}
             >
@@ -1777,7 +1866,7 @@ export default function LessonPlayer({
                 ? "Saving..."
                 : submitted
                   ? index >= questions.length - 1
-                    ? "See Results"
+                    ? finalQuizActionLabel
                     : "Continue"
                   : "Submit"}
             </button>

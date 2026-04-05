@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import {
   buildFallbackQuestionReasoningExplanation,
   generateQuestionReasoningExplanation,
@@ -37,6 +38,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
+    const sessionStudentId = await requireStudentApiStudentId();
+
     try {
       const explanation = await generateQuestionReasoningExplanation({
         passageText: passageText.trim(),
@@ -44,6 +47,7 @@ export async function POST(request: Request) {
         options,
         correctOption,
         questionExplanation: questionExplanation ?? null,
+        studentId: sessionStudentId,
       });
 
       return NextResponse.json({ ok: true, data: explanation });
@@ -60,6 +64,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, data: fallback });
     }
   } catch (error: any) {
+    if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     console.error("POST /api/question-explanation error", error);
     return NextResponse.json(
       { error: error?.message ?? "Failed to generate explanation" },

@@ -22,7 +22,8 @@ Student sees the passage and can collect unknown words or phrases.
 
 Current supported actions:
 - full-width mobile-first reading screen
-- long-press a passage word on mobile or select text on desktop to preview meaning / translation and capture it quickly
+- long-press a passage word on mobile or select text on desktop to capture it quickly
+- selection popups can save immediately and load meaning only on demand through `Show Meaning`
 - add vocabulary manually if needed
 - see known words underlined for the current student without extra highlight backgrounds
 - manage captured words in a floating `W` Word Bank tray
@@ -74,11 +75,13 @@ Current behavior:
 - open a temporary `See Passage` view and return back to the same question
 - select words on desktop or long press on mobile in question text / answer text to capture them into lesson vocabulary
 - captured quiz/repair words go into the same floating Word Bank tray
+- after the last quiz question, `Words Picked Up from Quiz` appears before repair if the student captured quiz words
 - continue to next question
 
 Current repair behavior:
 - missed questions are retried in their original SAT form during repair
-- the passage opens automatically on the relevant line before retry
+- there is no separate `You missed this` reveal screen inside lesson repair anymore
+- `See Passage` opens the relevant passage context and returns back to the same repair question
 - the overlay button reads `Back to Question` during repair
 
 Current analytics hooks:
@@ -167,12 +170,12 @@ Current bridge behavior:
   - `translation_match`
   - `pair_match`
   - `context_meaning`
-  - `fill_blank`
 - when the session gets more demanding, they may later enter:
-  - `sentence_builder`
-  - `error_detection`
   - `listen_match`
   - `spelling_from_audio`
+  - `error_detection`
+  - `synonym`
+  - `collocation`
 - adaptive difficulty can keep those first lesson-linked exposures on a more supportive path before the session grows more demanding
 
 ## Current Vocabulary Studio Follow-Through
@@ -184,6 +187,8 @@ Vocabulary Studio now closes the loop after a student finishes a vocab session:
 - the main Vocabulary Studio page can also render the live drill player inline
 - the session is no longer framed as “finish your due count”
 - the first checkpoint can roll into endless continuation without rebuilding a parallel session system
+- current live session mix emphasizes `meaning_match`, `translation_match`, `pair_match`, `listen_match`, `spelling_from_audio`, `error_detection`, `context_meaning`, `synonym`, and `collocation`
+- `listen_match` now ships in both `audio -> English` and `audio -> translation` variants when enough audio-ready items exist
 - an end-of-session results summary highlights:
   - correct / incorrect totals
   - weak words from the session

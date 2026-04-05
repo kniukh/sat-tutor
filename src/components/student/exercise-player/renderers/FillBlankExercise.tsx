@@ -14,8 +14,26 @@ export default function FillBlankExercise({
   feedbackReward,
   renderCaptureText,
 }: ExerciseRendererProps<FillBlankExerciseData>) {
+  const sentenceText = getExerciseSentenceText(exercise);
+
   return (
     <div className="space-y-3">
+      {sentenceText ? (
+        <div
+          className={`text-[1rem] font-semibold leading-7 text-slate-950 sm:text-[1.05rem] ${
+            focused ? "drill-context-inline" : "drill-context-surface"
+          }`}
+        >
+          {renderCaptureText
+            ? renderCaptureText({
+                text: sentenceText,
+                contextText: sentenceText,
+                as: "div",
+              })
+            : sentenceText}
+        </div>
+      ) : null}
+
       {exercise.variant === "context_clue" && exercise.contextHint ? (
         <div
           className={`text-[0.96rem] leading-7 text-slate-800 sm:text-base ${
@@ -25,7 +43,7 @@ export default function FillBlankExercise({
           {renderCaptureText
             ? renderCaptureText({
                 text: exercise.contextHint,
-                contextText: getExerciseSentenceText(exercise),
+                contextText: sentenceText,
                 as: "div",
               })
             : exercise.contextHint}
@@ -43,7 +61,7 @@ export default function FillBlankExercise({
           renderCaptureText
             ? renderCaptureText({
                 text: option.label,
-                contextText: getExerciseSentenceText(exercise),
+                contextText: sentenceText,
                 isDistractor,
               })
             : option.label

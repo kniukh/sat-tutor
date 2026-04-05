@@ -1,4 +1,5 @@
-import { openai } from "@/lib/openai";
+import { AI_MODELS } from "@/services/ai/ai-models";
+import { createTrackedResponse } from "@/services/ai/openai-tracked-response";
 
 export type MistakeType =
   | "careless_misread"
@@ -77,6 +78,7 @@ function validateResults(
 }
 
 export async function analyzeLessonMistakes(input: {
+  studentId?: string | null;
   wrongAnswers: MistakeAnalysisInput[];
 }) {
   if (input.wrongAnswers.length === 0) {
@@ -117,8 +119,10 @@ JSON shape:
 Wrong answers to analyze:
 ${JSON.stringify(input.wrongAnswers, null, 2)}`;
 
-  const response = await openai.responses.create({
-    model: "gpt-5",
+  const response = await createTrackedResponse({
+    route: "lesson.analyze_mistakes",
+    model: AI_MODELS.liveReasoning,
+    studentId: input.studentId ?? null,
     input: prompt,
   });
 

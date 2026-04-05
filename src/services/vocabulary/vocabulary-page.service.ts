@@ -10,14 +10,12 @@ import {
   type AdaptiveWordCandidate,
 } from "@/services/vocabulary/adaptive-session-selection.service";
 import {
-  adaptClozeDrillsToExercises,
   adaptCollocationDrillsToExercises,
   adaptContextMeaningDrillsToExercises,
   adaptErrorDetectionDrillsToExercises,
   adaptListenMatchDrillsToExercises,
   adaptMeaningDrillsToExercises,
   adaptPairMatchDrillsToExercises,
-  adaptSentenceBuilderDrillsToExercises,
   adaptSpellingFromAudioDrillsToExercises,
   adaptSynonymDrillsToExercises,
 } from "@/services/vocabulary/exercise-adapters";
@@ -482,7 +480,6 @@ function attachContinuationReviewMeta<TExercise extends SupportedVocabExercise>(
 function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
   const wordDrills = drillItems.filter((item) => item.itemType === "word");
   const phraseDrills = drillItems.filter((item) => item.itemType === "phrase");
-  const clozeDrills = drillItems.filter((item) => item.contextSentence);
   const contextMeaningDrills = drillItems.filter((item) => item.contextSentence);
   const synonymDrills = drillItems;
   const collocationDrills = drillItems.filter(
@@ -490,9 +487,6 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
   );
   const pairMatchDrills = drillItems.filter(
     (item) => item.itemType === "word" || Boolean(item.exampleText || item.contextSentence)
-  );
-  const sentenceBuilderDrills = drillItems.filter(
-    (item) => Boolean(item.exampleText || item.contextSentence)
   );
   const errorDetectionDrills = drillItems.filter(
     (item) => Boolean(item.exampleText || item.contextSentence)
@@ -505,12 +499,12 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
   return {
     wordDrills,
     phraseDrills,
-    clozeDrills,
+    clozeDrills: contextMeaningDrills,
     contextMeaningDrills,
     synonymDrills,
     collocationDrills,
     pairMatchDrills,
-    sentenceBuilderDrills,
+    sentenceBuilderDrills: [],
     errorDetectionDrills,
     listenMatchDrills,
     spellingFromAudioDrills,
@@ -519,12 +513,10 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
       ...adaptMeaningDrillsToExercises(phraseDrills),
       ...adaptListenMatchDrillsToExercises(listenMatchDrills),
       ...adaptSpellingFromAudioDrillsToExercises(spellingFromAudioDrills),
-      ...adaptClozeDrillsToExercises(clozeDrills),
       ...adaptContextMeaningDrillsToExercises(contextMeaningDrills),
       ...adaptSynonymDrillsToExercises(synonymDrills),
       ...adaptCollocationDrillsToExercises(collocationDrills),
       ...adaptPairMatchDrillsToExercises(pairMatchDrills),
-      ...adaptSentenceBuilderDrillsToExercises(sentenceBuilderDrills),
       ...adaptErrorDetectionDrillsToExercises(errorDetectionDrills),
     ],
   };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getExercisePairLeftId,
   getExercisePairRightId,
@@ -45,6 +45,12 @@ function buildFallbackOptions(
   };
 }
 
+type PairFeedbackState = {
+  leftId: string;
+  rightId: string;
+  status: "correct" | "wrong";
+};
+
 export default function PairMatchExercise({
   exercise,
   selectedValue,
@@ -54,6 +60,8 @@ export default function PairMatchExercise({
 }: ExerciseRendererProps<PairMatchExerciseData>) {
   const [activeLeftId, setActiveLeftId] = useState<string | null>(null);
   const [activeRightId, setActiveRightId] = useState<string | null>(null);
+  const [pairFeedback, setPairFeedback] = useState<PairFeedbackState | null>(null);
+  const feedbackTimeoutRef = useRef<number | null>(null);
 
   const selectedPairKeys = parseSelectedPairKeys(selectedValue);
   const selectedPairs = selectedPairKeys.map((pairKey) => {
@@ -78,9 +86,33 @@ export default function PairMatchExercise({
         : fallbackOptions.rightOptions,
     [exercise.options, fallbackOptions.rightOptions]
   );
+  const expectedRightByLeftId = useMemo(() => {
+    return new Map(
+      getExercisePairs(exercise).map((pair) => [
+        getExercisePairLeftId(pair),
+        getExercisePairRightId(pair),
+      ])
+    );
+  }, [exercise]);
 
-  const visibleLeftOptions = leftOptions.filter((option) => !matchedLeftIds.has(option.id));
-  const visibleRightOptions = rightOptions.filter((option) => !matchedRightIds.has(option.id));
+  useEffect(() => {
+    setActiveLeftId(null);
+    setActiveRightId(null);
+    setPairFeedback(null);
+
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
+      feedbackTimeoutRef.current = null;
+    }
+  }, [exercise.id]);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function commitPair(leftId: string, rightId: string) {
     const nextPairKeys = [
@@ -96,13 +128,45 @@ export default function PairMatchExercise({
     onSelect(serializeSelectedPairKeys(nextPairKeys));
   }
 
+  function handlePairAttempt(leftId: string, rightId: string) {
+    const isCorrect = expectedRightByLeftId.get(leftId) === rightId;
+
+    setPairFeedback({
+      leftId,
+      rightId,
+      status: isCorrect ? "correct" : "wrong",
+    });
+
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
+    }
+
+    feedbackTimeoutRef.current = window.setTimeout(() => {
+      if (isCorrect) {
+        commitPair(leftId, rightId);
+      } else {
+        setActiveLeftId(null);
+        setActiveRightId(null);
+      }
+
+      setPairFeedback(null);
+      feedbackTimeoutRef.current = null;
+    }, 280);
+  }
+
   function handleSelectLeft(leftId: string) {
-    if (submitted) {
+    if (submitted || pairFeedback || matchedLeftIds.has(leftId)) {
       return;
     }
 
     if (activeRightId) {
-      commitPair(leftId, activeRightId);
+      if (matchedRightIds.has(activeRightId)) {
+        setActiveRightId(null);
+        setActiveLeftId(leftId);
+        return;
+      }
+
+      handlePairAttempt(leftId, activeRightId);
       return;
     }
 
@@ -110,135 +174,114 @@ export default function PairMatchExercise({
   }
 
   function handleSelectRight(rightId: string) {
-    if (submitted) {
+    if (submitted || pairFeedback || matchedRightIds.has(rightId)) {
       return;
     }
 
     if (activeLeftId) {
-      commitPair(activeLeftId, rightId);
+      if (matchedLeftIds.has(activeLeftId)) {
+        setActiveLeftId(null);
+        setActiveRightId(rightId);
+        return;
+      }
+
+      handlePairAttempt(activeLeftId, rightId);
       return;
     }
 
     setActiveRightId((current) => (current === rightId ? null : rightId));
   }
 
-  function handleRemovePair(pairKey: string) {
-    if (submitted) {
-      return;
+  function getOptionClassName(
+    optionId: string,
+    side: "left" | "right",
+    isMatched: boolean
+  ) {
+    const isActive = side === "left" ? activeLeftId === optionId : activeRightId === optionId;
+    const isFeedbackTarget =
+      pairFeedback &&
+      (side === "left"
+        ? pairFeedback.leftId === optionId
+        : pairFeedback.rightId === optionId);
+
+    if (isFeedbackTarget && pairFeedback?.status === "correct") {
+      return "border-emerald-300 bg-emerald-100 text-emerald-700 ring-2 ring-emerald-200";
     }
 
-    setActiveLeftId(null);
-    setActiveRightId(null);
-    onSelect(serializeSelectedPairKeys(selectedPairKeys.filter((key) => key !== pairKey)));
-  }
-
-  function handleReset() {
-    if (submitted || selectedPairKeys.length === 0) {
-      return;
+    if (isFeedbackTarget && pairFeedback?.status === "wrong") {
+      return "animate-pulse border-rose-300 bg-rose-100 text-rose-700 ring-2 ring-rose-200";
     }
 
-    setActiveLeftId(null);
-    setActiveRightId(null);
-    onSelect("");
+    if (isMatched) {
+      return "border-slate-200 bg-white text-slate-400";
+    }
+
+    if (isActive) {
+      return "border-slate-950 bg-slate-950 text-white";
+    }
+
+    return "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50";
   }
 
   return (
     <div className="space-y-3">
-      <div className="drill-context-surface p-3.5">
-        <div className="flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={handleReset}
-            disabled={submitted || selectedPairKeys.length === 0}
-            className="text-xs font-semibold text-slate-500 transition-colors hover:text-slate-800 disabled:cursor-not-allowed disabled:text-slate-300"
-          >
-            Reset
-          </button>
-        </div>
-
-        <div className="mt-2 flex min-h-16 flex-wrap gap-2 rounded-[18px] border border-dashed border-slate-300 bg-white p-3">
-          {selectedPairs.length > 0 ? (
-            selectedPairs.map((pair) => {
-              const leftLabel =
-                leftOptions.find((option) => option.id === pair.leftId)?.label ?? pair.leftId;
-              const rightLabel =
-                rightOptions.find((option) => option.id === pair.rightId)?.label ?? pair.rightId;
-
-              return (
-                <button
-                  key={pair.key}
-                  type="button"
-                  onClick={() => handleRemovePair(pair.key)}
-                  disabled={submitted}
-                  className="rounded-2xl border border-slate-300 bg-slate-950 px-3 py-2 text-sm font-semibold text-white transition-all hover:bg-slate-800 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  aria-label={`Remove match ${leftLabel} to ${rightLabel}`}
-                >
-                  {renderCaptureText
-                    ? renderCaptureText({
-                        text: `${leftLabel} ${rightLabel}`,
-                        contextText: `${leftLabel} ${rightLabel}`,
-                      })
-                    : (
-                        <>
-                          {leftLabel} {"->"} {rightLabel}
-                        </>
-                      )}
-                </button>
-              );
-            })
-          ) : (
-            <div className="text-sm leading-6 text-slate-400">
-              Tap one item on each side to lock in a pair.
-            </div>
-          )}
-        </div>
-      </div>
-
       <div className="grid gap-3 sm:grid-cols-2" aria-label="Matching options">
         <div className="flex flex-col gap-2" role="list" aria-label="Left column">
-          {visibleLeftOptions.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => handleSelectLeft(option.id)}
-              disabled={submitted}
-              className={`rounded-[18px] border px-4 py-3 text-left text-sm font-semibold transition-all active:scale-[0.995] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 ${
-                activeLeftId === option.id
-                  ? "border-slate-950 bg-slate-950 text-white"
-                  : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-            >
-              {renderCaptureText
-                ? renderCaptureText({
-                    text: option.label,
-                    contextText: option.label,
-                  })
-                : option.label}
-            </button>
-          ))}
+          {leftOptions.map((option) => {
+            const isMatched = matchedLeftIds.has(option.id);
+
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => handleSelectLeft(option.id)}
+                disabled={submitted || isMatched}
+                className={`rounded-[18px] border px-4 py-3 text-left text-sm font-semibold transition-all duration-200 active:scale-[0.995] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-default ${getOptionClassName(
+                  option.id,
+                  "left",
+                  isMatched
+                )}`}
+                aria-pressed={activeLeftId === option.id || isMatched}
+              >
+                {renderCaptureText
+                  ? renderCaptureText({
+                      text: option.label,
+                      contextText: option.label,
+                      className: isMatched ? "text-slate-400" : undefined,
+                    })
+                  : option.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex flex-col gap-2" role="list" aria-label="Right column">
-          {visibleRightOptions.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => handleSelectRight(option.id)}
-              disabled={submitted}
-              className={`rounded-[18px] border px-4 py-3 text-left text-sm font-semibold transition-all active:scale-[0.995] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 ${
-                activeRightId === option.id
-                  ? "border-slate-950 bg-slate-950 text-white"
-                  : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-            >
-              {renderCaptureText
-                ? renderCaptureText({
-                    text: option.label,
-                    contextText: option.label,
-                  })
-                : option.label}
-            </button>
-          ))}
+          {rightOptions.map((option) => {
+            const isMatched = matchedRightIds.has(option.id);
+
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => handleSelectRight(option.id)}
+                disabled={submitted || isMatched}
+                className={`rounded-[18px] border px-4 py-3 text-left text-sm font-semibold transition-all duration-200 active:scale-[0.995] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-default ${getOptionClassName(
+                  option.id,
+                  "right",
+                  isMatched
+                )}`}
+                aria-pressed={activeRightId === option.id || isMatched}
+              >
+                {renderCaptureText
+                  ? renderCaptureText({
+                      text: option.label,
+                      contextText: option.label,
+                      className: isMatched ? "text-slate-400" : undefined,
+                    })
+                  : option.label}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

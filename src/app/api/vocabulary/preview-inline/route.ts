@@ -110,6 +110,7 @@ export async function POST(request: Request) {
     }
 
     const [generatedCard] = await generateVocabularyCards({
+      studentId: sessionStudentId,
       nativeLanguage,
       items: [
         {

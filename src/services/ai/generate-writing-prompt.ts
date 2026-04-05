@@ -1,4 +1,5 @@
-import { openai } from '@/lib/openai';
+import { AI_MODELS } from "@/services/ai/ai-models";
+import { createTrackedResponse } from "@/services/ai/openai-tracked-response";
 
 type GeneratedWritingPrompt = {
   prompt_text: string;
@@ -44,8 +45,9 @@ JSON shape:
 }
 `;
 
-  const response = await openai.responses.create({
-    model: 'gpt-5',
+  const response = await createTrackedResponse({
+    route: "admin.generate_writing_prompt",
+    model: AI_MODELS.offlineQuality,
     input: prompt,
   });
 

@@ -2,15 +2,17 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/admin";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminStatsGrid } from "@/components/admin/AdminStatsGrid";
+import { getAiUsageByStudentReport } from "@/services/analytics/ai-usage-by-student.service";
 import { getAllStudentsSkillDashboard } from "@/services/analytics/skill-dashboard.service";
 import { getWeeklyVocabularyForAllStudents } from "@/services/vocabulary/weekly-vocabulary.service";
 
 export default async function AdminInsightsPage() {
   await requireAdmin();
 
-  const [skillRows, weeklyVocabulary] = await Promise.all([
+  const [skillRows, weeklyVocabulary, aiUsageReport] = await Promise.all([
     getAllStudentsSkillDashboard(),
     getWeeklyVocabularyForAllStudents(),
+    getAiUsageByStudentReport(),
   ]);
 
   const skillStudentCount = new Set(
@@ -25,6 +27,8 @@ export default async function AdminInsightsPage() {
     { label: "Students in Skills", value: skillStudentCount },
     { label: "Weekly Captures", value: weeklyVocabulary.length },
     { label: "Students in Vocab", value: vocabStudentCount },
+    { label: "AI Requests", value: aiUsageReport.summary.totalRequests },
+    { label: "Students Using AI", value: aiUsageReport.summary.trackedStudents },
   ];
 
   const sections = [
@@ -41,6 +45,14 @@ export default async function AdminInsightsPage() {
       description: "Recently captured words and weekly vocabulary activity.",
       value: `${weeklyVocabulary.length} recent captures`,
       cta: "Open Weekly Vocabulary",
+    },
+    {
+      title: "AI Usage by Student",
+      href: "/admin/insights/ai-usage",
+      description:
+        "Per-student token usage, request volume, cache hit rate, and recent AI activity.",
+      value: `${aiUsageReport.summary.totalTokens.toLocaleString("en-US")} tokens · ${aiUsageReport.summary.cacheHitRate}% cache hit`,
+      cta: "Open AI Usage",
     },
   ];
 

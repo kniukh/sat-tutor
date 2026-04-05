@@ -63,6 +63,7 @@ export async function POST(request: Request) {
       passageText: lessonPassages.map((p) => p.passage_text).join('\n\n'),
       promptText: writingPrompt.prompt_text,
       studentResponse: responseText,
+      studentId: sessionStudentId,
     });
   } catch (error: any) {
     return NextResponse.json(

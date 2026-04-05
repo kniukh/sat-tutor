@@ -1,4 +1,5 @@
-import { openai } from "@/lib/openai";
+import { AI_MODELS } from "@/services/ai/ai-models";
+import { createTrackedResponse } from "@/services/ai/openai-tracked-response";
 import { QUESTION_QUALITY_CONFIG } from "@/services/ai/question-generation-config";
 
 function summarizeError(error: unknown) {
@@ -16,7 +17,7 @@ export async function runAiGenerationWithRetry<T>(params: {
   model?: string;
   maxAttempts?: number;
 }) {
-  const model = params.model ?? "gpt-5";
+  const model = params.model ?? AI_MODELS.offlineQuality;
   const maxAttempts = Math.max(1, params.maxAttempts ?? QUESTION_QUALITY_CONFIG.retry.maxAttempts);
   let lastError: unknown = null;
 
@@ -33,9 +34,16 @@ Retry instructions:
 - Fix the failed quality or formatting issue directly instead of making a small patch.
 `;
 
-    const response = await openai.responses.create({
+    const response = await createTrackedResponse({
+      route: params.label,
       model,
       input: `${params.prompt}${retryBlock}`,
+      retryCount: attempt - 1,
+      metadata: {
+        attempt,
+        max_attempts: maxAttempts,
+        has_retry_feedback: Boolean(retryBlock),
+      },
     });
 
     try {

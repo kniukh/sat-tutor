@@ -133,6 +133,22 @@ function buildFallbackVocabularyItemsForReview(
   }));
 }
 
+function buildCapturedVocabularyReviewItems(params: {
+  items: CapturedVocabularyItem[];
+  sourceItems: VocabItem[];
+  lessonId: string;
+}) {
+  const sourceItemsByText = new Map(
+    params.sourceItems.map((item) => [item.item_text.trim().toLowerCase(), item])
+  );
+  const fallbackItems = buildFallbackVocabularyItemsForReview(params.items, params.lessonId);
+
+  return fallbackItems.map((fallbackItem) => ({
+    ...fallbackItem,
+    ...sourceItemsByText.get(fallbackItem.item_text.trim().toLowerCase()),
+  }));
+}
+
 function isFallbackVocabularyItem(item: VocabItem) {
   const english = item.english_explanation?.trim().toLowerCase() ?? "";
   const translated = item.translated_explanation?.trim().toLowerCase() ?? "";
@@ -248,7 +264,7 @@ export default function LessonStagePanel({
   const [completionResult, setCompletionResult] = useState<LessonCompletionResult>(null);
   const hydratedVocabularyKeysRef = useRef<Set<string>>(new Set());
   const inflightVocabularyKeysRef = useRef<Set<string>>(new Set());
-  const vocabularyAudioAutoloadedRef = useRef(false);
+  const requestedAudioSignatureRef = useRef<string>("");
   const readingStageStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -262,24 +278,31 @@ export default function LessonStagePanel({
 
   useEffect(() => {
     if (stage !== "vocab_review") {
-      vocabularyAudioAutoloadedRef.current = false;
+      requestedAudioSignatureRef.current = "";
       return;
     }
 
-    if (vocabularyAudioAutoloadedRef.current || isVocabularyAudioLoading) {
+    if (isVocabularyHydrating || isVocabularyAudioLoading) {
       return;
     }
 
-    const hasReadyItems = localVocabItems.length > 0;
-    const hasMissingAudio = localVocabItems.some((item) => !item.audio_url);
+    const missingAudioSignature = localVocabItems
+      .filter((item) => !item.audio_url)
+      .map((item) => item.item_text.trim().toLowerCase())
+      .filter(Boolean)
+      .sort()
+      .join("|");
 
-    if (!hasReadyItems || !hasMissingAudio) {
+    if (
+      !missingAudioSignature ||
+      requestedAudioSignatureRef.current === missingAudioSignature
+    ) {
       return;
     }
 
-    vocabularyAudioAutoloadedRef.current = true;
+    requestedAudioSignatureRef.current = missingAudioSignature;
     void requestVocabularyAudio();
-  }, [stage, localVocabItems, isVocabularyAudioLoading]);
+  }, [stage, localVocabItems, isVocabularyHydrating, isVocabularyAudioLoading]);
 
   function countWords(text: string) {
     return text
@@ -334,6 +357,9 @@ export default function LessonStagePanel({
   }
 
   function handleCaptured(item: CapturedVocabularyItem) {
+    const isQuizVocabularyItem =
+      item.sourceType === "question" || item.sourceType === "answer";
+
     setCapturedItems((prev) => {
       const existingIndex = prev.findIndex(
         (x) => getCapturedVocabularyKey(x.itemText) === getCapturedVocabularyKey(item.itemText)
@@ -358,6 +384,13 @@ export default function LessonStagePanel({
 
       return [...prev, { ...item, saveState: item.saveState ?? "pending" }];
     });
+
+    if (isQuizVocabularyItem) {
+      const fallbackItems = buildFallbackVocabularyItemsForReview([item], `${lessonId}:quiz`);
+      requestedAudioSignatureRef.current = "";
+      setLocalVocabItems((current) => mergeVocabularyItems(current, fallbackItems));
+      void hydrateVisibleVocabularyItems(fallbackItems);
+    }
   }
 
   function removeCapturedItem(itemText: string) {
@@ -552,6 +585,7 @@ export default function LessonStagePanel({
       const generatedItems = Array.isArray(payload?.items) ? payload.items : [];
 
       if (generatedItems.length > 0) {
+        requestedAudioSignatureRef.current = "";
         setLocalVocabItems((current) => mergeVocabularyItems(current, generatedItems));
         for (const item of generatedItems) {
           const key = item.item_text.trim().toLowerCase();
@@ -636,6 +670,7 @@ export default function LessonStagePanel({
           .filter(Boolean) as VocabItem[];
 
         if (previewItems.length > 0) {
+          requestedAudioSignatureRef.current = "";
           setLocalVocabItems((current) => mergeVocabularyItems(current, previewItems));
           for (const item of previewItems) {
             hydratedVocabularyKeysRef.current.add(item.item_text.trim().toLowerCase());
@@ -652,12 +687,22 @@ export default function LessonStagePanel({
     }
   }
 
-  async function requestVocabularyAudio() {
+  async function requestVocabularyAudio(options?: {
+    force?: boolean;
+    itemTexts?: string[];
+  }) {
     if (isVocabularyAudioLoading) {
       return;
     }
 
-    const hasMissingAudio = localVocabItems.some((item) => !item.audio_url);
+    const requestedKeys = options?.itemTexts?.length
+      ? new Set(options.itemTexts.map((itemText) => getCapturedVocabularyKey(itemText)))
+      : null;
+    const relevantItems = requestedKeys
+      ? localVocabItems.filter((item) => requestedKeys.has(getCapturedVocabularyKey(item.item_text)))
+      : localVocabItems;
+    const hasMissingAudio =
+      options?.force || relevantItems.some((item) => !item.audio_url);
     if (!hasMissingAudio) {
       return;
     }
@@ -672,6 +717,7 @@ export default function LessonStagePanel({
         body: JSON.stringify({
           studentId,
           lessonId,
+          itemTexts: options?.itemTexts ?? null,
         }),
       });
 
@@ -687,9 +733,40 @@ export default function LessonStagePanel({
       }
     } catch (error) {
       console.error("requestVocabularyAudio error", error);
+      requestedAudioSignatureRef.current = "";
     } finally {
       setIsVocabularyAudioLoading(false);
     }
+  }
+
+  async function prepareQuizVocabularyReview() {
+    const quizCapturedItems = capturedItems.filter(
+      (item) => item.sourceType === "question" || item.sourceType === "answer"
+    );
+
+    if (quizCapturedItems.length === 0) {
+      return;
+    }
+
+    await flushPendingVocabularyItems(quizCapturedItems);
+
+    const fallbackItems = buildCapturedVocabularyReviewItems({
+      items: quizCapturedItems,
+      sourceItems: localVocabItems,
+      lessonId: `${lessonId}:quiz`,
+    });
+
+    if (fallbackItems.length === 0) {
+      return;
+    }
+
+    requestedAudioSignatureRef.current = "";
+    setLocalVocabItems((current) => mergeVocabularyItems(current, fallbackItems));
+    await hydrateVisibleVocabularyItems(fallbackItems);
+    await requestVocabularyAudio({
+      force: true,
+      itemTexts: fallbackItems.map((item) => item.item_text),
+    });
   }
 
   function renderStageProgress() {
@@ -718,6 +795,13 @@ export default function LessonStagePanel({
   }
 
   const reviewReadyCount = localVocabItems.filter((item) => item.review_ready).length;
+  const quizVocabularyItems = buildCapturedVocabularyReviewItems({
+    items: capturedItems.filter(
+      (item) => item.sourceType === "question" || item.sourceType === "answer"
+    ),
+    sourceItems: localVocabItems,
+    lessonId: `${lessonId}:quiz`,
+  });
 
   if (stage === "completed") {
     const preparedCount =
@@ -798,10 +882,17 @@ export default function LessonStagePanel({
           <LessonPlayer
             studentId={studentId}
             lessonId={lessonId}
+            nextLessonId={nextLessonId}
             questions={questions}
             passageText={passageText}
             passageId={passageId}
             knownWords={localVocabItems}
+            quizVocabularyItems={quizVocabularyItems}
+            isQuizVocabularyHydrating={isVocabularyHydrating}
+            onQuizVocabularyVisibleItemsChange={hydrateVisibleVocabularyItems}
+            onRequestQuizVocabularyAudio={requestVocabularyAudio}
+            isQuizVocabularyAudioLoading={isVocabularyAudioLoading}
+            onPrepareQuizVocabularyReview={prepareQuizVocabularyReview}
             onVocabularyCaptured={handleCaptured}
             onBeforeComplete={flushPendingVocabularyItems}
             onFinished={(result) => {
@@ -830,6 +921,7 @@ export default function LessonStagePanel({
         <VocabularyReviewCards
           items={localVocabItems}
           isHydrating={isVocabularyHydrating}
+          onVisibleItemsChange={hydrateVisibleVocabularyItems}
           onRequestAudio={requestVocabularyAudio}
           isAudioLoading={isVocabularyAudioLoading}
           onBackToReading={() => setStage("first_read")}

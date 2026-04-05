@@ -207,6 +207,7 @@ export default function InteractivePassageReader({
   const [preview, setPreview] = useState<InlinePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewRequested, setPreviewRequested] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hoverCard, setHoverCard] = useState<HoverCardState>(null);
   const [captureToast, setCaptureToast] = useState<string | null>(null);
@@ -229,6 +230,7 @@ export default function InteractivePassageReader({
     () => findHighlightRange(displayPassageText, highlightText),
     [displayPassageText, highlightText]
   );
+  const canPreviewKnownWords = mode !== "reference";
 
   function handleMouseUp() {
     if (mode !== "capture" && mode !== "audio_review") {
@@ -240,6 +242,7 @@ export default function InteractivePassageReader({
 
     if (!text) {
       setSelectionPopup(null);
+      setPreviewRequested(false);
       return;
     }
 
@@ -251,6 +254,10 @@ export default function InteractivePassageReader({
         rect.left + rect.width / 2 - 76,
         rect.top - 52
       );
+      setPreview(null);
+      setPreviewError(null);
+      setPreviewLoading(false);
+      setPreviewRequested(false);
       setSelectionPopup({
         x: position.x,
         y: position.y,
@@ -295,6 +302,13 @@ export default function InteractivePassageReader({
     }
 
     if (!passageId) {
+      setPreview(null);
+      setPreviewError(null);
+      setPreviewLoading(false);
+      return;
+    }
+
+    if (!previewRequested) {
       setPreview(null);
       setPreviewError(null);
       setPreviewLoading(false);
@@ -364,7 +378,15 @@ export default function InteractivePassageReader({
     return () => {
       cancelled = true;
     };
-  }, [selectionPopup, knownWordsMap, studentId, lessonId, passageId, displayPassageText]);
+  }, [
+    selectionPopup,
+    knownWordsMap,
+    studentId,
+    lessonId,
+    passageId,
+    displayPassageText,
+    previewRequested,
+  ]);
 
   function queueCapturedItem(itemText: string) {
     onCaptured?.({
@@ -386,76 +408,14 @@ export default function InteractivePassageReader({
     }, 1600);
   }
 
-  async function resolvePreviewForCapture(itemText: string) {
-    if (hasUsefulInlinePreview(preview)) {
-      return preview;
-    }
-
-    if (!passageId) {
-      return null;
-    }
-
-    try {
-      const response = await fetch("/api/vocabulary/preview-inline", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          studentId,
-          lessonId,
-          passageId,
-          itemText,
-          sourceText: buildSnippet(displayPassageText, itemText) ?? displayPassageText,
-        }),
-      });
-
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Preview unavailable");
-      }
-
-      const resolvedPreview = payload?.data as InlinePreview | undefined;
-
-      if (resolvedPreview) {
-        setPreview(resolvedPreview);
-        setPreviewError(null);
-        setPreviewLoading(false);
-      }
-
-      return resolvedPreview ?? null;
-    } catch (error) {
-      console.error("resolvePreviewForCapture error", error);
-      return null;
-    }
-  }
-
   async function addSelectedToVocabulary() {
     const itemText = selectionPopup?.itemText.trim() ?? "";
     if (!itemText) return;
 
     if (onCaptured) {
-      const resolvedPreview = await resolvePreviewForCapture(itemText);
-      onCaptured({
-        itemText,
-        itemType: itemText.includes(" ") ? "phrase" : "word",
-        sourceType: "passage",
-        contextText: buildSnippet(displayPassageText, itemText),
-        preview: resolvedPreview
-          ? {
-              plainEnglishMeaning: resolvedPreview.plain_english_meaning,
-              translation: resolvedPreview.translation,
-              contextMeaning: resolvedPreview.context_meaning,
-            }
-          : null,
-      });
-      setCaptureToast(itemText);
-      window.setTimeout(() => {
-        setCaptureToast((current) => (current === itemText ? null : current));
-      }, 1600);
+      queueCapturedItem(itemText);
       setSelectionPopup(null);
+      setPreviewRequested(false);
       window.getSelection()?.removeAllRanges();
       return;
     }
@@ -463,7 +423,6 @@ export default function InteractivePassageReader({
     setSaving(true);
 
     try {
-      const resolvedPreview = await resolvePreviewForCapture(itemText);
       await fetch("/api/vocabulary/capture-inline", {
         method: "POST",
         headers: {
@@ -478,17 +437,18 @@ export default function InteractivePassageReader({
           sourceType: "passage",
           contextText: buildSnippet(displayPassageText, itemText),
           metadata: {
-            preview: resolvedPreview
+            preview: preview
               ? {
-                  plainEnglishMeaning: resolvedPreview.plain_english_meaning,
-                  translation: resolvedPreview.translation,
-                  contextMeaning: resolvedPreview.context_meaning,
+                  plainEnglishMeaning: preview.plain_english_meaning,
+                  translation: preview.translation,
+                  contextMeaning: preview.context_meaning,
                 }
               : null,
           },
         }),
       });
       setSelectionPopup(null);
+      setPreviewRequested(false);
       window.getSelection()?.removeAllRanges();
     } catch (error) {
       console.error("capture-inline error", error);
@@ -549,6 +509,10 @@ export default function InteractivePassageReader({
       itemText: normalized,
       itemType: "word",
     });
+    setPreview(null);
+    setPreviewError(null);
+    setPreviewLoading(false);
+    setPreviewRequested(false);
     window.getSelection()?.removeAllRanges();
   }
 
@@ -575,6 +539,7 @@ export default function InteractivePassageReader({
       }
 
       setSelectionPopup(null);
+      setPreviewRequested(false);
     }
 
     window.addEventListener("pointerdown", handlePointerDown);
@@ -675,17 +640,17 @@ export default function InteractivePassageReader({
           key={tokenKey}
           className={`cursor-pointer ${getKnownWordTokenClass(known, mode)} ${isHighlighted ? "reading-focus-highlight" : ""}`}
           onMouseEnter={(e) => {
-            if (mode === "review") {
+            if (canPreviewKnownWords && !selectionPopup) {
               openCard(e, known, false);
             }
           }}
           onMouseLeave={() => {
-            if (mode === "review") {
+            if (canPreviewKnownWords) {
               maybeCloseCard();
             }
           }}
           onContextMenu={(e) => {
-            if (mode !== "review") {
+            if (!canPreviewKnownWords) {
               return;
             }
             e.preventDefault();
@@ -732,45 +697,52 @@ export default function InteractivePassageReader({
               {selectionPopup.itemText}
             </div>
 
-            <div className="token-text-secondary mt-2 space-y-2 text-sm leading-6">
-              {previewLoading ? (
-                <div>Looking up meaning...</div>
-              ) : preview ? (
-                <>
-                  <div>{preview.context_meaning || preview.plain_english_meaning}</div>
-                  <div className="surface-soft-panel space-y-1 rounded-2xl px-3 py-3">
-                    <div>
-                      <span className="token-text-primary font-semibold">Meaning:</span>{" "}
-                      {preview.plain_english_meaning}
-                    </div>
-                    {preview.translation ? (
-                      <div>
-                        <span className="token-text-primary font-semibold">Translation:</span>{" "}
-                        {preview.translation}
+                {previewLoading || preview || previewError ? (
+                  <div className="token-text-secondary mt-2 space-y-2 text-sm leading-6">
+                    {previewLoading ? (
+                      <div>Looking up meaning...</div>
+                    ) : preview ? (
+                      <>
+                        <div className="token-text-secondary text-sm leading-6">
+                          {preview.plain_english_meaning}
+                        </div>
+                        {preview.translation ? (
+                          <div className="token-text-secondary text-sm leading-6">
+                            {preview.translation}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : previewError ? (
+                      <div className="token-text-muted">
+                        Meaning preview is not ready, but you can still save it.
                       </div>
                     ) : null}
                   </div>
-                </>
-              ) : previewError ? (
-                <div className="token-text-muted">Meaning preview is not ready, but you can still save it.</div>
-              ) : (
-                <div className="token-text-muted">Save this word to review it later.</div>
-              )}
-            </div>
+                ) : null}
 
-            <button
-              type="button"
-              onClick={addSelectedToVocabulary}
+                <button
+                  type="button"
+                  onClick={addSelectedToVocabulary}
               disabled={saving}
               className="primary-button mt-3 min-h-12 w-full disabled:opacity-50"
             >
               {saving ? "Saving..." : "Add to Vocabulary"}
             </button>
+
+                {!preview && !previewLoading && !previewError ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewRequested(true)}
+                    className="secondary-button mt-3 min-h-11 w-full"
+                  >
+                    Show Meaning
+                  </button>
+                ) : null}
           </div>
         </div>
       ) : null}
 
-      {hoverCard && (mode === "review" || mode === "audio_review") ? (
+      {hoverCard && canPreviewKnownWords ? (
         <div
           data-reading-known-card="true"
           className="surface-panel fixed z-50 w-[min(18rem,calc(100vw-1.5rem))] space-y-3 rounded-[1.35rem] p-4 shadow-xl"
@@ -798,8 +770,7 @@ export default function InteractivePassageReader({
 
           {hoverCard.item.english_explanation ? (
             <div>
-              <div className="token-text-muted text-xs font-semibold uppercase tracking-[0.14em]">Meaning</div>
-              <div className="token-text-secondary mt-1 text-sm leading-6">
+              <div className="token-text-secondary text-sm leading-6">
                 {hoverCard.item.english_explanation}
               </div>
             </div>
@@ -807,15 +778,10 @@ export default function InteractivePassageReader({
 
           {hoverCard.item.translated_explanation ? (
             <div>
-              <div className="token-text-muted text-xs font-semibold uppercase tracking-[0.14em]">Translation</div>
-              <div className="token-text-secondary mt-1 text-sm leading-6">
+              <div className="token-text-secondary text-sm leading-6">
                 {hoverCard.item.translated_explanation}
               </div>
             </div>
-          ) : null}
-
-          {mode === "review" ? (
-            <div className="token-text-muted text-xs">Hover to preview. Tap to pin.</div>
           ) : null}
         </div>
       ) : null}

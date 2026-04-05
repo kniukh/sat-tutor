@@ -11,6 +11,8 @@ import type { CapturedVocabularyItem } from "./PassageVocabularyCapture";
 
 type KnownWord = {
   item_text: string;
+  english_explanation?: string | null;
+  translated_explanation?: string | null;
   review_bucket?:
     | "recently_failed"
     | "weak_again"
@@ -47,6 +49,12 @@ type SelectionPopupState = {
   y: number;
   itemText: string;
   itemType: "word" | "phrase";
+} | null;
+
+type KnownWordHoverCardState = {
+  x: number;
+  y: number;
+  item: KnownWord;
 } | null;
 
 const POPUP_WIDTH = 320;
@@ -144,6 +152,16 @@ function getKnownWordTokenClass(item: KnownWord) {
   return "reading-known-word reading-known-word--known";
 }
 
+function getKnownCardPosition(element: HTMLSpanElement) {
+  const rect = element.getBoundingClientRect();
+  return getPopupPositionFromAnchor({
+    anchorLeft: rect.left,
+    anchorTop: rect.top,
+    anchorWidth: rect.width,
+    anchorHeight: rect.height,
+  });
+}
+
 export default function InlineVocabularyCaptureText({
   studentId,
   lessonId,
@@ -163,8 +181,11 @@ export default function InlineVocabularyCaptureText({
   const [preview, setPreview] = useState<InlinePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewRequested, setPreviewRequested] = useState(false);
   const [saving, setSaving] = useState(false);
   const [captureToast, setCaptureToast] = useState<string | null>(null);
+  const [hoverKnownWordCard, setHoverKnownWordCard] =
+    useState<KnownWordHoverCardState>(null);
   const [mounted, setMounted] = useState(false);
   const contextSourceText = sourceText?.trim() || text;
 
@@ -191,9 +212,11 @@ export default function InlineVocabularyCaptureText({
 
   function closePopup() {
     setSelectionPopup(null);
+    setHoverKnownWordCard(null);
     setPreview(null);
     setPreviewError(null);
     setPreviewLoading(false);
+    setPreviewRequested(false);
     window.getSelection()?.removeAllRanges();
   }
 
@@ -211,6 +234,10 @@ export default function InlineVocabularyCaptureText({
       itemText: trimmed,
       itemType: trimmed.includes(" ") ? "phrase" : "word",
     });
+    setPreview(null);
+    setPreviewError(null);
+    setPreviewLoading(false);
+    setPreviewRequested(false);
   }
 
   function handleMouseUp() {
@@ -311,10 +338,20 @@ export default function InlineVocabularyCaptureText({
       setPreview({
         item_text: known.item_text,
         item_type: selectionPopup.itemType,
-        plain_english_meaning: "Already in your lesson vocabulary.",
-        translation: "",
-        context_meaning: "This word is already being tracked in your review queue.",
+        plain_english_meaning:
+          known.english_explanation?.trim() || "Already in your lesson vocabulary.",
+        translation: known.translated_explanation?.trim() || "",
+        context_meaning:
+          known.english_explanation?.trim() ||
+          "This word is already being tracked in your review queue.",
       });
+      setPreviewLoading(false);
+      setPreviewError(null);
+      return;
+    }
+
+    if (!previewRequested) {
+      setPreview(null);
       setPreviewLoading(false);
       setPreviewError(null);
       return;
@@ -383,7 +420,15 @@ export default function InlineVocabularyCaptureText({
     return () => {
       cancelled = true;
     };
-  }, [selectionPopup, knownWordsMap, studentId, lessonId, passageId, contextSourceText]);
+  }, [
+    selectionPopup,
+    knownWordsMap,
+    studentId,
+    lessonId,
+    passageId,
+    contextSourceText,
+    previewRequested,
+  ]);
 
   async function addSelectedToVocabulary() {
     const itemText = selectionPopup?.itemText.trim() ?? "";
@@ -472,6 +517,21 @@ export default function InlineVocabularyCaptureText({
         <span
           key={`${token}-${index}`}
           className={knownWord ? getKnownWordTokenClass(knownWord) : undefined}
+          onMouseEnter={(event) => {
+            if (!knownWord || selectionPopup) {
+              return;
+            }
+
+            const position = getKnownCardPosition(event.currentTarget);
+            setHoverKnownWordCard({
+              x: position.x,
+              y: position.y,
+              item: knownWord,
+            });
+          }}
+          onMouseLeave={() => {
+            setHoverKnownWordCard(null);
+          }}
           onTouchStart={(event) => {
             const touch = event.touches[0];
             startLongPress(token, touch?.clientX, touch?.clientY);
@@ -519,31 +579,28 @@ export default function InlineVocabularyCaptureText({
                   {selectionPopup.itemText}
                 </div>
 
-                <div className="token-text-secondary mt-2 space-y-2 text-sm leading-6">
-                  {previewLoading ? (
-                    <div>Looking up meaning...</div>
-                  ) : preview ? (
-                    <>
-                      <div>{preview.context_meaning || preview.plain_english_meaning}</div>
-                      <div className="surface-soft-panel space-y-1 rounded-2xl px-3 py-3">
-                        <div>
-                          <span className="token-text-primary font-semibold">Meaning:</span>{" "}
+                {previewLoading || preview || previewError ? (
+                  <div className="token-text-secondary mt-2 space-y-2 text-sm leading-6">
+                    {previewLoading ? (
+                      <div>Looking up meaning...</div>
+                    ) : preview ? (
+                      <>
+                        <div className="token-text-secondary text-sm leading-6">
                           {preview.plain_english_meaning}
                         </div>
                         {preview.translation ? (
-                          <div>
-                            <span className="token-text-primary font-semibold">Translation:</span>{" "}
+                          <div className="token-text-secondary text-sm leading-6">
                             {preview.translation}
                           </div>
                         ) : null}
+                      </>
+                    ) : previewError ? (
+                      <div className="token-text-muted">
+                        Meaning preview is not ready, but you can still save it.
                       </div>
-                    </>
-                  ) : previewError ? (
-                    <div className="token-text-muted">Meaning preview is not ready, but you can still save it.</div>
-                  ) : (
-                    <div className="token-text-muted">Save this word to review it later.</div>
-                  )}
-                </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <button
                   type="button"
@@ -553,6 +610,16 @@ export default function InlineVocabularyCaptureText({
                 >
                   {saving ? "Saving..." : "Add to Vocabulary"}
                 </button>
+
+                {!preview && !previewLoading && !previewError ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewRequested(true)}
+                    className="secondary-button mt-3 min-h-11 w-full"
+                  >
+                    Show Meaning
+                  </button>
+                ) : null}
               </div>
             </div>,
             document.body
@@ -563,6 +630,37 @@ export default function InlineVocabularyCaptureText({
         ? createPortal(
             <div className="pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+6rem)] z-[115] rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white shadow-xl sm:left-auto sm:right-6 sm:max-w-sm">
               Added "{captureToast}" to vocabulary.
+            </div>,
+            document.body
+          )
+        : null}
+
+      {mounted && hoverKnownWordCard && !selectionPopup
+        ? createPortal(
+            <div
+              data-inline-known-card="true"
+              className="surface-panel fixed z-[119] w-[min(18rem,calc(100vw-1.5rem))] space-y-2 rounded-[1.35rem] p-4 shadow-xl backdrop-blur"
+              style={{ left: hoverKnownWordCard.x, top: hoverKnownWordCard.y }}
+              onMouseEnter={() => {
+                setHoverKnownWordCard((current) => (current ? { ...current } : current));
+              }}
+              onMouseLeave={() => setHoverKnownWordCard(null)}
+            >
+              <div className="token-text-primary text-base font-semibold">
+                {hoverKnownWordCard.item.item_text}
+              </div>
+
+              {hoverKnownWordCard.item.english_explanation ? (
+                <div className="token-text-secondary text-sm leading-6">
+                  {hoverKnownWordCard.item.english_explanation}
+                </div>
+              ) : null}
+
+              {hoverKnownWordCard.item.translated_explanation ? (
+                <div className="token-text-secondary text-sm leading-6">
+                  {hoverKnownWordCard.item.translated_explanation}
+                </div>
+              ) : null}
             </div>,
             document.body
           )

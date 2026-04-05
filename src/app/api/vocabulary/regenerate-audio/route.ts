@@ -3,10 +3,20 @@ import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/st
 import { createClient } from "@/lib/supabase/server";
 import { generateVocabularyAudioBulk } from "@/services/ai/generate-vocabulary-audio-bulk";
 
+const MAX_AUDIO_ITEMS_PER_REQUEST = 8;
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { studentId, lessonId } = body;
+    const requestedKeys = Array.isArray(body.itemTexts)
+      ? new Set(
+          body.itemTexts
+            .filter((item: unknown): item is string => typeof item === "string")
+            .map((item) => item.trim().toLowerCase())
+            .filter(Boolean)
+        )
+      : null;
 
     if (!lessonId) {
       return NextResponse.json(
@@ -21,43 +31,72 @@ export async function POST(request: Request) {
 
     const { data: items, error } = await supabase
       .from("vocabulary_item_details")
-      .select("id, item_text")
+      .select("id, item_text, audio_status, audio_url")
       .eq("student_id", sessionStudentId)
-      .eq("lesson_id", lessonId);
+      .eq("lesson_id", lessonId)
+      .order("created_at", { ascending: true });
 
     if (error) {
       console.error("regenerate-audio items error", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const validItems = (items ?? []).filter(
-      (item) => item.item_text && item.item_text.trim().length > 0
-    );
+    const itemsToGenerate = (items ?? [])
+      .filter((item) => {
+        if (!item.item_text || item.item_text.trim().length === 0) {
+          return false;
+        }
 
-    if (!validItems.length) {
-      return NextResponse.json({ ok: true, items: [] });
-    }
+        if (
+          requestedKeys &&
+          !requestedKeys.has(item.item_text.trim().toLowerCase())
+        ) {
+          return false;
+        }
 
-    const generated = await generateVocabularyAudioBulk(validItems);
+        if (item.audio_status === "ready" && item.audio_url) {
+          return false;
+        }
 
-    for (const item of generated) {
-      const dataUrl = `data:audio/mpeg;base64,${item.audio_base64}`;
+        return true;
+      })
+      .slice(0, MAX_AUDIO_ITEMS_PER_REQUEST);
 
-      const { error: updateError } = await supabase
-        .from("vocabulary_item_details")
-        .update({
-          audio_url: dataUrl,
-          audio_status: "ready",
-        })
-        .eq("id", item.id);
+    if (itemsToGenerate.length > 0) {
+      const generated = await generateVocabularyAudioBulk(itemsToGenerate, {
+        studentId: sessionStudentId,
+      });
 
-      if (updateError) {
-        console.error("regenerate-audio updateError", updateError);
+      const generatedIds = new Set(generated.map((item) => item.id));
 
+      for (const item of generated) {
+        const dataUrl = `data:audio/mpeg;base64,${item.audio_base64}`;
+
+        const { error: updateError } = await supabase
+          .from("vocabulary_item_details")
+          .update({
+            audio_url: dataUrl,
+            audio_status: "ready",
+          })
+          .eq("id", item.id);
+
+        if (updateError) {
+          console.error("regenerate-audio updateError", updateError);
+
+          await supabase
+            .from("vocabulary_item_details")
+            .update({ audio_status: "failed" })
+            .eq("id", item.id);
+        }
+      }
+
+      const failedItems = itemsToGenerate.filter((item) => !generatedIds.has(item.id));
+
+      if (failedItems.length > 0) {
         await supabase
           .from("vocabulary_item_details")
           .update({ audio_status: "failed" })
-          .eq("id", item.id);
+          .in("id", failedItems.map((item) => item.id));
       }
     }
 

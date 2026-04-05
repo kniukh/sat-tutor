@@ -1,4 +1,5 @@
-import { openai } from '@/lib/openai';
+import { AI_MODELS } from "@/services/ai/ai-models";
+import { createTrackedResponse } from "@/services/ai/openai-tracked-response";
 
 type PassageAnalysisV2 = {
   passage_role: 'assessment' | 'context' | 'bridge';
@@ -70,8 +71,9 @@ Passage:
 ${input.passageText}
 `;
 
-  const response = await openai.responses.create({
-    model: 'gpt-5',
+  const response = await createTrackedResponse({
+    route: "admin.analyze_generated_passage_v2",
+    model: AI_MODELS.offlineQuality,
     input: prompt,
   });
 

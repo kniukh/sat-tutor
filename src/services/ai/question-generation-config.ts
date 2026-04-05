@@ -12,7 +12,7 @@ export const QUESTION_QUALITY_CONFIG = {
     plausibleGapMultiplier: 0.5,
   },
   retry: {
-    maxAttempts: 3,
+    maxAttempts: 2,
     maxFeedbackLength: 280,
   },
 } as const;

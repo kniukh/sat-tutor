@@ -1,4 +1,5 @@
-import { openai } from '@/lib/openai';
+import { AI_MODELS } from "@/services/ai/ai-models";
+import { createTrackedResponse } from "@/services/ai/openai-tracked-response";
 
 type InlinePreview = {
   item_text: string;
@@ -10,6 +11,24 @@ type InlinePreview = {
 
 const INLINE_PREVIEW_TIMEOUT_MS = 1800;
 const INLINE_REFERENCE_WINDOW_CHARS = 320;
+const INLINE_PREVIEW_SYSTEM_PROMPT = `You are helping a student preview a vocabulary item before saving it.
+
+Return ONLY a valid JSON object with:
+- item_text
+- item_type
+- plain_english_meaning
+- translation
+- context_meaning
+
+Rules:
+- plain_english_meaning must be short and simple.
+- translation must use the requested target_language.
+- context_meaning must explain the meaning in the provided reference_text.
+- Keep each field concise.
+- Return JSON only, no markdown.
+
+JSON shape:
+{"item_text":"string","item_type":"word","plain_english_meaning":"string","translation":"string","context_meaning":"string"}`;
 
 function extractJsonObject(text: string): InlinePreview {
   const start = text.indexOf('{');
@@ -68,6 +87,7 @@ export async function generateInlineVocabularyPreview(input: {
   passageText: string;
   itemText: string;
   itemType: 'word' | 'phrase';
+  studentId?: string | null;
 }) {
   const languageMap: Record<string, string> = {
     ru: 'Russian',
@@ -83,47 +103,27 @@ export async function generateInlineVocabularyPreview(input: {
     referenceText: referenceWindow,
   });
 
-  const prompt = `
-You are helping a student preview a vocabulary item before saving it.
+  const prompt = `${INLINE_PREVIEW_SYSTEM_PROMPT}
 
-Return ONLY valid JSON object with:
-- item_text
-- item_type
-- plain_english_meaning
-- translation
-- context_meaning
-
-Rules:
-- plain_english_meaning must be short and simple
-- translation must be in ${targetLanguage}
-- context_meaning must explain the meaning in THIS text
-- keep each field concise
-- return JSON only
-
-Reference text:
-${referenceWindow}
-
-Item:
-${input.itemText}
-
-Item type:
-${input.itemType}
-
-JSON shape:
-{
-  "item_text": "string",
-  "item_type": "word",
-  "plain_english_meaning": "string",
-  "translation": "string",
-  "context_meaning": "string"
-}
-`;
+INPUT_JSON:
+${JSON.stringify({
+  target_language: targetLanguage,
+  reference_text: referenceWindow,
+  item_text: input.itemText,
+  item_type: input.itemType,
+})}`;
 
   try {
     const response = await Promise.race([
-      openai.responses.create({
-        model: 'gpt-5-mini',
+      createTrackedResponse({
+        route: "vocabulary.preview_inline",
+        model: AI_MODELS.liveReasoning,
+        studentId: input.studentId ?? null,
         input: prompt,
+        metadata: {
+          item_type: input.itemType,
+          has_reference_text: Boolean(referenceWindow),
+        },
       }),
       new Promise<null>((resolve) =>
         setTimeout(() => resolve(null), INLINE_PREVIEW_TIMEOUT_MS)

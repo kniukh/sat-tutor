@@ -1,7 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { generateVocabularyCards } from "@/services/ai/generate-vocabulary-cards";
 import { generateVocabularyAudioBulk } from "@/services/ai/generate-vocabulary-audio-bulk";
-import { prepareVocabularyDistractors } from "@/services/vocabulary/distractor-quality.service";
+import {
+  prepareVocabularyDistractors,
+  prepareVocabularyDistractorsBatch,
+} from "@/services/vocabulary/distractor-quality.service";
 import {
   hasReadyVocabularyDrillAnswerSets,
   parseVocabularyDrillAnswerSets,
@@ -145,7 +148,9 @@ async function ensureVocabularyAudio(params: {
   }
 
   try {
-    const generatedAudio = await generateVocabularyAudioBulk(pendingItems);
+    const generatedAudio = await generateVocabularyAudioBulk(pendingItems, {
+      studentId: params.studentId,
+    });
 
     for (const item of generatedAudio) {
       const dataUrl = `data:audio/mpeg;base64,${item.audio_base64}`;
@@ -294,6 +299,7 @@ export async function generateVocabularyItemsFromCaptures(params: {
     if (aiItemsToGenerate.length > 0) {
       try {
         generated = await generateVocabularyCards({
+          studentId: params.studentId,
           items: aiItemsToGenerate,
           nativeLanguage: student.native_language || "ru",
         });
@@ -325,6 +331,53 @@ export async function generateVocabularyItemsFromCaptures(params: {
       ...generatedCards.map((item) => item.translated_explanation).filter(Boolean),
     ];
     const lexicalPool = itemsToGenerate.map((item) => item.item_text).filter(Boolean);
+    const distractorBatchInputs = prepareDrillAssets
+      ? itemsToGenerate.map((item) => {
+          const captureSource = uniqueItems.find(
+            (candidate) => normalizeKey(candidate.item_text) === normalizeKey(item.item_text)
+          );
+          const capturePreview = captureSource?.metadata?.preview ?? null;
+          const dictionaryEntry =
+            dictionaryCacheMap.get(
+              getDictionaryCacheKey({
+                itemText: item.item_text,
+                itemType: item.item_type,
+                translationLanguage: student.native_language || "ru",
+              })
+            ) ?? null;
+          const aiCard = generatedCards.find(
+            (candidate) => normalizeKey(candidate.item_text) === normalizeKey(item.item_text)
+          );
+          const englishExplanation =
+            aiCard?.english_explanation ??
+            capturePreview?.plainEnglishMeaning?.trim() ??
+            capturePreview?.contextMeaning?.trim() ??
+            `Meaning of "${item.item_text}"`;
+
+          return {
+            itemText: item.item_text,
+            itemType: item.item_type as "word" | "phrase",
+            correctAnswer: englishExplanation,
+            studentId: params.studentId,
+            contextSentence:
+              item.context_text ?? `Context with "${item.item_text}" was not captured yet.`,
+            exampleText:
+              aiCard?.example_text ??
+              item.context_text ??
+              capturePreview?.contextMeaning?.trim() ??
+              `Example with "${item.item_text}".`,
+            existingDistractors: dictionaryEntry?.distractors ?? [],
+            fallbackPool: meaningPool.filter(
+              (candidate) =>
+                candidate &&
+                normalizeKey(candidate) !== normalizeKey(englishExplanation)
+            ),
+          };
+        })
+      : [];
+    const distractorBatchMap = prepareDrillAssets
+      ? await prepareVocabularyDistractorsBatch(distractorBatchInputs)
+      : new Map<string, string[]>();
     const rowsToInsert: Array<Record<string, unknown>> = [];
 
     for (const item of itemsToGenerate) {
@@ -375,20 +428,31 @@ export async function generateVocabularyItemsFromCaptures(params: {
         prepareDrillAssets &&
         (!distractors.length || !hasReadyVocabularyDrillAnswerSets(drillAnswerSets))
       ) {
-        distractors = await prepareVocabularyDistractors({
-          itemText: item.item_text,
-          itemType: item.item_type as "word" | "phrase",
-          correctAnswer: englishExplanation,
-          contextSentence,
-          exampleText,
-          fallbackPool: meaningPool.filter(
-            (candidate) => candidate && normalizeKey(candidate) !== normalizeKey(englishExplanation)
-          ),
-        });
+        if (!distractors.length) {
+          distractors =
+            distractorBatchMap.get(
+              `${normalizeKey(item.item_text)}::${normalizeKey(englishExplanation)}`
+            ) ??
+            (await prepareVocabularyDistractors({
+              itemText: item.item_text,
+              itemType: item.item_type as "word" | "phrase",
+              correctAnswer: englishExplanation,
+              studentId: params.studentId,
+              contextSentence,
+              exampleText,
+              fallbackPool: meaningPool.filter(
+                (candidate) =>
+                  candidate &&
+                  normalizeKey(candidate) !== normalizeKey(englishExplanation)
+              ),
+            }));
+        }
+
         drillAnswerSets = await prepareVocabularyDrillAnswerSets({
           itemText: item.item_text,
           itemType: item.item_type as "word" | "phrase",
           englishExplanation,
+          studentId: params.studentId,
           translatedExplanation: aiCard?.translated_explanation ?? null,
           contextSentence,
           exampleText,
@@ -528,6 +592,27 @@ export async function prepareVocabularyDrillsForStudent(params: {
   const lexicalPool = items
     .map((item) => item.item_text)
     .filter((value): value is string => Boolean(value));
+  const distractorBatchInputs = items
+    .filter((item) => item.item_text && item.english_explanation)
+    .map((item) => ({
+      itemText: item.item_text,
+      itemType: (item.item_type ?? "word") as "word" | "phrase",
+      correctAnswer: item.english_explanation as string,
+      studentId: params.studentId,
+      contextSentence: item.context_sentence ?? null,
+      exampleText: item.example_text ?? null,
+      existingDistractors: dictionaryCacheMap.get(
+        getDictionaryCacheKey({
+          itemText: item.item_text,
+          itemType: item.item_type,
+          translationLanguage,
+        })
+      )?.distractors ?? (Array.isArray(item.distractors) ? item.distractors : []),
+      fallbackPool: meaningPool.filter(
+        (candidate) => normalizeKey(candidate) !== normalizeKey(item.english_explanation ?? "")
+      ),
+    }));
+  const distractorBatchMap = await prepareVocabularyDistractorsBatch(distractorBatchInputs);
 
   let preparedCount = 0;
 
@@ -561,17 +646,23 @@ export async function prepareVocabularyDrillsForStudent(params: {
     }
 
     if (!distractors.length) {
-      distractors = await prepareVocabularyDistractors({
-      itemText: item.item_text,
-      itemType: (item.item_type ?? "word") as "word" | "phrase",
-      correctAnswer: item.english_explanation,
-      contextSentence: item.context_sentence ?? null,
-      exampleText: item.example_text ?? null,
-      existingDistractors: Array.isArray(item.distractors) ? item.distractors : [],
-      fallbackPool: meaningPool.filter(
-        (candidate) => normalizeKey(candidate) !== normalizeKey(item.english_explanation ?? "")
-      ),
-      });
+      distractors =
+        distractorBatchMap.get(
+          `${normalizeKey(item.item_text)}::${normalizeKey(item.english_explanation)}`
+        ) ??
+        (await prepareVocabularyDistractors({
+          itemText: item.item_text,
+          itemType: (item.item_type ?? "word") as "word" | "phrase",
+          correctAnswer: item.english_explanation,
+          studentId: params.studentId,
+          contextSentence: item.context_sentence ?? null,
+          exampleText: item.example_text ?? null,
+          existingDistractors: Array.isArray(item.distractors) ? item.distractors : [],
+          fallbackPool: meaningPool.filter(
+            (candidate) =>
+              normalizeKey(candidate) !== normalizeKey(item.english_explanation ?? "")
+          ),
+        }));
     }
 
     if (!hasReadyVocabularyDrillAnswerSets(drillAnswerSets)) {
@@ -579,6 +670,7 @@ export async function prepareVocabularyDrillsForStudent(params: {
       itemText: item.item_text,
       itemType: (item.item_type ?? "word") as "word" | "phrase",
       englishExplanation: item.english_explanation,
+      studentId: params.studentId,
       translatedExplanation: item.translated_explanation ?? null,
       contextSentence: item.context_sentence ?? null,
       exampleText: item.example_text ?? null,

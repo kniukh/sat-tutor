@@ -107,7 +107,27 @@ export async function getOrCreateLessonState(studentId: string, lessonId: string
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === "23505") {
+      const { data: stateAfterRace, error: raceReadError } = await supabase
+        .from("student_lesson_state")
+        .select("*")
+        .eq("student_id", studentId)
+        .eq("lesson_id", lessonId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (raceReadError) {
+        throw raceReadError;
+      }
+
+      return stateAfterRace;
+    }
+
+    throw error;
+  }
+
   return data;
 }
 

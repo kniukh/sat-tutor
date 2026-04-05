@@ -1,7 +1,8 @@
 import type { SupportedVocabExercise } from "@/types/vocab-exercises";
 import {
-  adaptClozeDrillsToExercises,
+  adaptContextMeaningDrillsToExercises,
   adaptMeaningDrillsToExercises,
+  adaptSpellingFromAudioDrillsToExercises,
   type ClozeDrillItem,
   type MeaningDrillItem,
 } from "@/services/vocabulary/exercise-adapters";
@@ -62,7 +63,13 @@ export function buildClozeDrillSession(
   items: ClozeDrillItem[],
   params: DrillSessionParams = {}
 ): VocabExerciseSession {
-  return buildVocabDrillSessionFromExercises(adaptClozeDrillsToExercises(items), {
+  return buildVocabDrillSessionFromExercises(
+    [
+      ...adaptContextMeaningDrillsToExercises(items),
+      ...adaptSpellingFromAudioDrillsToExercises(items),
+      ...adaptSpellingFromAudioDrillsToExercises(items),
+    ],
+    {
     ...params,
     seed:
       params.seed ??
@@ -70,5 +77,6 @@ export function buildClozeDrillSession(
         `cloze:${params.mode ?? "default_review"}`,
         items.map((item) => item.wordProgressId)
       ),
-  });
+    }
+  );
 }

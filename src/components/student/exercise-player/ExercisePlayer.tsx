@@ -100,6 +100,38 @@ function sortPairMatchKeys(pairKeys: string[]) {
   return [...pairKeys].sort((left, right) => left.localeCompare(right));
 }
 
+function getRetrySourceExerciseId(exercise: Exercise) {
+  const metadata = exercise.metadata as
+    | {
+        retry_source_exercise_id?: unknown;
+      }
+    | undefined;
+
+  return typeof metadata?.retry_source_exercise_id === "string"
+    ? metadata.retry_source_exercise_id
+    : null;
+}
+
+function canQueueRetryExercise(exercise: Exercise) {
+  if (exercise.type === "pair_match" || exercise.type === "listen_match") {
+    return false;
+  }
+
+  return getRetrySourceExerciseId(exercise) === null;
+}
+
+function buildRetryExercise(exercise: Exercise): Exercise {
+  return {
+    ...exercise,
+    id: `${exercise.id}:retry`,
+    metadata: {
+      ...(exercise.metadata ?? {}),
+      retry_source_exercise_id: exercise.id,
+      retry_pass: 1,
+    },
+  };
+}
+
 export default function ExercisePlayer({
   exercises,
   sessionId,
@@ -119,26 +151,39 @@ export default function ExercisePlayer({
         : `session-${Date.now()}`)
   );
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [exerciseQueue, setExerciseQueue] = useState<Exercise[]>(exercises);
   const [responseValue, setResponseValue] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [results, setResults] = useState<ExerciseResult[]>([]);
   const [captureToast, setCaptureToast] = useState<string | null>(null);
   const [currentFeedback, setCurrentFeedback] = useState<ExerciseFeedbackState | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
-  const [continueReady, setContinueReady] = useState(false);
   const startedAtRef = useRef<number>(Date.now());
-  const continueUnlockTimeoutRef = useRef<number | null>(null);
+  const autoAdvanceTimeoutRef = useRef<number | null>(null);
   const { settings: feedbackSettings } = useFeedbackSettings();
 
-  const currentExercise = exercises[currentIndex] ?? null;
-  const questionText = getExerciseQuestionText(currentExercise);
+  useEffect(() => {
+    setExerciseQueue(exercises);
+    setCurrentIndex(0);
+    setResponseValue("");
+    setSubmitted(false);
+    setResults([]);
+    setCurrentFeedback(null);
+    setIsAdvancing(false);
+    if (autoAdvanceTimeoutRef.current) {
+      clearTimeout(autoAdvanceTimeoutRef.current);
+      autoAdvanceTimeoutRef.current = null;
+    }
+  }, [exercises]);
+
+  const currentExercise = exerciseQueue[currentIndex] ?? null;
+  const questionText = currentExercise ? getExerciseQuestionText(currentExercise) : "";
   const captureContextLessonId =
     currentExercise?.reviewMeta?.sourceLessonId ?? captureLessonId ?? null;
 
   useEffect(() => {
     startedAtRef.current = Date.now();
     setIsAdvancing(false);
-    setContinueReady(false);
   }, [currentIndex]);
 
   useEffect(() => {
@@ -147,16 +192,12 @@ export default function ExercisePlayer({
 
   useEffect(() => {
     return () => {
-      if (continueUnlockTimeoutRef.current) {
-        clearTimeout(continueUnlockTimeoutRef.current);
+      if (autoAdvanceTimeoutRef.current) {
+        clearTimeout(autoAdvanceTimeoutRef.current);
       }
     };
   }, []);
 
-  const currentResult = useMemo(
-    () => results.find((item) => item.exercise_id === currentExercise?.id) ?? null,
-    [results, currentExercise]
-  );
   const currentStreak = useMemo(() => {
     let streak = 0;
 
@@ -211,10 +252,6 @@ export default function ExercisePlayer({
       const isButton = tagName === "BUTTON";
 
       if (submitted) {
-        if ((event.key === "Enter" || (!isInputLike && event.key === " ")) && !isButton) {
-          event.preventDefault();
-          handleContinue();
-        }
         return;
       }
 
@@ -238,7 +275,7 @@ export default function ExercisePlayer({
 
       if (event.key === "Enter" && canSubmit && !isButton) {
         event.preventDefault();
-        handleCheck();
+        handleContinue();
       }
     }
 
@@ -257,7 +294,11 @@ export default function ExercisePlayer({
     currentFeedback,
   ]);
 
-  function handleCheck() {
+  function handleContinue() {
+    if (submitted || isAdvancing) {
+      return;
+    }
+
     if (!canSubmit || isAdvancing) return;
 
     const timeSpentMs = Math.max(1, Date.now() - startedAtRef.current);
@@ -397,13 +438,9 @@ export default function ExercisePlayer({
     };
 
     setSubmitted(true);
-    setContinueReady(false);
-    if (continueUnlockTimeoutRef.current) {
-      clearTimeout(continueUnlockTimeoutRef.current);
+    if (autoAdvanceTimeoutRef.current) {
+      clearTimeout(autoAdvanceTimeoutRef.current);
     }
-    continueUnlockTimeoutRef.current = window.setTimeout(() => {
-      setContinueReady(true);
-    }, 380);
     setCurrentFeedback({
       isCorrect,
       explanation: currentExercise.explanation,
@@ -428,32 +465,37 @@ export default function ExercisePlayer({
       ...prev.filter((item) => item.exercise_id !== result.exercise_id),
       result,
     ]);
+
+    if (!isCorrect && canQueueRetryExercise(currentExercise)) {
+      setExerciseQueue((current) => [...current, buildRetryExercise(currentExercise)]);
+    }
+
     console.debug("Vocab exercise attempt", result);
     onExerciseComplete?.(result);
-  }
 
-  function handleContinue() {
-    if (isAdvancing || !continueReady) {
-      return;
-    }
+    const nextResults = [
+      ...results.filter((item) => item.exercise_id !== result.exercise_id),
+      result,
+    ];
+    const queueLengthAfterCheck =
+      !isCorrect && canQueueRetryExercise(currentExercise)
+        ? exerciseQueue.length + 1
+        : exerciseQueue.length;
 
-    if (currentIndex >= exercises.length - 1) {
-      onComplete?.(
-        [...results.filter((item) => item.exercise_id !== currentExercise.id), currentResult].filter(
-          (item): item is ExerciseResult => Boolean(item)
-        )
-      );
-      return;
-    }
+    autoAdvanceTimeoutRef.current = window.setTimeout(() => {
+      if (currentIndex >= queueLengthAfterCheck - 1) {
+        onComplete?.(nextResults);
+        return;
+      }
 
-    setIsAdvancing(true);
-    window.setTimeout(() => {
-      setCurrentIndex((prev) => prev + 1);
-      setResponseValue("");
-      setSubmitted(false);
-      setContinueReady(false);
-      setCurrentFeedback(null);
-    }, 120);
+      setIsAdvancing(true);
+      window.setTimeout(() => {
+        setCurrentIndex((prev) => prev + 1);
+        setResponseValue("");
+        setSubmitted(false);
+        setCurrentFeedback(null);
+      }, 120);
+    }, 520);
   }
 
   function renderExercise() {
@@ -623,7 +665,7 @@ export default function ExercisePlayer({
     >
       <ExerciseProgressHeader
         currentIndex={currentIndex}
-        total={exercises.length}
+        total={exerciseQueue.length}
         submitted={submitted}
         comboCount={comboCount}
         comboMultiplier={floatingReward?.comboCount === comboCount ? floatingReward.comboMultiplier : undefined}
@@ -677,12 +719,10 @@ export default function ExercisePlayer({
       <ExercisePlayerFooter
         submitted={submitted}
         canSubmit={canSubmit}
-        isLast={currentIndex >= exercises.length - 1}
+        isLast={currentIndex >= exerciseQueue.length - 1}
         isAdvancing={isAdvancing}
-        continueLocked={submitted && !continueReady}
         feedback={currentFeedback}
         focused={focused}
-        onCheck={handleCheck}
         onContinue={handleContinue}
       />
 
