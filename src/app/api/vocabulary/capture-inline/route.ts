@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createClient } from "@/lib/supabase/server";
+import { recordVocabularyCaptures } from "@/services/vocabulary/vocabulary-capture.service";
 
 function buildContextSnippet(fullText: string, itemText: string) {
   const lowerText = fullText.toLowerCase();
@@ -38,11 +39,10 @@ export async function POST(request: Request) {
 
     const sessionStudentId = await requireStudentApiStudentId(studentId);
 
-    const supabase = await createClient();
-
     let resolvedContextText: string | null = contextText?.trim() || null;
 
     if (!resolvedContextText && passageId) {
+      const supabase = await createClient();
       const { data: passage } = await supabase
         .from("lesson_passages")
         .select("passage_text")
@@ -54,35 +54,25 @@ export async function POST(request: Request) {
         : null;
     }
 
-    const { data, error } = await supabase
-      .from("vocabulary_capture_events")
-      .insert({
-        student_id: sessionStudentId,
-        lesson_id: lessonId ?? null,
-        passage_id: passageId ?? null,
-        item_text: itemText,
-        item_type: itemType,
-        context_text: resolvedContextText,
-        source_type:
-          sourceType === "question" ||
-          sourceType === "answer" ||
-          sourceType === "vocab_drill"
-            ? sourceType
-            : "passage",
-        metadata:
-          metadata && typeof metadata === "object" && !Array.isArray(metadata)
-            ? metadata
-            : {},
-      })
-      .select()
-      .single();
+    const result = await recordVocabularyCaptures({
+      studentId: sessionStudentId,
+      lessonId: lessonId ?? null,
+      passageId: passageId ?? null,
+      items: [
+        {
+          itemText,
+          itemType,
+          sourceType,
+          contextText: resolvedContextText,
+          metadata:
+            metadata && typeof metadata === "object" && !Array.isArray(metadata)
+              ? metadata
+              : {},
+        },
+      ],
+    });
 
-    if (error) {
-      console.error("capture-inline error", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ ok: true, data });
+    return NextResponse.json({ ok: true, data: result.insertedEvents[0] ?? null });
   } catch (error) {
     if (isStudentApiAuthError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status });

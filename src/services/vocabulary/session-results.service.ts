@@ -75,6 +75,10 @@ function uniqueWords(words: Array<string | null | undefined>) {
   return Array.from(new Set(words.map((word) => word?.trim()).filter(Boolean))) as string[];
 }
 
+function isAlreadyKnownResult(result: ExerciseResult) {
+  return Boolean(result.metadata?.already_known);
+}
+
 function getAccuracyTone(accuracy: number) {
   if (accuracy >= 90) {
     return "Excellent work. This session looked sharp, stable, and ready for harder follow-ups.";
@@ -169,13 +173,14 @@ export function buildVocabularySessionResultsSummary(params: {
   rewardCredit?: VocabularySessionRewardCredit | null;
   sessionGamification?: VocabularySessionGamificationSummary | null;
 }) {
-  const completedCount = params.results.length || params.session.metadata.actual_size;
-  const correctResults = params.results.filter((result) => result.is_correct);
-  const incorrectResults = params.results.filter((result) => !result.is_correct);
+  const scoredResults = params.results.filter((result) => !isAlreadyKnownResult(result));
+  const completedCount = scoredResults.length;
+  const correctResults = scoredResults.filter((result) => result.is_correct);
+  const incorrectResults = scoredResults.filter((result) => !result.is_correct);
   const correctCount = correctResults.length;
   const incorrectCount = incorrectResults.length;
   const accuracy = completedCount > 0 ? Math.round((correctCount / completedCount) * 100) : 0;
-  const wordsReviewedCount = uniqueWords(params.results.map((result) => result.target_word)).length;
+  const wordsReviewedCount = uniqueWords(scoredResults.map((result) => result.target_word)).length;
 
   const weakWords = uniqueWords(incorrectResults.map((result) => result.target_word));
   const strengthenedWords = uniqueWords(correctResults.map((result) => result.target_word));

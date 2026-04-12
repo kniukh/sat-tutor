@@ -6,9 +6,10 @@ import {
   prepareVocabularyDistractorsBatch,
 } from "@/services/vocabulary/distractor-quality.service";
 import {
+  buildPreparedVocabularyDrillAnswerSetCacheKey,
   hasReadyVocabularyDrillAnswerSets,
   parseVocabularyDrillAnswerSets,
-  prepareVocabularyDrillAnswerSets,
+  prepareVocabularyDrillAnswerSetsBatch,
 } from "@/services/vocabulary/drill-answer-sets.service";
 import {
   buildVocabularyDictionaryCacheKey,
@@ -16,6 +17,15 @@ import {
   touchVocabularyDictionaryCacheEntries,
   upsertVocabularyDictionaryCacheEntries,
 } from "@/services/vocabulary/vocabulary-dictionary-cache.service";
+import {
+  aggregateVocabularyCaptureRows,
+  type AggregatedVocabularyCapture,
+  type VocabularyCaptureEventRow,
+} from "@/services/vocabulary/vocabulary-capture.service";
+import {
+  mergeVocabularySurfaceForms,
+  resolveVocabularyLemma,
+} from "@/services/vocabulary/vocabulary-normalization.service";
 
 type VocabularyItemRow = {
   id: string;
@@ -23,6 +33,11 @@ type VocabularyItemRow = {
   lesson_id: string | null;
   item_text: string;
   item_type: string | null;
+  canonical_lemma: string | null;
+  captured_surface_forms: string[] | null;
+  capture_count: number | null;
+  first_captured_at: string | null;
+  last_captured_at: string | null;
   english_explanation: string | null;
   translated_explanation: string | null;
   translation_language: string | null;
@@ -34,19 +49,7 @@ type VocabularyItemRow = {
   created_at: string | null;
 };
 
-type VocabularyCaptureRow = {
-  item_text: string;
-  item_type: string | null;
-  context_text: string | null;
-  created_at: string | null;
-  metadata?: {
-    preview?: {
-      plainEnglishMeaning?: string | null;
-      translation?: string | null;
-      contextMeaning?: string | null;
-    } | null;
-  } | null;
-};
+type VocabularyCaptureRow = VocabularyCaptureEventRow;
 
 type PreparedVocabularyDrillsResult = {
   preparedCount: number;
@@ -69,6 +72,25 @@ type EnsureLessonVocabularyDrillsReadyResult = {
 
 function normalizeKey(text: string) {
   return text.trim().toLowerCase();
+}
+
+function getVocabularyItemCanonicalKey(item: {
+  canonical_lemma?: string | null;
+  item_type?: string | null;
+  item_text: string;
+}) {
+  if (item.canonical_lemma) {
+    return normalizeKey(item.canonical_lemma);
+  }
+
+  return resolveVocabularyLemma({
+    itemText: item.item_text,
+    itemType: item.item_type,
+  }).canonicalLemma;
+}
+
+function getAggregateCanonicalKey(item: AggregatedVocabularyCapture) {
+  return normalizeKey(item.canonicalLemma);
 }
 
 function getDictionaryCacheKey(params: {
@@ -201,7 +223,7 @@ export async function generateVocabularyItemsFromCaptures(params: {
 
   const { data: captures, error: capturesError } = await supabase
     .from("vocabulary_capture_events")
-    .select("item_text, item_type, context_text, created_at, metadata")
+    .select("item_text, item_type, context_text, created_at, metadata, canonical_lemma, captured_surface_form")
     .eq("student_id", params.studentId)
     .eq("lesson_id", params.lessonId)
     .order("created_at", { ascending: true });
@@ -210,10 +232,8 @@ export async function generateVocabularyItemsFromCaptures(params: {
     throw capturesError;
   }
 
-  const uniqueItems = Array.from(
-    new Map(
-      ((captures ?? []) as VocabularyCaptureRow[]).map((item) => [normalizeKey(item.item_text), item])
-    ).values()
+  const captureAggregates = aggregateVocabularyCaptureRows(
+    (captures ?? []) as VocabularyCaptureRow[]
   );
 
   const existingItems = await listVocabularyItems({
@@ -221,12 +241,12 @@ export async function generateVocabularyItemsFromCaptures(params: {
     lessonId: params.lessonId,
   });
   const existingItemsByKey = new Map(
-    existingItems.map((item) => [normalizeKey(item.item_text), item])
+    existingItems.map((item) => [getVocabularyItemCanonicalKey(item), item])
   );
   const dictionaryCacheMap = await listVocabularyDictionaryCacheEntries({
-    items: uniqueItems.map((item) => ({
-      itemText: item.item_text,
-      itemType: item.item_type,
+    items: captureAggregates.map((item) => ({
+      itemText: item.itemText,
+      itemType: item.itemType,
     })),
     translationLanguage: student.native_language || "ru",
   });
@@ -234,16 +254,24 @@ export async function generateVocabularyItemsFromCaptures(params: {
   const requestedKeys = params.itemTexts?.length
     ? new Set(params.itemTexts.map((item) => normalizeKey(item)))
     : null;
-  const itemsToGenerate = uniqueItems
-    .filter((item) => (requestedKeys ? requestedKeys.has(normalizeKey(item.item_text)) : true))
+  const itemsToGenerate = captureAggregates
+    .filter((item) =>
+      requestedKeys ? item.lookupKeys.some((key) => requestedKeys.has(normalizeKey(key))) : true
+    )
     .filter((item) => {
-      const existingItem = existingItemsByKey.get(normalizeKey(item.item_text));
+      const existingItem = existingItemsByKey.get(getAggregateCanonicalKey(item));
       return !existingItem || isPlaceholderVocabularyItem(existingItem);
     })
     .map((item) => ({
-      item_text: item.item_text,
-      item_type: item.item_type ?? (item.item_text.includes(" ") ? "phrase" : "word"),
-      context_text: item.context_text ?? null,
+      item_text: item.itemText,
+      item_type: item.itemType,
+      canonical_lemma: item.canonicalLemma,
+      context_text: item.contextText,
+      captured_surface_forms: item.capturedSurfaceForms,
+      capture_count: item.captureCount,
+      first_captured_at: item.firstCapturedAt,
+      last_captured_at: item.lastCapturedAt,
+      preview: item.preview,
     }))
     .slice(0, Math.max(0, params.maxNewItems ?? Number.MAX_SAFE_INTEGER));
 
@@ -333,10 +361,7 @@ export async function generateVocabularyItemsFromCaptures(params: {
     const lexicalPool = itemsToGenerate.map((item) => item.item_text).filter(Boolean);
     const distractorBatchInputs = prepareDrillAssets
       ? itemsToGenerate.map((item) => {
-          const captureSource = uniqueItems.find(
-            (candidate) => normalizeKey(candidate.item_text) === normalizeKey(item.item_text)
-          );
-          const capturePreview = captureSource?.metadata?.preview ?? null;
+          const capturePreview = item.preview ?? null;
           const dictionaryEntry =
             dictionaryCacheMap.get(
               getDictionaryCacheKey({
@@ -378,14 +403,74 @@ export async function generateVocabularyItemsFromCaptures(params: {
     const distractorBatchMap = prepareDrillAssets
       ? await prepareVocabularyDistractorsBatch(distractorBatchInputs)
       : new Map<string, string[]>();
+    const answerSetBatchInputs = prepareDrillAssets
+      ? itemsToGenerate.map((item) => {
+          const existingItem =
+            existingItemsByKey.get(normalizeKey(item.canonical_lemma)) ?? null;
+          const capturePreview = item.preview ?? null;
+          const dictionaryEntry =
+            dictionaryCacheMap.get(
+              getDictionaryCacheKey({
+                itemText: item.item_text,
+                itemType: item.item_type,
+                translationLanguage: student.native_language || "ru",
+              })
+            ) ?? null;
+          const aiCard = generatedCards.find(
+            (candidate) => normalizeKey(candidate.item_text) === normalizeKey(item.item_text)
+          );
+          const englishExplanation =
+            aiCard?.english_explanation ??
+            capturePreview?.plainEnglishMeaning?.trim() ??
+            capturePreview?.contextMeaning?.trim() ??
+            `Meaning of "${item.item_text}"`;
+          const exampleText =
+            aiCard?.example_text ??
+            item.context_text ??
+            capturePreview?.contextMeaning?.trim() ??
+            `Example with "${item.item_text}".`;
+          const existingAnswerSets =
+            dictionaryEntry && hasReadyVocabularyDrillAnswerSets(dictionaryEntry.drillAnswerSets)
+              ? parseVocabularyDrillAnswerSets(dictionaryEntry.drillAnswerSets)
+              : parseVocabularyDrillAnswerSets(existingItem?.drill_answer_sets ?? {});
+
+          return {
+            itemText: item.item_text,
+            itemType: item.item_type as "word" | "phrase",
+            englishExplanation,
+            studentId: params.studentId,
+            translatedExplanation:
+              aiCard?.translated_explanation ??
+              capturePreview?.translation?.trim() ??
+              `Перевод: ${item.item_text}`,
+            contextSentence:
+              item.context_text ?? `Context with "${item.item_text}" was not captured yet.`,
+            exampleText,
+            existingAnswerSets,
+            meaningFallbackPool: meaningPool.filter(
+              (candidate) =>
+                candidate && normalizeKey(candidate) !== normalizeKey(englishExplanation)
+            ),
+            translationFallbackPool: translationPool.filter(
+              (candidate) =>
+                candidate &&
+                normalizeKey(candidate) !== normalizeKey(aiCard?.translated_explanation ?? "")
+            ),
+            lexicalFallbackPool: lexicalPool.filter(
+              (candidate) => normalizeKey(candidate) !== normalizeKey(item.item_text)
+            ),
+          };
+        })
+      : [];
+    const answerSetBatchMap = prepareDrillAssets
+      ? await prepareVocabularyDrillAnswerSetsBatch(answerSetBatchInputs)
+      : new Map<string, ReturnType<typeof parseVocabularyDrillAnswerSets>>();
     const rowsToInsert: Array<Record<string, unknown>> = [];
 
     for (const item of itemsToGenerate) {
-      const existingItem = existingItemsByKey.get(normalizeKey(item.item_text));
-      const captureSource = uniqueItems.find(
-        (candidate) => normalizeKey(candidate.item_text) === normalizeKey(item.item_text)
-      );
-      const capturePreview = captureSource?.metadata?.preview ?? null;
+      const existingItem =
+        existingItemsByKey.get(normalizeKey(item.canonical_lemma)) ?? null;
+      const capturePreview = item.preview ?? null;
       const dictionaryEntry =
         dictionaryCacheMap.get(
           getDictionaryCacheKey({
@@ -448,26 +533,13 @@ export async function generateVocabularyItemsFromCaptures(params: {
             }));
         }
 
-        drillAnswerSets = await prepareVocabularyDrillAnswerSets({
-          itemText: item.item_text,
-          itemType: item.item_type as "word" | "phrase",
-          englishExplanation,
-          studentId: params.studentId,
-          translatedExplanation: aiCard?.translated_explanation ?? null,
-          contextSentence,
-          exampleText,
-          meaningFallbackPool: meaningPool.filter(
-            (candidate) => candidate && normalizeKey(candidate) !== normalizeKey(englishExplanation)
-          ),
-          translationFallbackPool: translationPool.filter(
-            (candidate) =>
-              candidate &&
-              normalizeKey(candidate) !== normalizeKey(aiCard?.translated_explanation ?? "")
-          ),
-          lexicalFallbackPool: lexicalPool.filter(
-            (candidate) => normalizeKey(candidate) !== normalizeKey(item.item_text)
-          ),
-        });
+        drillAnswerSets =
+          answerSetBatchMap.get(
+            buildPreparedVocabularyDrillAnswerSetCacheKey({
+              itemText: item.item_text,
+              englishExplanation,
+            })
+          ) ?? drillAnswerSets;
       }
 
       if (prepareDrillAssets) {
@@ -492,8 +564,29 @@ export async function generateVocabularyItemsFromCaptures(params: {
       const nextRow = {
         student_id: params.studentId,
         lesson_id: params.lessonId,
-        item_text: item.item_text,
+        item_text: existingItem?.item_text ?? item.item_text,
         item_type: item.item_type,
+        canonical_lemma: item.canonical_lemma,
+        captured_surface_forms: mergeVocabularySurfaceForms(
+          existingItem?.captured_surface_forms ?? [],
+          item.captured_surface_forms
+        ),
+        capture_count: Math.max(
+          Number(existingItem?.capture_count ?? 0),
+          Number(item.capture_count ?? 0)
+        ),
+        first_captured_at:
+          existingItem?.first_captured_at && item.first_captured_at
+            ? existingItem.first_captured_at < item.first_captured_at
+              ? existingItem.first_captured_at
+              : item.first_captured_at
+            : existingItem?.first_captured_at ?? item.first_captured_at ?? null,
+        last_captured_at:
+          existingItem?.last_captured_at && item.last_captured_at
+            ? existingItem.last_captured_at > item.last_captured_at
+              ? existingItem.last_captured_at
+              : item.last_captured_at
+            : existingItem?.last_captured_at ?? item.last_captured_at ?? null,
         english_explanation: englishExplanation,
         translated_explanation:
           aiCard?.translated_explanation ??
@@ -613,6 +706,43 @@ export async function prepareVocabularyDrillsForStudent(params: {
       ),
     }));
   const distractorBatchMap = await prepareVocabularyDistractorsBatch(distractorBatchInputs);
+  const answerSetBatchInputs = items
+    .filter((item) => item.item_text && item.english_explanation)
+    .map((item) => {
+      const dictionaryEntry =
+        dictionaryCacheMap.get(
+          getDictionaryCacheKey({
+            itemText: item.item_text,
+            itemType: item.item_type,
+            translationLanguage,
+          })
+        ) ?? null;
+
+      return {
+        itemText: item.item_text,
+        itemType: (item.item_type ?? "word") as "word" | "phrase",
+        englishExplanation: item.english_explanation as string,
+        studentId: params.studentId,
+        translatedExplanation: item.translated_explanation ?? null,
+        contextSentence: item.context_sentence ?? null,
+        exampleText: item.example_text ?? null,
+        existingAnswerSets:
+          dictionaryEntry && hasReadyVocabularyDrillAnswerSets(dictionaryEntry.drillAnswerSets)
+            ? parseVocabularyDrillAnswerSets(dictionaryEntry.drillAnswerSets)
+            : parseVocabularyDrillAnswerSets(item.drill_answer_sets),
+        meaningFallbackPool: meaningPool.filter(
+          (candidate) => normalizeKey(candidate) !== normalizeKey(item.english_explanation ?? "")
+        ),
+        translationFallbackPool: translationPool.filter(
+          (candidate) =>
+            normalizeKey(candidate) !== normalizeKey(item.translated_explanation ?? "")
+        ),
+        lexicalFallbackPool: lexicalPool.filter(
+          (candidate) => normalizeKey(candidate) !== normalizeKey(item.item_text)
+        ),
+      };
+    });
+  const answerSetBatchMap = await prepareVocabularyDrillAnswerSetsBatch(answerSetBatchInputs);
 
   let preparedCount = 0;
 
@@ -666,26 +796,13 @@ export async function prepareVocabularyDrillsForStudent(params: {
     }
 
     if (!hasReadyVocabularyDrillAnswerSets(drillAnswerSets)) {
-      drillAnswerSets = await prepareVocabularyDrillAnswerSets({
-      itemText: item.item_text,
-      itemType: (item.item_type ?? "word") as "word" | "phrase",
-      englishExplanation: item.english_explanation,
-      studentId: params.studentId,
-      translatedExplanation: item.translated_explanation ?? null,
-      contextSentence: item.context_sentence ?? null,
-      exampleText: item.example_text ?? null,
-      existingAnswerSets: parseVocabularyDrillAnswerSets(item.drill_answer_sets),
-      meaningFallbackPool: meaningPool.filter(
-        (candidate) => normalizeKey(candidate) !== normalizeKey(item.english_explanation ?? "")
-      ),
-      translationFallbackPool: translationPool.filter(
-        (candidate) =>
-          normalizeKey(candidate) !== normalizeKey(item.translated_explanation ?? "")
-      ),
-      lexicalFallbackPool: lexicalPool.filter(
-        (candidate) => normalizeKey(candidate) !== normalizeKey(item.item_text)
-      ),
-      });
+      drillAnswerSets =
+        answerSetBatchMap.get(
+          buildPreparedVocabularyDrillAnswerSetCacheKey({
+            itemText: item.item_text,
+            englishExplanation: item.english_explanation,
+          })
+        ) ?? drillAnswerSets;
     }
 
     await upsertVocabularyDictionaryCacheEntries([

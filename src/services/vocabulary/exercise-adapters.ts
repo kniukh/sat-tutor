@@ -14,6 +14,7 @@ import type {
   VocabularyDrillAnswerSetKey,
   VocabularyDrillAnswerSetMap,
   VocabularyDrillAnswerNormalization,
+  VocabularyDrillAnswerSetMeta,
 } from "@/types/vocabulary-answer-sets";
 
 export type MeaningDrillItem = {
@@ -104,6 +105,119 @@ function getTranslatedMeaning(item: MeaningDrillItem | ClozeDrillItem) {
   return item.translatedExplanation?.trim() ?? null;
 }
 
+function normalizeTranslationLabel(text: string) {
+  return text
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/^[`"'“”«»„]+/, "")
+    .replace(/[`"'“”«»„]+$/g, "");
+}
+
+function getExpectedTranslationScript(item: MeaningDrillItem | ClozeDrillItem) {
+  const language = item.translationLanguage?.trim().toLowerCase() ?? "";
+
+  if (
+    language === "ru" ||
+    language.startsWith("ru-") ||
+    language === "uk" ||
+    language.startsWith("uk-") ||
+    language === "bg" ||
+    language.startsWith("bg-") ||
+    language === "mk" ||
+    language.startsWith("mk-")
+  ) {
+    return "cyrillic" as const;
+  }
+
+  return null;
+}
+
+function scoreNativeTranslationCandidate(
+  candidate: string | null | undefined,
+  item: MeaningDrillItem | ClozeDrillItem
+) {
+  const normalized = normalizeTranslationLabel(candidate ?? "");
+  if (!normalized) {
+    return null;
+  }
+
+  const normalizedCandidate = normalizePairSideText(normalized);
+  const normalizedWord = normalizePairSideText(item.itemText);
+  const normalizedMeaning = normalizePairSideText(getPlainMeaning(item));
+
+  if (
+    !normalizedCandidate ||
+    normalizedCandidate === normalizedWord ||
+    normalizedCandidate === normalizedMeaning
+  ) {
+    return null;
+  }
+
+  const tokenCount = countTokens(normalized);
+  if (tokenCount > 8) {
+    return null;
+  }
+
+  const expectedScript = getExpectedTranslationScript(item);
+  const actualScript = inferScriptProfile(normalized);
+  let score = 0;
+
+  if (tokenCount <= 4) {
+    score += 4;
+  } else if (tokenCount <= 6) {
+    score += 2;
+  }
+
+  if (/[A-Za-zА-Яа-яЁё]/.test(normalized)) {
+    score += 2;
+  }
+
+  if (expectedScript) {
+    if (actualScript === expectedScript) {
+      score += 10;
+    } else if (actualScript === "latin") {
+      score -= 8;
+    } else if (actualScript !== "other") {
+      score -= 4;
+    }
+  } else if (actualScript !== "other") {
+    score += 1;
+  }
+
+  if (/^[\W_]+$/.test(normalized)) {
+    return null;
+  }
+
+  if (/[{}[\]|<>]/.test(normalized)) {
+    score -= 8;
+  }
+
+  return {
+    value: normalized,
+    score,
+  };
+}
+
+function getStoredNativeTranslation(item: MeaningDrillItem | ClozeDrillItem) {
+  const value = getStoredAnswerSet(item, "translation_english_to_native")?.drill_correct_answer;
+  return value ? normalizeTranslationLabel(value) : null;
+}
+
+function getPreferredNativeTranslation(item: MeaningDrillItem | ClozeDrillItem) {
+  const candidates = [
+    scoreNativeTranslationCandidate(getStoredNativeTranslation(item), item),
+    scoreNativeTranslationCandidate(getTranslatedMeaning(item), item),
+  ]
+    .filter((candidate): candidate is { value: string; score: number } => Boolean(candidate))
+    .sort((left, right) => right.score - left.score);
+
+  return candidates[0]?.value ?? null;
+}
+
+function hasUsableNativeTranslation(item: MeaningDrillItem | ClozeDrillItem) {
+  return Boolean(getPreferredNativeTranslation(item));
+}
+
 function getSourceSentence(item: MeaningDrillItem | ClozeDrillItem) {
   return item.contextSentence || item.exampleText || "";
 }
@@ -165,6 +279,63 @@ function normalizeSentence(text: string) {
   return text.trim().replace(/\s+/g, " ");
 }
 
+function isUsableGeneratedPracticeSentence(
+  sentence: string | null | undefined,
+  itemText: string
+) {
+  const normalized = normalizeSentence(sentence ?? "");
+
+  if (!normalized) {
+    return false;
+  }
+
+  if (
+    normalized.startsWith('Context with "') ||
+    normalized.startsWith('Example with "') ||
+    normalized.startsWith('Meaning of "')
+  ) {
+    return false;
+  }
+
+  if (countTokens(normalized) < 5 || normalized.length < 24) {
+    return false;
+  }
+
+  if (!/[.!?]$/.test(normalized)) {
+    return false;
+  }
+
+  return new RegExp(`\\b${escapeRegExp(itemText)}\\b`, "i").test(normalized);
+}
+
+function getAiBackedPracticeSentence(item: MeaningDrillItem | ClozeDrillItem) {
+  return isUsableGeneratedPracticeSentence(item.exampleText, item.itemText)
+    ? normalizeSentence(item.exampleText)
+    : null;
+}
+
+function getStoredPracticeExampleSentence(item: MeaningDrillItem | ClozeDrillItem) {
+  return getStoredAnswerSetMeta(item)?.practice_example_sentence?.trim() || null;
+}
+
+function getPreferredPracticeSentence(item: MeaningDrillItem | ClozeDrillItem) {
+  const storedPracticeSentence = getStoredPracticeExampleSentence(item);
+
+  if (isUsableGeneratedPracticeSentence(storedPracticeSentence, item.itemText)) {
+    return {
+      sentence: normalizeSentence(storedPracticeSentence),
+      source: "stored_practice_example" as const,
+    };
+  }
+
+  const aiSentence = getAiBackedPracticeSentence(item);
+
+  return {
+    sentence: aiSentence,
+    source: aiSentence ? ("ai_example_text" as const) : ("none" as const),
+  };
+}
+
 function shuffleBySeed<T>(items: T[], seedText: string) {
   const copy = [...items];
   let seed = 0;
@@ -206,6 +377,40 @@ function getStoredAnswerSet(
   return item.answerSets?.[drillType] ?? null;
 }
 
+function getStoredAnswerSetMeta(item: MeaningDrillItem | ClozeDrillItem) {
+  const meta = item.answerSets?.__meta__;
+
+  if (!meta || typeof meta !== "object") {
+    return null;
+  }
+
+  return meta as VocabularyDrillAnswerSetMeta;
+}
+
+function getRefinedDefinition(item: MeaningDrillItem | ClozeDrillItem) {
+  return getStoredAnswerSetMeta(item)?.refined_definition?.trim() || null;
+}
+
+function getContextExplanation(item: MeaningDrillItem | ClozeDrillItem) {
+  return getStoredAnswerSetMeta(item)?.context_explanation?.trim() || null;
+}
+
+function getSynonymCandidates(item: MeaningDrillItem | ClozeDrillItem) {
+  return uniqueNonEmpty(getStoredAnswerSetMeta(item)?.synonym_candidates ?? []);
+}
+
+function getAntonymCandidates(item: MeaningDrillItem | ClozeDrillItem) {
+  return uniqueNonEmpty(getStoredAnswerSetMeta(item)?.antonym_candidates ?? []);
+}
+
+function hasDistinctVariantText(primary: string, candidate: string | null | undefined) {
+  if (!candidate) {
+    return false;
+  }
+
+  return candidate.trim().toLowerCase() !== primary.trim().toLowerCase();
+}
+
 function buildStoredAnswerSetOptions(
   answerSet: VocabularyDrillAnswerSet,
   optionPrefix: string
@@ -214,6 +419,32 @@ function buildStoredAnswerSetOptions(
     { id: "correct", label: answerSet.drill_correct_answer },
     ...uniqueNonEmpty(answerSet.distractors ?? []).slice(0, 3).map((label, index) => ({
       id: `${optionPrefix}-${index}`,
+      label,
+    })),
+  ]);
+}
+
+function buildRankedOptions(params: {
+  correctAnswer: string;
+  optionPrefix: string;
+  storedAnswerSet?: VocabularyDrillAnswerSet | null;
+  poolCandidates: Array<string | null | undefined>;
+  fallbackCandidates?: Array<string | null | undefined>;
+}) {
+  const rankedCandidates = rankCandidatesByNormalization(
+    params.correctAnswer,
+    [
+      ...(params.storedAnswerSet?.distractors ?? []),
+      ...params.poolCandidates,
+      ...(params.fallbackCandidates ?? []),
+    ],
+    params.storedAnswerSet?.normalization ?? null
+  );
+
+  return shuffle([
+    { id: "correct", label: params.correctAnswer },
+    ...rankedCandidates.slice(0, 3).map((label, index) => ({
+      id: `${params.optionPrefix}-${index}`,
       label,
     })),
   ]);
@@ -330,6 +561,20 @@ function rankCandidatesByNormalization(
     .map((entry) => entry.candidate);
 }
 
+function getDefinitionCandidatePool(
+  item: MeaningDrillItem | ClozeDrillItem,
+  allItems: Array<MeaningDrillItem | ClozeDrillItem>
+) {
+  return allItems
+    .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
+    .flatMap((candidate) => [
+      getRefinedDefinition(candidate),
+      getStoredAnswerSet(candidate, "context_meaning")?.drill_correct_answer,
+      getPlainMeaning(candidate),
+      ...(candidate.distractors ?? []),
+    ]);
+}
+
 function buildListenAnswerOptions(params: {
   correctAnswer: string;
   storedAnswerSet?: VocabularyDrillAnswerSet | null;
@@ -373,6 +618,37 @@ function getMeaningCandidatePool(
     ]);
 }
 
+function getSynonymCandidatePool(
+  item: MeaningDrillItem | ClozeDrillItem,
+  allItems: Array<MeaningDrillItem | ClozeDrillItem>
+) {
+  return allItems
+    .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
+    .flatMap((candidate) => [
+      candidate.itemText,
+      getStoredAnswerSet(candidate, "synonym")?.drill_correct_answer,
+      ...getSynonymCandidates(candidate),
+      ...getAntonymCandidates(candidate),
+    ]);
+}
+
+function getAntonymDistractorPool(
+  item: MeaningDrillItem | ClozeDrillItem,
+  allItems: Array<MeaningDrillItem | ClozeDrillItem>
+) {
+  return [
+    ...getSynonymCandidates(item),
+    getStoredAnswerSet(item, "synonym")?.drill_correct_answer,
+    ...allItems
+      .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
+      .flatMap((candidate) => [
+        candidate.itemText,
+        ...getAntonymCandidates(candidate),
+        ...getSynonymCandidates(candidate),
+      ]),
+  ];
+}
+
 function getTranslationCandidatePool(
   item: MeaningDrillItem | ClozeDrillItem,
   allItems: Array<MeaningDrillItem | ClozeDrillItem>
@@ -381,8 +657,67 @@ function getTranslationCandidatePool(
     .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
     .flatMap((candidate) => [
       getStoredAnswerSet(candidate, "translation_english_to_native")?.drill_correct_answer,
-      getTranslatedMeaning(candidate),
+      getPreferredNativeTranslation(candidate),
     ]);
+}
+
+function getFillBlankCandidatePool(
+  item: MeaningDrillItem | ClozeDrillItem,
+  allItems: Array<MeaningDrillItem | ClozeDrillItem>
+) {
+  return [
+    ...getLexicalDistractorCandidates(item, allItems),
+    ...allItems
+      .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
+      .flatMap((candidate) => [
+        candidate.itemText,
+        getStoredAnswerSet(candidate, "collocation")?.drill_correct_answer,
+        ...(getStoredAnswerSet(candidate, "collocation")?.distractors ?? []),
+      ]),
+  ];
+}
+
+function getListenPairRightLabel(
+  item: MeaningDrillItem | ClozeDrillItem,
+  variant: "english" | "meaning" | "translation"
+) {
+  if (variant === "translation") {
+    return getPreferredNativeTranslation(item) ?? getPlainMeaning(item);
+  }
+
+  if (variant === "english") {
+    return item.itemText;
+  }
+
+  return getPlainMeaning(item);
+}
+
+function dedupeListenPairItems(
+  items: Array<MeaningDrillItem | ClozeDrillItem>,
+  variant: "english" | "meaning" | "translation"
+) {
+  const seenWord = new Set<string>();
+  const seenRight = new Set<string>();
+  const deduped: Array<MeaningDrillItem | ClozeDrillItem> = [];
+
+  for (const item of items) {
+    const normalizedWord = normalizePairSideText(item.itemText);
+    const normalizedRight = normalizePairSideText(getListenPairRightLabel(item, variant));
+
+    if (!normalizedWord || !normalizedRight) {
+      continue;
+    }
+
+    if (seenWord.has(normalizedWord) || seenRight.has(normalizedRight)) {
+      continue;
+    }
+
+    seenWord.add(normalizedWord);
+    seenRight.add(normalizedRight);
+    deduped.push(item);
+  }
+
+  return deduped;
 }
 
 function buildTranslationOptions(
@@ -390,16 +725,17 @@ function buildTranslationOptions(
   allItems: Array<MeaningDrillItem | ClozeDrillItem>,
   optionPrefix: string
 ) {
+  const correctTranslation = getPreferredNativeTranslation(item) ?? getPlainMeaning(item);
   const translatedDistractors = uniqueNonEmpty(
     allItems
       .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
-      .map((candidate) => getTranslatedMeaning(candidate))
+      .map((candidate) => getPreferredNativeTranslation(candidate))
   )
-    .filter((candidate) => candidate.toLowerCase() !== (getTranslatedMeaning(item) ?? "").toLowerCase())
+    .filter((candidate) => candidate.toLowerCase() !== correctTranslation.toLowerCase())
     .slice(0, 3);
 
   return shuffle([
-    { id: "correct", label: getTranslatedMeaning(item) ?? getPlainMeaning(item) },
+    { id: "correct", label: correctTranslation },
     ...translatedDistractors.map((label, index) => ({
       id: `${optionPrefix}-${index}`,
       label,
@@ -489,6 +825,35 @@ type PairMatchEntry = {
   right: string;
 };
 
+function normalizePairSideText(text: string) {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function dedupePairEntries(entries: PairMatchEntry[]) {
+  const seenLeft = new Set<string>();
+  const seenRight = new Set<string>();
+  const deduped: PairMatchEntry[] = [];
+
+  for (const entry of entries) {
+    const normalizedLeft = normalizePairSideText(entry.left);
+    const normalizedRight = normalizePairSideText(entry.right);
+
+    if (!normalizedLeft || !normalizedRight) {
+      continue;
+    }
+
+    if (seenLeft.has(normalizedLeft) || seenRight.has(normalizedRight)) {
+      continue;
+    }
+
+    seenLeft.add(normalizedLeft);
+    seenRight.add(normalizedRight);
+    deduped.push(entry);
+  }
+
+  return deduped;
+}
+
 function buildPairMatchExercise(params: {
   id: string;
   pairEntries: PairMatchEntry[];
@@ -503,12 +868,17 @@ function buildPairMatchExercise(params: {
   difficultyBand: PairMatchVocabExercise["difficulty_band"];
   tags: string[];
 }): PairMatchVocabExercise | null {
-  const anchorItem = params.pairEntries[0]?.item;
+  const pairEntries = dedupePairEntries(params.pairEntries);
+  const anchorItem = pairEntries[0]?.item;
   if (!anchorItem) {
     return null;
   }
 
-  const pairRecords = params.pairEntries.map((entry, index) => ({
+  if (pairEntries.length < 4) {
+    return null;
+  }
+
+  const pairRecords = pairEntries.map((entry, index) => ({
     id: `pair-${index + 1}`,
     left: entry.left,
     right: entry.right,
@@ -530,9 +900,9 @@ function buildPairMatchExercise(params: {
     `${params.id}:right`
   );
   const pairWordIds = uniqueNonEmpty(
-    params.pairEntries.map((entry) => entry.item.vocabularyItemId)
+    pairEntries.map((entry) => entry.item.vocabularyItemId)
   );
-  const pairWords = uniqueNonEmpty(params.pairEntries.map((entry) => entry.item.itemText));
+  const pairWords = uniqueNonEmpty(pairEntries.map((entry) => entry.item.itemText));
 
   return {
     id: params.id,
@@ -578,25 +948,52 @@ function buildPairMatchExercise(params: {
 export function adaptMeaningDrillToExercise(
   item: MeaningDrillItem
 ): MeaningMatchVocabExercise {
+  return adaptMeaningDrillToExerciseWithPool(item, [item]);
+}
+
+function adaptMeaningDrillToExerciseWithPool(
+  item: MeaningDrillItem,
+  allItems: MeaningDrillItem[],
+  params?: {
+    definitionText?: string;
+    idSuffix?: string;
+    prompt?: string;
+    instructions?: string;
+    questionText?: string;
+    variant?: MeaningMatchVocabExercise["variant"];
+    difficultyBand?: MeaningMatchVocabExercise["difficulty_band"];
+  }
+): MeaningMatchVocabExercise {
+  const plainMeaning = params?.definitionText ?? getPlainMeaning(item);
   const questionText =
+    params?.questionText ??
     item.itemType === "phrase"
       ? `Which option best paraphrases "${item.itemText}"?`
       : `Which option best defines "${item.itemText}"?`;
-  const options = buildMeaningOptions(item, `distractor-${item.vocabularyItemId}`);
+  const options = buildRankedOptions({
+    correctAnswer: plainMeaning,
+    optionPrefix: `distractor-${item.vocabularyItemId}${params?.idSuffix ? `-${params.idSuffix}` : ""}`,
+    poolCandidates: getDefinitionCandidatePool(item, allItems),
+    fallbackCandidates: item.distractors,
+  });
   const metadata = {
     source_drill_id: item.wordProgressId,
     source_item_type: item.itemType,
+    definition_source:
+      params?.variant === "definition_variant_match" ? "refined_definition" : "stored_meaning",
+    context_explanation: getContextExplanation(item),
   };
-  const plainMeaning = getPlainMeaning(item);
 
   return {
-    id: `${item.wordProgressId}:meaning_match`,
+    id: `${item.wordProgressId}:meaning_match${params?.idSuffix ? `:${params.idSuffix}` : ""}`,
     type: "meaning_match",
     prompt:
+      params?.prompt ??
       item.itemType === "phrase"
         ? "Choose the best paraphrase."
         : "Choose the best meaning.",
     instructions:
+      params?.instructions ??
       item.itemType === "phrase"
         ? "Match the phrase to the closest paraphrase."
         : "Match the word to the closest meaning.",
@@ -614,15 +1011,20 @@ export function adaptMeaningDrillToExercise(
     acceptable_answers: ["correct"],
     acceptableAnswers: ["correct"],
     distractors: item.distractors,
-    explanation: `${buildExplanationPrefix(item.itemType)}: ${plainMeaning}`,
+    explanation:
+      params?.variant === "definition_variant_match"
+        ? `${buildExplanationPrefix(item.itemType)}: ${plainMeaning}.`
+        : `${buildExplanationPrefix(item.itemType)}: ${plainMeaning}`,
     modality: "text",
-    difficulty_band: "easy",
+    difficulty_band: params?.difficultyBand ?? "easy",
     metadata,
     tags: [item.itemType, "review"],
     skill: item.itemType === "phrase" ? "phrase_paraphrase" : "word_meaning",
     sourceLanguageLabel: "English",
     targetLanguageLabel: "Meaning",
-    variant: item.itemType === "phrase" ? "paraphrase_match" : "definition_match",
+    variant:
+      params?.variant ??
+      (item.itemType === "phrase" ? "paraphrase_match" : "definition_match"),
     reviewMeta: {
       sourceDrillId: item.wordProgressId,
       ...buildSourceReviewMeta(item),
@@ -633,17 +1035,39 @@ export function adaptMeaningDrillToExercise(
 export function adaptMeaningDrillsToExercises(
   items: MeaningDrillItem[]
 ): SupportedVocabExercise[] {
-  return items.flatMap((item) => [
-    adaptMeaningDrillToExercise(item),
-    ...adaptTranslationDrillToExercises(item, items),
-  ]);
+  return items.flatMap((item) => {
+    const refinedDefinition = getRefinedDefinition(item);
+    const definitionVariant = hasDistinctVariantText(getPlainMeaning(item), refinedDefinition)
+      ? adaptMeaningDrillToExerciseWithPool(item, items, {
+          definitionText: refinedDefinition ?? undefined,
+          idSuffix: "definition_variant",
+          prompt: "Choose the best definition.",
+          instructions:
+            item.itemType === "phrase"
+              ? "Choose the strongest alternate paraphrase for the phrase."
+              : "Choose the strongest alternate definition for the word.",
+          questionText:
+            item.itemType === "phrase"
+              ? `Which alternate paraphrase best matches "${item.itemText}"?`
+              : `Which alternate definition best matches "${item.itemText}"?`,
+          variant: item.itemType === "phrase" ? "paraphrase_match" : "definition_variant_match",
+          difficultyBand: "medium",
+        })
+      : null;
+
+    return [
+      adaptMeaningDrillToExerciseWithPool(item, items),
+      ...(definitionVariant ? [definitionVariant] : []),
+      ...adaptTranslationDrillToExercises(item, items),
+    ];
+  });
 }
 
 export function adaptTranslationDrillToExercises(
   item: MeaningDrillItem,
   allItems: MeaningDrillItem[]
 ): TranslationMatchVocabExercise[] {
-  const translatedMeaning = getTranslatedMeaning(item);
+  const translatedMeaning = getPreferredNativeTranslation(item);
   if (!translatedMeaning) {
     return [];
   }
@@ -761,18 +1185,21 @@ export function adaptPairMatchDrillsToExercises(
   items: Array<MeaningDrillItem | ClozeDrillItem>
 ): SupportedVocabExercise[] {
   const exercises: SupportedVocabExercise[] = [];
-  const definitionGroups = chunkItemsBalanced(items, 6, 8, 4);
+  const definitionEntries = dedupePairEntries(
+    items.map((item) => ({
+      item,
+      left: item.itemText,
+      right: getPlainMeaning(item),
+    }))
+  );
+  const definitionGroups = chunkItemsBalanced(definitionEntries, 6, 8, 4);
 
   exercises.push(
     ...definitionGroups
       .map((group, index) =>
         buildPairMatchExercise({
-          id: `${group[0]?.wordProgressId ?? index}:pair_match:word_definition:${index + 1}`,
-          pairEntries: group.map((item) => ({
-            item,
-            left: item.itemText,
-            right: getPlainMeaning(item),
-          })),
+          id: `${group[0]?.item.wordProgressId ?? index}:pair_match:word_definition:${index + 1}`,
+          pairEntries: group,
           prompt: "Match the pairs.",
           instructions: "Tap a word, then tap its matching meaning.",
           questionText: "Match each word to its meaning.",
@@ -788,23 +1215,23 @@ export function adaptPairMatchDrillsToExercises(
       .filter((exercise): exercise is PairMatchVocabExercise => Boolean(exercise))
   );
 
-  const translationGroups = chunkItemsBalanced(
-    items.filter((item) => Boolean(getTranslatedMeaning(item))),
-    6,
-    8,
-    4
+  const translationEntries = dedupePairEntries(
+    items
+      .filter((item) => hasUsableNativeTranslation(item))
+      .map((item) => ({
+        item,
+        left: item.itemText,
+        right: getPreferredNativeTranslation(item) ?? getPlainMeaning(item),
+      }))
   );
+  const translationGroups = chunkItemsBalanced(translationEntries, 6, 8, 4);
 
   exercises.push(
     ...translationGroups
       .map((group, index) =>
         buildPairMatchExercise({
-          id: `${group[0]?.wordProgressId ?? index}:pair_match:english_native:${index + 1}`,
-          pairEntries: group.map((item) => ({
-            item,
-            left: item.itemText,
-            right: getTranslatedMeaning(item) ?? getPlainMeaning(item),
-          })),
+          id: `${group[0]?.item.wordProgressId ?? index}:pair_match:english_native:${index + 1}`,
+          pairEntries: group,
           prompt: "Match the translations.",
           instructions: "Tap the English word, then tap its translation.",
           questionText: "Match each English word to its translation.",
@@ -812,7 +1239,7 @@ export function adaptPairMatchDrillsToExercises(
           variant: "english_native",
           leftColumnLabel: "English",
           rightColumnLabel:
-            translationGroups[index]?.[0]?.translationLanguage?.toUpperCase() ?? "Native",
+            translationGroups[index]?.[0]?.item.translationLanguage?.toUpperCase() ?? "Native",
           modality: "text",
           difficultyBand: "easy",
           tags: ["pair_match", "translation", "english_native"],
@@ -835,15 +1262,23 @@ export function adaptClozeDrillToExerciseWithPool(
   const questionText = "Which option best completes the sentence?";
   const sentenceText = makeBlank(item.contextSentence, item.itemText);
   const answerSet = getStoredAnswerSet(item, "collocation");
-  const options = answerSet
-    ? buildStoredAnswerSetOptions(answerSet, `fill-blank-${item.wordProgressId}`)
-    : buildLexicalOptions(item, allItems, `fill-blank-${item.wordProgressId}`);
   const drillCorrectAnswer = answerSet?.drill_correct_answer ?? item.itemText;
+  const options = answerSet
+    ? buildRankedOptions({
+        correctAnswer: drillCorrectAnswer,
+        optionPrefix: `fill-blank-${item.wordProgressId}`,
+        storedAnswerSet: answerSet,
+        poolCandidates: getFillBlankCandidatePool(item, allItems),
+        fallbackCandidates: item.distractors,
+      })
+    : buildLexicalOptions(item, allItems, `fill-blank-${item.wordProgressId}`);
   const plainMeaning = getPlainMeaning(item);
   const metadata = {
     source_drill_id: item.wordProgressId,
     source_item_type: item.itemType,
     source_context_sentence: item.contextSentence,
+    distractor_source:
+      answerSet && allItems.length > 1 ? "stored_plus_captured_pool" : "captured_pool",
   };
 
   return {
@@ -1040,20 +1475,20 @@ function buildListenPairMatchExercise(params: {
   variant: "english" | "meaning" | "translation";
   rightColumnLabel: string;
 }): SupportedVocabExercise | null {
-  const anchorItem = params.items[0];
+  const uniqueItems = dedupeListenPairItems(params.items, params.variant);
+  const anchorItem = uniqueItems[0];
   if (!anchorItem) {
     return null;
   }
 
-  const pairRecords = params.items.map((item, index) => ({
+  if (uniqueItems.length < 4) {
+    return null;
+  }
+
+  const pairRecords = uniqueItems.map((item, index) => ({
     id: `pair-${index + 1}`,
-    left: `Audio ${index + 1}`,
-    right:
-      params.variant === "translation"
-        ? getTranslatedMeaning(item) ?? getPlainMeaning(item)
-        : params.variant === "english"
-          ? item.itemText
-        : getPlainMeaning(item),
+    left: item.itemText,
+    right: getListenPairRightLabel(item, params.variant),
     left_id: `left-${index + 1}`,
     right_id: `right-${index + 1}`,
     left_audio_url: item.audioUrl ?? null,
@@ -1136,8 +1571,8 @@ function buildListenPairMatchExercise(params: {
     rightColumnLabel: params.rightColumnLabel,
     metadata: {
       source_drill_id: anchorItem.wordProgressId,
-      pair_target_word_ids: uniqueNonEmpty(params.items.map((item) => item.vocabularyItemId)),
-      pair_target_words: uniqueNonEmpty(params.items.map((item) => item.itemText)),
+      pair_target_word_ids: uniqueNonEmpty(uniqueItems.map((item) => item.vocabularyItemId)),
+      pair_target_words: uniqueNonEmpty(uniqueItems.map((item) => item.itemText)),
       pair_count: pairRecords.length,
       listen_variant:
         params.variant === "translation"
@@ -1170,10 +1605,23 @@ export function adaptListenMatchDrillsToExercises(
   const audioReadyItems = items.filter(
     (item) => Boolean(item.audioUrl) && item.audioStatus !== "failed" && item.audioStatus !== "missing"
   );
-  const englishGroups = chunkItemsBalanced(audioReadyItems, 8, 10, 4);
-  const meaningGroups = chunkItemsBalanced(audioReadyItems, 8, 10, 4);
+  const englishGroups = chunkItemsBalanced(
+    dedupeListenPairItems(audioReadyItems, "english"),
+    8,
+    10,
+    4
+  );
+  const meaningGroups = chunkItemsBalanced(
+    dedupeListenPairItems(audioReadyItems, "meaning"),
+    8,
+    10,
+    4
+  );
   const translationGroups = chunkItemsBalanced(
-    audioReadyItems.filter((item) => Boolean(getTranslatedMeaning(item))),
+    dedupeListenPairItems(
+      audioReadyItems.filter((item) => Boolean(getTranslatedMeaning(item))),
+      "translation"
+    ),
     8,
     10,
     4
@@ -1224,6 +1672,7 @@ export function adaptSpellingFromAudioDrillToExercise(
 ): SupportedVocabExercise {
   const sourceSentence = getSourceSentence(item);
   const plainMeaning = getPlainMeaning(item);
+  const translatedMeaning = getPreferredNativeTranslation(item);
 
   return {
     id: `${item.wordProgressId}:spelling_from_audio`,
@@ -1259,6 +1708,9 @@ export function adaptSpellingFromAudioDrillToExercise(
     skill: "spelling_from_audio",
     placeholder: "Type what you heard",
     inputLabel: "Spell the word",
+    translation_text: translatedMeaning,
+    translationText: translatedMeaning,
+    translationLanguageLabel: item.translationLanguage ?? null,
     audio_url: item.audioUrl ?? null,
     audioUrl: item.audioUrl ?? null,
     audio_status: item.audioStatus ?? (item.audioUrl ? "ready" : "missing"),
@@ -1458,7 +1910,8 @@ export function adaptErrorDetectionDrillsToExercises(
 export function adaptContextMeaningDrillToExercise(
   item: MeaningDrillItem | ClozeDrillItem
 ): SupportedVocabExercise | null {
-  const contextText = getSourceSentence(item);
+  const preferredPracticeSentence = getPreferredPracticeSentence(item);
+  const contextText = preferredPracticeSentence.sentence || getSourceSentence(item);
   if (!contextText) {
     return null;
   }
@@ -1505,6 +1958,10 @@ export function adaptContextMeaningDrillToExercise(
       source_drill_id: item.wordProgressId,
       source_item_type: item.itemType,
       source_context_sentence: contextText,
+      prompt_sentence_source:
+        preferredPracticeSentence.source !== "none"
+          ? preferredPracticeSentence.source
+          : "source_context",
     },
     tags: [item.itemType, "context", "inference"],
     skill: "context_meaning",
@@ -1525,24 +1982,68 @@ export function adaptContextMeaningDrillsToExercises(
 }
 
 export function adaptSynonymDrillToExercise(
-  item: MeaningDrillItem | ClozeDrillItem
+  item: MeaningDrillItem | ClozeDrillItem,
+  allItems: Array<MeaningDrillItem | ClozeDrillItem>,
+  variant: SynonymVocabExercise["variant"] = "synonym"
 ): SynonymVocabExercise {
   const answerSet = getStoredAnswerSet(item, "synonym");
-  const questionText =
-    item.itemType === "phrase"
-      ? `Which option is the closest substitute for "${item.itemText}"?`
-      : `Which option is the closest synonym or substitute for "${item.itemText}"?`;
-  const sentenceText = getSourceSentence(item) || null;
-  const plainMeaning = answerSet?.drill_correct_answer ?? getPlainMeaning(item);
+  const synonymCandidates = getSynonymCandidates(item);
+  const antonymCandidates = getAntonymCandidates(item);
+  const correctAnswer =
+    variant === "antonym"
+      ? antonymCandidates[0] ?? null
+      : synonymCandidates[0] ?? answerSet?.drill_correct_answer ?? null;
+  const optionPool =
+    variant === "antonym"
+      ? getAntonymDistractorPool(item, allItems)
+      : [
+          ...getSynonymCandidatePool(item, allItems),
+          ...synonymCandidates,
+          answerSet?.drill_correct_answer,
+        ];
+  const resolvedCorrectAnswer =
+    correctAnswer ?? answerSet?.drill_correct_answer ?? getPlainMeaning(item);
+  const preferredPracticeSentence = getPreferredPracticeSentence(item);
+  const sentenceText = preferredPracticeSentence.sentence;
+  const questionText = sentenceText
+    ? variant === "antonym"
+      ? item.itemType === "phrase"
+        ? `Which option is the best opposite of "${item.itemText}" in the sentence?`
+        : `Which option is the best antonym for "${item.itemText}" in the sentence?`
+      : item.itemType === "phrase"
+        ? `Which option best replaces "${item.itemText}" in the sentence?`
+        : `Which option could best replace "${item.itemText}" in the sentence?`
+    : variant === "antonym"
+      ? item.itemType === "phrase"
+        ? `Which option is the best opposite of "${item.itemText}"?`
+        : `Which option is the best antonym for "${item.itemText}"?`
+      : item.itemType === "phrase"
+        ? `Which option is the closest substitute for "${item.itemText}"?`
+        : `Which option is the closest synonym or substitute for "${item.itemText}"?`;
+  const options = buildRankedOptions({
+    correctAnswer: resolvedCorrectAnswer,
+    optionPrefix: `${variant}-${item.wordProgressId}`,
+    storedAnswerSet: variant === "synonym" ? answerSet : null,
+    poolCandidates: optionPool,
+    fallbackCandidates:
+      variant === "antonym"
+        ? [...synonymCandidates, ...item.distractors]
+        : [...item.distractors, ...getMeaningCandidatePool(item, allItems)],
+  });
 
   return {
-    id: `${item.wordProgressId}:synonym`,
+    id: `${item.wordProgressId}:synonym${variant === "antonym" ? ":antonym" : ""}`,
     type: "synonym",
-    prompt: "Choose the closest substitute.",
+    prompt:
+      variant === "antonym" ? "Choose the opposite meaning." : "Choose the closest substitute.",
     instructions:
-      item.itemType === "phrase"
-        ? "Pick the option that could replace the phrase without changing the meaning too much."
-        : "Pick the option with the closest meaning or best substitute.",
+      variant === "antonym"
+        ? item.itemType === "phrase"
+          ? "Pick the option with the opposite meaning from the phrase."
+          : "Pick the option with the clearest opposite meaning."
+        : item.itemType === "phrase"
+          ? "Pick the option that could replace the phrase without changing the meaning too much."
+          : "Pick the option with the closest meaning or best substitute.",
     target_word: item.itemText,
     target_word_id: item.vocabularyItemId,
     targetWord: item.itemText,
@@ -1551,29 +2052,46 @@ export function adaptSynonymDrillToExercise(
     questionText,
     sentence_text: sentenceText,
     sentenceText: sentenceText,
-    options: answerSet
-      ? buildStoredAnswerSetOptions(answerSet, `synonym-${item.wordProgressId}`)
-      : buildMeaningOptions(item, `synonym-${item.wordProgressId}`),
+    options,
     correct_answer: "correct",
     correctAnswer: "correct",
-    drill_correct_answer: plainMeaning,
-    drillCorrectAnswer: plainMeaning,
+    drill_correct_answer: resolvedCorrectAnswer,
+    drillCorrectAnswer: resolvedCorrectAnswer,
     acceptable_answers: ["correct"],
     acceptableAnswers: ["correct"],
-    distractors: answerSet?.distractors ?? item.distractors,
-    explanation: `Closest substitute meaning: ${plainMeaning}`,
+    distractors:
+      variant === "antonym"
+        ? uniqueNonEmpty([...synonymCandidates, ...item.distractors]).slice(0, 4)
+        : uniqueNonEmpty([...(answerSet?.distractors ?? []), ...item.distractors]).slice(0, 4),
+    explanation:
+      variant === "antonym"
+        ? `The best antonym is "${resolvedCorrectAnswer}".`
+        : `Closest substitute meaning: ${resolvedCorrectAnswer}`,
     modality: "text",
     difficulty_band: "hard",
     metadata: {
       source_drill_id: item.wordProgressId,
       source_item_type: item.itemType,
       source_sentence: sentenceText,
+      prompt_sentence_source: preferredPracticeSentence.source,
+      candidate_pool_source:
+        variant === "antonym"
+          ? "stored_antonyms_plus_captured_pool"
+          : "stored_synonyms_plus_captured_pool",
     },
-    tags: [item.itemType, "substitution", "meaning"],
+    tags:
+      variant === "antonym"
+        ? [item.itemType, "substitution", "opposites", "antonym"]
+        : [item.itemType, "substitution", "meaning", "synonym"],
     skill: "synonym",
     answerSet: answerSet ?? undefined,
-    promptStyle: item.itemType === "phrase" ? "closest_meaning" : "best_synonym",
-    variant: "synonym",
+    promptStyle:
+      variant === "antonym"
+        ? "best_antonym"
+        : item.itemType === "phrase"
+          ? "closest_meaning"
+          : "best_synonym",
+    variant,
     reviewMeta: {
       sourceDrillId: item.wordProgressId,
       ...buildSourceReviewMeta(item),
@@ -1584,7 +2102,16 @@ export function adaptSynonymDrillToExercise(
 export function adaptSynonymDrillsToExercises(
   items: Array<MeaningDrillItem | ClozeDrillItem>
 ): SupportedVocabExercise[] {
-  return items.map(adaptSynonymDrillToExercise);
+  return items.flatMap((item) => {
+    const antonymCandidates = getAntonymCandidates(item);
+
+    return [
+      adaptSynonymDrillToExercise(item, items, "synonym"),
+      ...(antonymCandidates.length > 0
+        ? [adaptSynonymDrillToExercise(item, items, "antonym")]
+        : []),
+    ];
+  });
 }
 
 export function adaptCollocationDrillToExercise(

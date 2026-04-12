@@ -1,4 +1,4 @@
-import { generateVocabularyDrillAnswerSets } from "@/services/ai/generate-vocabulary-drill-answer-sets";
+import { generateVocabularyDrillAnswerSetsBatch } from "@/services/ai/generate-vocabulary-drill-answer-sets";
 import type {
   VocabularyAnswerDifficultyBand,
   VocabularyAnswerPartOfSpeech,
@@ -7,9 +7,10 @@ import type {
   VocabularyDrillAnswerSet,
   VocabularyDrillAnswerSetKey,
   VocabularyDrillAnswerSetMap,
+  VocabularyDrillAnswerSetMeta,
 } from "@/types/vocabulary-answer-sets";
 
-type PrepareVocabularyDrillAnswerSetsInput = {
+export type PrepareVocabularyDrillAnswerSetsInput = {
   itemText: string;
   itemType: "word" | "phrase";
   englishExplanation: string;
@@ -90,6 +91,17 @@ const DRILL_ANSWER_SET_KEYS: VocabularyDrillAnswerSetKey[] = [
   "context_meaning",
   "collocation",
 ];
+const MAX_AI_ANSWER_SET_BATCH_SIZE = 8;
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
+  return chunks;
+}
 
 function normalizeWhitespace(text: string) {
   return text.replace(/\s+/g, " ").trim();
@@ -113,6 +125,136 @@ function normalizeForCompare(text: string) {
   return normalizeWhitespace(text)
     .replace(/[.!?;:,]+$/g, "")
     .toLowerCase();
+}
+
+function sanitizeMetaCandidateList(value: unknown, limit: number) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const deduped = new Map<string, string>();
+
+  for (const candidate of value) {
+    if (typeof candidate !== "string") {
+      continue;
+    }
+
+    const normalized = normalizeOptionStyle(candidate, candidate);
+    const compareKey = normalizeForCompare(normalized);
+
+    if (!normalized || !compareKey || deduped.has(compareKey)) {
+      continue;
+    }
+
+    deduped.set(compareKey, normalized);
+  }
+
+  return Array.from(deduped.values()).slice(0, limit);
+}
+
+function sanitizeStoredAnswerSetMeta(value: unknown): VocabularyDrillAnswerSetMeta | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const input = value as Record<string, unknown>;
+  const refinedDefinition =
+    typeof input.refined_definition === "string"
+      ? normalizeWhitespace(input.refined_definition)
+      : "";
+  const contextExplanation =
+    typeof input.context_explanation === "string"
+      ? normalizeWhitespace(input.context_explanation)
+      : "";
+  const practiceExampleSentence =
+    typeof input.practice_example_sentence === "string"
+      ? normalizeWhitespace(input.practice_example_sentence)
+      : "";
+  const enrichedAt =
+    typeof input.enriched_at === "string" ? normalizeWhitespace(input.enriched_at) : "";
+  const synonymCandidates = sanitizeMetaCandidateList(input.synonym_candidates, 4);
+  const antonymCandidates = sanitizeMetaCandidateList(input.antonym_candidates, 3);
+
+  if (
+    !refinedDefinition &&
+    !contextExplanation &&
+    !practiceExampleSentence &&
+    !enrichedAt &&
+    synonymCandidates.length === 0 &&
+    antonymCandidates.length === 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    refined_definition: refinedDefinition || null,
+    context_explanation: contextExplanation || null,
+    practice_example_sentence: practiceExampleSentence || null,
+    synonym_candidates: synonymCandidates,
+    antonym_candidates: antonymCandidates,
+    enriched_at: enrichedAt || null,
+  };
+}
+
+function hasAnswerSetMeta(meta: VocabularyDrillAnswerSetMeta | undefined) {
+  return Boolean(
+    meta &&
+      ((meta.refined_definition && meta.refined_definition.trim()) ||
+        (meta.context_explanation && meta.context_explanation.trim()) ||
+        (meta.practice_example_sentence && meta.practice_example_sentence.trim()) ||
+        (meta.synonym_candidates?.length ?? 0) > 0 ||
+        (meta.antonym_candidates?.length ?? 0) > 0 ||
+        (meta.enriched_at && meta.enriched_at.trim()))
+  );
+}
+
+function mergeAnswerSetMeta(
+  ...metaCandidates: Array<VocabularyDrillAnswerSetMeta | undefined>
+) {
+  const synonymCandidates = sanitizeMetaCandidateList(
+    metaCandidates.flatMap((meta) => meta?.synonym_candidates ?? []),
+    4
+  );
+  const antonymCandidates = sanitizeMetaCandidateList(
+    metaCandidates.flatMap((meta) => meta?.antonym_candidates ?? []),
+    3
+  );
+  const refinedDefinition =
+    metaCandidates
+      .map((meta) => meta?.refined_definition?.trim())
+      .find((value) => value && value.length > 0) ?? null;
+  const contextExplanation =
+    metaCandidates
+      .map((meta) => meta?.context_explanation?.trim())
+      .find((value) => value && value.length > 0) ?? null;
+  const practiceExampleSentence =
+    metaCandidates
+      .map((meta) => meta?.practice_example_sentence?.trim())
+      .find((value) => value && value.length > 0) ?? null;
+  const enrichedAt =
+    metaCandidates
+      .map((meta) => meta?.enriched_at?.trim())
+      .find((value) => value && value.length > 0) ?? null;
+
+  const merged: VocabularyDrillAnswerSetMeta = {
+    refined_definition: refinedDefinition,
+    context_explanation: contextExplanation,
+    practice_example_sentence: practiceExampleSentence,
+    synonym_candidates: synonymCandidates,
+    antonym_candidates: antonymCandidates,
+    enriched_at: enrichedAt,
+  };
+
+  return hasAnswerSetMeta(merged) ? merged : undefined;
+}
+
+export function buildPreparedVocabularyDrillAnswerSetCacheKey(input: {
+  itemText: string;
+  englishExplanation: string;
+}) {
+  return `${normalizeForCompare(input.itemText)}::${normalizeForCompare(
+    input.englishExplanation
+  )}`;
 }
 
 function countTokens(text: string) {
@@ -651,6 +793,11 @@ function sanitizeStoredAnswerSets(value: unknown): VocabularyDrillAnswerSetMap {
     };
   }
 
+  const meta = sanitizeStoredAnswerSetMeta(input.__meta__);
+  if (meta) {
+    result.__meta__ = meta;
+  }
+
   return result;
 }
 
@@ -688,12 +835,48 @@ export function hasReadyVocabularyDrillAnswerSets(value: unknown) {
   });
 }
 
-export async function prepareVocabularyDrillAnswerSets(
-  input: PrepareVocabularyDrillAnswerSetsInput
+type AuditedStoredAnswerSetsState = {
+  storedAnswerSets: VocabularyDrillAnswerSetMap;
+  preparedFromStored: VocabularyDrillAnswerSetMap;
+  missingOrWeak: Set<VocabularyDrillAnswerSetKey>;
+};
+
+function hasUsablePracticeExampleSentence(
+  sentence: string | null | undefined,
+  itemText: string
 ) {
+  const normalized = normalizeWhitespace(sentence ?? "");
+
+  if (!normalized || normalized.length < 20 || normalized.length > 180) {
+    return false;
+  }
+
+  if (!/[.!?]$/.test(normalized)) {
+    return false;
+  }
+
+  return new RegExp(`\\b${itemText.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\b`, "i").test(
+    normalized
+  );
+}
+
+function auditStoredAnswerSets(
+  input: PrepareVocabularyDrillAnswerSetsInput
+): AuditedStoredAnswerSetsState {
   const storedAnswerSets = sanitizeStoredAnswerSets(input.existingAnswerSets);
   const preparedFromStored: VocabularyDrillAnswerSetMap = {};
   const missingOrWeak = new Set<VocabularyDrillAnswerSetKey>();
+
+  if (storedAnswerSets.__meta__) {
+    preparedFromStored.__meta__ = storedAnswerSets.__meta__;
+  }
+
+  const needsPracticeExampleSentence =
+    Boolean(input.contextSentence || input.exampleText) &&
+    !hasUsablePracticeExampleSentence(
+      storedAnswerSets.__meta__?.practice_example_sentence,
+      input.itemText
+    );
 
   for (const drillType of DRILL_ANSWER_SET_KEYS) {
     const audit = auditVocabularyDrillAnswerSet({
@@ -711,38 +894,30 @@ export async function prepareVocabularyDrillAnswerSets(
     }
   }
 
-  if (missingOrWeak.size === 0) {
-    return preparedFromStored;
+  if (needsPracticeExampleSentence) {
+    missingOrWeak.add("context_meaning");
   }
 
-  let aiAnswerSets: VocabularyDrillAnswerSetMap = {};
+  return {
+    storedAnswerSets,
+    preparedFromStored,
+    missingOrWeak,
+  };
+}
 
-  try {
-    const generated = await generateVocabularyDrillAnswerSets({
-      itemText: input.itemText,
-      itemType: input.itemType,
-      englishExplanation: input.englishExplanation,
-      studentId: input.studentId ?? null,
-      translatedExplanation: input.translatedExplanation ?? null,
-      contextSentence: input.contextSentence ?? null,
-      exampleText: input.exampleText ?? null,
-      meaningFallbackPool: input.meaningFallbackPool ?? [],
-      translationFallbackPool: input.translationFallbackPool ?? [],
-      lexicalFallbackPool: input.lexicalFallbackPool ?? [],
-      existingAnswerSets: storedAnswerSets,
-    });
-
-    aiAnswerSets = sanitizeStoredAnswerSets(generated);
-  } catch (error) {
-    console.error("prepareVocabularyDrillAnswerSets ai generation failed", error);
-  }
-
+function buildResolvedAnswerSets(params: {
+  input: PrepareVocabularyDrillAnswerSetsInput;
+  storedAnswerSets: VocabularyDrillAnswerSetMap;
+  aiAnswerSets?: VocabularyDrillAnswerSetMap;
+}) {
   const result: VocabularyDrillAnswerSetMap = {};
+  const { storedAnswerSets } = params;
+  const aiAnswerSets = params.aiAnswerSets ?? {};
 
   for (const drillType of DRILL_ANSWER_SET_KEYS) {
     const fallbackAnswerSet = buildFallbackAnswerSet({
       drillType,
-      input,
+      input: params.input,
     });
     const audit = auditVocabularyDrillAnswerSet({
       drillType,
@@ -751,14 +926,14 @@ export async function prepareVocabularyDrillAnswerSets(
         storedAnswerSets[drillType] ??
         fallbackAnswerSet,
       fallbackCorrectAnswer: fallbackAnswerSet.drill_correct_answer,
-      flashcardDefinition: input.englishExplanation,
-      itemType: input.itemType,
+      flashcardDefinition: params.input.englishExplanation,
+      itemType: params.input.itemType,
     });
 
     const mergedDistractors = finalizeDistractorSet({
       drillType,
       correctAnswer: audit.normalizedAnswerSet.drill_correct_answer,
-      flashcardDefinition: input.englishExplanation,
+      flashcardDefinition: params.input.englishExplanation,
       candidates: [
         ...(audit.normalizedAnswerSet.distractors ?? []),
         ...(storedAnswerSets[drillType]?.distractors ?? []),
@@ -772,5 +947,122 @@ export async function prepareVocabularyDrillAnswerSets(
     };
   }
 
+  const mergedMeta = mergeAnswerSetMeta(storedAnswerSets.__meta__, aiAnswerSets.__meta__);
+  if (mergedMeta) {
+    result.__meta__ = mergedMeta;
+  }
+
   return result;
+}
+
+export async function prepareVocabularyDrillAnswerSetsBatch(
+  inputs: PrepareVocabularyDrillAnswerSetsInput[]
+) {
+  const resolved = new Map<string, VocabularyDrillAnswerSetMap>();
+  const inputsNeedingAi: PrepareVocabularyDrillAnswerSetsInput[] = [];
+  const storedStateByCacheKey = new Map<string, AuditedStoredAnswerSetsState>();
+
+  for (const input of inputs) {
+    const cacheKey = buildPreparedVocabularyDrillAnswerSetCacheKey({
+      itemText: input.itemText,
+      englishExplanation: input.englishExplanation,
+    });
+    const storedState = auditStoredAnswerSets(input);
+
+    storedStateByCacheKey.set(cacheKey, storedState);
+
+    if (storedState.missingOrWeak.size === 0) {
+      resolved.set(cacheKey, storedState.preparedFromStored);
+      continue;
+    }
+
+    inputsNeedingAi.push(input);
+  }
+
+  const aiBatchMap = new Map<
+    string,
+    {
+      answerSets: VocabularyDrillAnswerSetMap;
+    }
+  >();
+
+  for (const batch of chunkArray(inputsNeedingAi, MAX_AI_ANSWER_SET_BATCH_SIZE)) {
+    if (batch.length === 0) {
+      continue;
+    }
+
+    try {
+      const generatedMap = await generateVocabularyDrillAnswerSetsBatch(
+        batch.map((input) => ({
+          itemText: input.itemText,
+          itemType: input.itemType,
+          englishExplanation: input.englishExplanation,
+          studentId: input.studentId ?? null,
+          translatedExplanation: input.translatedExplanation ?? null,
+          contextSentence: input.contextSentence ?? null,
+          exampleText: input.exampleText ?? null,
+          meaningFallbackPool: input.meaningFallbackPool ?? [],
+          translationFallbackPool: input.translationFallbackPool ?? [],
+          lexicalFallbackPool: input.lexicalFallbackPool ?? [],
+          existingAnswerSets: input.existingAnswerSets ?? {},
+        }))
+      );
+
+      for (const [itemKey, generated] of generatedMap.entries()) {
+        aiBatchMap.set(itemKey, {
+          answerSets: {
+            ...sanitizeStoredAnswerSets(generated.answerSets),
+            ...(hasAnswerSetMeta(generated.meta) ? { __meta__: generated.meta } : {}),
+          },
+        });
+      }
+    } catch (error) {
+      console.error("prepareVocabularyDrillAnswerSetsBatch ai generation failed", error);
+    }
+  }
+
+  for (const input of inputsNeedingAi) {
+    const cacheKey = buildPreparedVocabularyDrillAnswerSetCacheKey({
+      itemText: input.itemText,
+      englishExplanation: input.englishExplanation,
+    });
+    const storedState = storedStateByCacheKey.get(cacheKey);
+
+    if (!storedState) {
+      continue;
+    }
+
+    const aiAnswerSets =
+      aiBatchMap.get(normalizeForCompare(input.itemText))?.answerSets ?? {};
+
+    resolved.set(
+      cacheKey,
+      buildResolvedAnswerSets({
+        input,
+        storedAnswerSets: storedState.storedAnswerSets,
+        aiAnswerSets,
+      })
+    );
+  }
+
+  return resolved;
+}
+
+export async function prepareVocabularyDrillAnswerSets(
+  input: PrepareVocabularyDrillAnswerSetsInput
+) {
+  const prepared = await prepareVocabularyDrillAnswerSetsBatch([input]);
+  const cacheKey = buildPreparedVocabularyDrillAnswerSetCacheKey({
+    itemText: input.itemText,
+    englishExplanation: input.englishExplanation,
+  });
+
+  return (
+    prepared.get(cacheKey) ??
+    buildResolvedAnswerSets({
+      input,
+      storedAnswerSets: sanitizeStoredAnswerSets(input.existingAnswerSets),
+      aiAnswerSets: {},
+    })
+  );
 }

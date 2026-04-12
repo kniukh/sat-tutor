@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { generateVocabularyItemsFromCaptures } from "@/services/vocabulary/drill-preparation.service";
+import { recordVocabularyCaptures } from "@/services/vocabulary/vocabulary-capture.service";
 
 export type LessonStage =
   | "first_read"
@@ -213,44 +214,37 @@ export async function submitLessonVocabularyReview(params: {
   passageId?: string | null;
   items?: CapturedVocabularyItem[];
 }) {
-  const supabase = await createClient();
   const inputItems = params.items ?? [];
   const dedupedItems = Array.from(
     new Map(
       inputItems
         .map((item) => ({
-          item_text: item.itemText.trim(),
-          item_type: item.itemType,
-          source_type: item.sourceType,
-          context_text: item.contextText?.trim() || null,
+          itemText: item.itemText.trim(),
+          itemType: item.itemType,
+          sourceType: item.sourceType,
+          contextText: item.contextText?.trim() || null,
           preview: item.preview ?? null,
         }))
-        .filter((item) => item.item_text)
-        .map((item) => [item.item_text.toLowerCase(), item])
+        .filter((item) => item.itemText)
+        .map((item) => [item.itemText.toLowerCase(), item])
     ).values()
   );
 
   if (dedupedItems.length > 0) {
-    const { error: captureError } = await supabase
-      .from("vocabulary_capture_events")
-      .insert(
-        dedupedItems.map((item) => ({
-          student_id: params.studentId,
-          lesson_id: params.lessonId,
-          passage_id: params.passageId ?? null,
-          item_text: item.item_text,
-          item_type: item.item_type,
-          context_text: item.context_text,
-          source_type: item.source_type,
-          metadata: {
-            preview: item.preview ?? null,
-          },
-        }))
-      );
-
-    if (captureError) {
-      throw captureError;
-    }
+    await recordVocabularyCaptures({
+      studentId: params.studentId,
+      lessonId: params.lessonId,
+      passageId: params.passageId ?? null,
+      items: dedupedItems.map((item) => ({
+        itemText: item.itemText,
+        itemType: item.itemType,
+        sourceType: item.sourceType,
+        contextText: item.contextText,
+        metadata: {
+          preview: item.preview ?? null,
+        },
+      })),
+    });
   }
 
   const state = await submitVocabulary(params.studentId, params.lessonId);
@@ -276,7 +270,12 @@ export async function submitLessonVocabularyReview(params: {
       items = buildFallbackLessonVocabularyItems({
         studentId: params.studentId,
         lessonId: params.lessonId,
-        items: dedupedItems,
+        items: dedupedItems.map((item) => ({
+          item_text: item.itemText,
+          item_type: item.itemType,
+          context_text: item.contextText ?? null,
+          preview: item.preview ?? null,
+        })),
       });
     }
 
@@ -287,7 +286,12 @@ export async function submitLessonVocabularyReview(params: {
     items = buildFallbackLessonVocabularyItems({
       studentId: params.studentId,
       lessonId: params.lessonId,
-      items: dedupedItems,
+      items: dedupedItems.map((item) => ({
+        item_text: item.itemText,
+        item_type: item.itemType,
+        context_text: item.contextText ?? null,
+        preview: item.preview ?? null,
+      })),
     });
     totalItems = items.length;
   }

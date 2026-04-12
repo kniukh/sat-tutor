@@ -388,6 +388,8 @@ export const mockExercises: Exercise[] = [
     skill: "spelling_from_audio",
     placeholder: "Type what you heard",
     inputLabel: "Spell the word",
+    translation_text: "осторожный",
+    translationLanguageLabel: "ru",
     audio_url:
       "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=",
     audio_status: "ready",

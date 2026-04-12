@@ -10,6 +10,7 @@ import VocabularySessionResults from './VocabularySessionResults';
 import type { VocabExerciseSession } from '@/services/vocabulary/session-builder';
 import { persistExerciseAttempt } from '@/services/vocabulary/exercise-attempt-client.service';
 import { finalizeVocabularySession } from '@/services/vocabulary/session-complete-client.service';
+import { markVocabularyWordAlreadyKnown } from '@/services/vocabulary/already-know-client.service';
 import type {
   VocabularySessionProgressSignal,
   VocabularySessionGamificationSummary,
@@ -29,11 +30,16 @@ export default function VocabSessionPlayer({
   studentId,
   accessCode,
   focused = false,
+  completionAction = null,
 }: {
   session: VocabExerciseSession;
   studentId: string;
   accessCode: string;
   focused?: boolean;
+  completionAction?: {
+    href: string;
+    label: string;
+  } | null;
 }) {
   const router = useRouter();
   const [done, setDone] = useState(false);
@@ -52,6 +58,10 @@ export default function VocabSessionPlayer({
       ? ((session.metadata as Record<string, unknown>).lesson_id as string)
       : null;
 
+  function isAlreadyKnownResult(result: ExerciseResult) {
+    return Boolean(result.metadata?.already_known);
+  }
+
   async function submitExerciseAttempt(result: ExerciseResult) {
     const retrySourceExerciseId =
       typeof result.metadata?.retry_source_exercise_id === "string"
@@ -65,6 +75,36 @@ export default function VocabSessionPlayer({
     if (!sourceExercise) return;
 
     try {
+      if (isAlreadyKnownResult(result)) {
+        const progress = await markVocabularyWordAlreadyKnown({
+          studentId,
+          wordId: sourceExercise.target_word_id ?? sourceExercise.targetWordId ?? null,
+          word: sourceExercise.target_word ?? sourceExercise.targetWord ?? "",
+          lessonId:
+            sourceExercise.reviewMeta?.sourceLessonId ??
+            result.lesson_id ??
+            captureLessonId,
+          sessionId: result.session_id,
+          sessionMode: session.mode,
+        });
+
+        setProgressSignals((prev) => [
+          ...prev,
+          {
+            exerciseId: result.exercise_id,
+            targetWord: result.target_word ?? null,
+            previousLifecycleState:
+              typeof sourceExercise.reviewMeta?.lifecycleState === 'string'
+                ? sourceExercise.reviewMeta.lifecycleState
+                : null,
+            nextLifecycleState: progress?.progressRow?.lifecycle_state ?? null,
+            sameSessionCreditCapped: false,
+          },
+        ]);
+
+        return;
+      }
+
       const persisted = await persistExerciseAttempt({
         studentId,
         result,
@@ -144,8 +184,9 @@ export default function VocabSessionPlayer({
     setCompletedResults(results);
     setDone(true);
 
-    const completedCount = results.length || session.metadata.actual_size;
-    const correctCount = results.filter((result) => result.is_correct).length;
+    const scoredResults = results.filter((result) => !isAlreadyKnownResult(result));
+    const completedCount = scoredResults.length;
+    const correctCount = scoredResults.filter((result) => result.is_correct).length;
     const accuracy = completedCount > 0 ? Math.round((correctCount / completedCount) * 100) : 0;
 
     startRewardTransition(async () => {
@@ -199,6 +240,7 @@ export default function VocabSessionPlayer({
           session={session}
           results={completedResults}
           accessCode={accessCode}
+          completionAction={completionAction}
           progressSignals={progressSignals}
           rewardCredit={rewardCredit}
           sessionGamification={sessionGamification}

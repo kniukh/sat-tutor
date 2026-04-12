@@ -2,11 +2,18 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { generateVocabularyItemsFromCaptures } from "@/services/vocabulary/drill-preparation.service";
+import { aggregateVocabularyCaptureRows, type VocabularyCaptureEventRow } from "@/services/vocabulary/vocabulary-capture.service";
+import { resolveVocabularyLemma } from "@/services/vocabulary/vocabulary-normalization.service";
 
 type ExistingVocabularyItemRow = {
   id: string;
   item_text: string;
   item_type?: string | null;
+  canonical_lemma?: string | null;
+  captured_surface_forms?: string[] | null;
+  capture_count?: number | null;
+  first_captured_at?: string | null;
+  last_captured_at?: string | null;
   english_explanation: string | null;
   translated_explanation: string | null;
   example_text: string | null;
@@ -15,22 +22,21 @@ type ExistingVocabularyItemRow = {
   audio_url?: string | null;
 };
 
-type CaptureFallbackRow = {
-  item_text: string;
-  item_type: string | null;
-  context_text: string | null;
-  created_at: string | null;
-  metadata?: {
-    preview?: {
-      plainEnglishMeaning?: string | null;
-      translation?: string | null;
-      contextMeaning?: string | null;
-    } | null;
-  } | null;
-};
+type CaptureFallbackRow = VocabularyCaptureEventRow;
 
 function normalizeKey(text: string) {
   return text.trim().toLowerCase();
+}
+
+function getExistingItemCanonicalKey(item: ExistingVocabularyItemRow) {
+  if (item.canonical_lemma) {
+    return normalizeKey(item.canonical_lemma);
+  }
+
+  return resolveVocabularyLemma({
+    itemText: item.item_text,
+    itemType: item.item_type,
+  }).canonicalLemma;
 }
 
 async function buildDegradedVocabularyItems(params: {
@@ -50,7 +56,7 @@ async function buildDegradedVocabularyItems(params: {
 
   const { data: existingRows, error: existingError } = await supabase
     .from("vocabulary_item_details")
-    .select("id, item_text, item_type, english_explanation, translated_explanation, example_text, context_sentence, audio_status, audio_url")
+    .select("id, item_text, item_type, canonical_lemma, captured_surface_forms, capture_count, first_captured_at, last_captured_at, english_explanation, translated_explanation, example_text, context_sentence, audio_status, audio_url")
     .eq("student_id", params.studentId)
     .eq("lesson_id", params.lessonId)
     .order("created_at", { ascending: true });
@@ -60,15 +66,20 @@ async function buildDegradedVocabularyItems(params: {
   }
 
   const existingItems = ((existingRows ?? []) as ExistingVocabularyItemRow[])
-    .filter((item) => (requestedKeys ? requestedKeys.has(normalizeKey(item.item_text)) : true))
+    .filter((item) =>
+      requestedKeys
+        ? requestedKeys.has(normalizeKey(item.canonical_lemma ?? item.item_text)) ||
+          requestedKeys.has(normalizeKey(item.item_text))
+        : true
+    )
     .slice(0, limit ?? Number.MAX_SAFE_INTEGER);
   const existingItemsByKey = new Map(
-    existingItems.map((item) => [normalizeKey(item.item_text), item])
+    existingItems.map((item) => [getExistingItemCanonicalKey(item), item])
   );
 
   const { data: captureRows, error: captureError } = await supabase
     .from("vocabulary_capture_events")
-    .select("item_text, item_type, context_text, created_at, metadata")
+    .select("item_text, item_type, context_text, created_at, metadata, canonical_lemma, captured_surface_form")
     .eq("student_id", params.studentId)
     .eq("lesson_id", params.lessonId)
     .order("created_at", { ascending: true });
@@ -77,33 +88,36 @@ async function buildDegradedVocabularyItems(params: {
     throw captureError;
   }
 
-  const uniqueCaptures = Array.from(
-    new Map(
-      ((captureRows ?? []) as CaptureFallbackRow[])
-        .filter((item) => (requestedKeys ? requestedKeys.has(normalizeKey(item.item_text)) : true))
-        .map((item) => [normalizeKey(item.item_text), item])
-    ).values()
-  ).slice(0, limit ?? Number.MAX_SAFE_INTEGER);
+  const uniqueCaptures = aggregateVocabularyCaptureRows((captureRows ?? []) as CaptureFallbackRow[])
+    .filter((item) =>
+      requestedKeys ? item.lookupKeys.some((key) => requestedKeys.has(normalizeKey(key))) : true
+    )
+    .slice(0, limit ?? Number.MAX_SAFE_INTEGER);
 
   const missingRows = uniqueCaptures
-    .filter((item) => !existingItemsByKey.has(normalizeKey(item.item_text)))
+    .filter((item) => !existingItemsByKey.has(normalizeKey(item.canonicalLemma)))
     .map((item) => ({
       student_id: params.studentId,
       lesson_id: params.lessonId,
-      item_text: item.item_text,
-      item_type: item.item_type ?? (item.item_text.includes(" ") ? "phrase" : "word"),
+      item_text: item.itemText,
+      item_type: item.itemType,
+      canonical_lemma: item.canonicalLemma,
+      captured_surface_forms: item.capturedSurfaceForms,
+      capture_count: item.captureCount,
+      first_captured_at: item.firstCapturedAt,
+      last_captured_at: item.lastCapturedAt,
       english_explanation:
-        item.metadata?.preview?.plainEnglishMeaning?.trim() ||
-        item.metadata?.preview?.contextMeaning?.trim() ||
-        `Meaning of "${item.item_text}" in this lesson.`,
-      translated_explanation: item.metadata?.preview?.translation?.trim() || null,
+        item.preview?.plainEnglishMeaning?.trim() ||
+        item.preview?.contextMeaning?.trim() ||
+        `Meaning of "${item.itemText}" in this lesson.`,
+      translated_explanation: item.preview?.translation?.trim() || null,
       example_text:
-        item.context_text ??
-        item.metadata?.preview?.contextMeaning?.trim() ??
+        item.contextText ??
+        item.preview?.contextMeaning?.trim() ??
         null,
       context_sentence:
-        item.context_text ??
-        item.metadata?.preview?.contextMeaning?.trim() ??
+        item.contextText ??
+        item.preview?.contextMeaning?.trim() ??
         null,
       audio_status: "pending",
     }));
@@ -118,14 +132,19 @@ async function buildDegradedVocabularyItems(params: {
     } else {
       const { data: refreshedRows, error: refreshedError } = await supabase
         .from("vocabulary_item_details")
-        .select("id, item_text, item_type, english_explanation, translated_explanation, example_text, context_sentence, audio_status, audio_url")
+        .select("id, item_text, item_type, canonical_lemma, captured_surface_forms, capture_count, first_captured_at, last_captured_at, english_explanation, translated_explanation, example_text, context_sentence, audio_status, audio_url")
         .eq("student_id", params.studentId)
         .eq("lesson_id", params.lessonId)
         .order("created_at", { ascending: true });
 
       if (!refreshedError) {
         const refreshedItems = ((refreshedRows ?? []) as ExistingVocabularyItemRow[])
-          .filter((item) => (requestedKeys ? requestedKeys.has(normalizeKey(item.item_text)) : true))
+          .filter((item) =>
+            requestedKeys
+              ? requestedKeys.has(normalizeKey(item.canonical_lemma ?? item.item_text)) ||
+                requestedKeys.has(normalizeKey(item.item_text))
+              : true
+          )
           .slice(0, limit ?? Number.MAX_SAFE_INTEGER);
 
         if (refreshedItems.length > 0) {
@@ -140,21 +159,26 @@ async function buildDegradedVocabularyItems(params: {
   }
 
   return uniqueCaptures.map((item, index) => ({
-    id: `degraded:${params.lessonId}:${index}:${normalizeKey(item.item_text)}`,
-    item_type: item.item_type ?? (item.item_text.includes(" ") ? "phrase" : "word"),
-    item_text: item.item_text,
+    id: `degraded:${params.lessonId}:${index}:${normalizeKey(item.canonicalLemma)}`,
+    item_type: item.itemType,
+    item_text: item.itemText,
+    canonical_lemma: item.canonicalLemma,
+    captured_surface_forms: item.capturedSurfaceForms,
+    capture_count: item.captureCount,
+    first_captured_at: item.firstCapturedAt,
+    last_captured_at: item.lastCapturedAt,
     english_explanation:
-      item.metadata?.preview?.plainEnglishMeaning?.trim() ||
-      item.metadata?.preview?.contextMeaning?.trim() ||
-      `Meaning of "${item.item_text}" in this lesson.`,
-    translated_explanation: item.metadata?.preview?.translation?.trim() || null,
+      item.preview?.plainEnglishMeaning?.trim() ||
+      item.preview?.contextMeaning?.trim() ||
+      `Meaning of "${item.itemText}" in this lesson.`,
+    translated_explanation: item.preview?.translation?.trim() || null,
     example_text:
-      item.context_text ??
-      item.metadata?.preview?.contextMeaning?.trim() ??
+      item.contextText ??
+      item.preview?.contextMeaning?.trim() ??
       null,
     context_sentence:
-      item.context_text ??
-      item.metadata?.preview?.contextMeaning?.trim() ??
+      item.contextText ??
+      item.preview?.contextMeaning?.trim() ??
       null,
     audio_status: "pending",
     audio_url: null,

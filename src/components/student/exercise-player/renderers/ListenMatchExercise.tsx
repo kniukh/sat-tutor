@@ -335,6 +335,9 @@ export default function ListenMatchExercise({
             const audioUrl = pair?.leftAudioUrl ?? pair?.left_audio_url ?? null;
             const isMatched = matchedLeftIds.has(option.id);
             const isPlaying = playingAudioId === option.id;
+            const showWord =
+              isMatched ||
+              (pairFeedback?.status === "correct" && pairFeedback.leftId === option.id);
 
             return (
               <button
@@ -349,7 +352,17 @@ export default function ListenMatchExercise({
                 )}`}
                 aria-pressed={activeLeftId === option.id || isMatched}
               >
-                <ListenWaveIcon active={isPlaying} />
+                {showWord ? (
+                  <span
+                    className={`text-center text-sm font-semibold ${
+                      isMatched ? "text-slate-400" : "text-emerald-700"
+                    }`}
+                  >
+                    {option.label}
+                  </span>
+                ) : (
+                  <ListenWaveIcon active={isPlaying} />
+                )}
                 <span className="sr-only">
                   {audioUrl ? `Play audio ${option.label}` : "Audio unavailable"}
                 </span>

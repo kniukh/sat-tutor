@@ -1,14 +1,11 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { resolveVocabularyLemma } from "@/services/vocabulary/vocabulary-normalization.service";
 
 type UpdateWordProgressInput = {
   studentId: string;
   lessonId: string;
   weakWords: string[];
 };
-
-function normalizeWord(word: string) {
-  return word.trim().toLowerCase();
-}
 
 function getNextReviewDate(daysToAdd: number) {
   const date = new Date();
@@ -21,18 +18,16 @@ export async function updateWordProgress(input: UpdateWordProgressInput) {
 
   const uniqueWords = Array.from(
     new Set(
-      input.weakWords
-        .map(normalizeWord)
-        .filter(Boolean),
+      input.weakWords.map((word) => resolveVocabularyLemma({ itemText: word, itemType: "word" }).canonicalLemma).filter(Boolean),
     ),
   );
 
-  for (const word of uniqueWords) {
+  for (const canonicalLemma of uniqueWords) {
     const { data: existing, error: existingError } = await supabase
       .from('word_progress')
       .select('*')
       .eq('student_id', input.studentId)
-      .eq('word', word)
+      .eq('canonical_lemma', canonicalLemma)
       .maybeSingle();
 
     if (existingError) {
@@ -44,7 +39,8 @@ export async function updateWordProgress(input: UpdateWordProgressInput) {
         .from('word_progress')
         .insert({
           student_id: input.studentId,
-          word,
+          word: canonicalLemma,
+          canonical_lemma: canonicalLemma,
           status: 'learning',
           times_seen: 1,
           times_correct: 0,
@@ -73,6 +69,7 @@ export async function updateWordProgress(input: UpdateWordProgressInput) {
       .from('word_progress')
       .update({
         status,
+        canonical_lemma: canonicalLemma,
         times_seen: timesSeen,
         times_wrong: timesWrong,
         next_review_date: getNextReviewDate(1),

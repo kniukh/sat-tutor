@@ -162,7 +162,7 @@ type AudioBackedExerciseFields = {
 export type MeaningMatchVocabExercise = VocabExerciseBase<"meaning_match"> & {
   sourceLanguageLabel?: string;
   targetLanguageLabel?: string;
-  variant?: "definition_match" | "paraphrase_match";
+  variant?: "definition_match" | "definition_variant_match" | "paraphrase_match";
 };
 
 export type TranslationMatchVocabExercise = VocabExerciseBase<"translation_match"> & {
@@ -248,6 +248,9 @@ export type SpellingFromAudioVocabExercise =
     AudioBackedExerciseFields & {
       placeholder?: string;
       inputLabel?: string;
+      translation_text?: string | null;
+      translationText?: string | null;
+      translationLanguageLabel?: string | null;
     };
 
 export type SpellingVocabExercise = VocabExerciseBase<"spelling"> & {
@@ -393,6 +396,18 @@ export function getExerciseAudioStatus(exercise: VocabExerciseBase<VocabExercise
     return (
       (exercise as ListenMatchVocabExercise | SpellingFromAudioVocabExercise).audio_status ??
       (exercise as ListenMatchVocabExercise | SpellingFromAudioVocabExercise).audioStatus ??
+      null
+    );
+  }
+
+  return null;
+}
+
+export function getExerciseTranslationText(exercise: VocabExerciseBase<VocabExerciseType>) {
+  if ("translation_text" in exercise || "translationText" in exercise) {
+    return (
+      (exercise as SpellingFromAudioVocabExercise).translation_text ??
+      (exercise as SpellingFromAudioVocabExercise).translationText ??
       null
     );
   }

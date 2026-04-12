@@ -10,9 +10,7 @@ import {
   type AdaptiveWordCandidate,
 } from "@/services/vocabulary/adaptive-session-selection.service";
 import {
-  adaptCollocationDrillsToExercises,
   adaptContextMeaningDrillsToExercises,
-  adaptErrorDetectionDrillsToExercises,
   adaptListenMatchDrillsToExercises,
   adaptMeaningDrillsToExercises,
   adaptPairMatchDrillsToExercises,
@@ -172,6 +170,11 @@ export type StudentVocabularyPageData = {
   preparationNeeded: boolean;
 };
 
+type VocabularySessionEntryOptions = {
+  guidedLessonIntro?: boolean;
+  guidedWordTexts?: string[];
+};
+
 const EMPTY_BUCKET_COUNTS: QueueBucketCounts = {
   recently_failed: 0,
   weak_again: 0,
@@ -259,6 +262,10 @@ function getSessionPhaseLabel(phase: VocabularySessionPhase | null) {
   }
 
   return null;
+}
+
+function getNormalizedVocabularyWordKey(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? "";
 }
 
 function inferSourceType(lessonType: string | null | undefined): VocabExerciseSourceType {
@@ -515,9 +522,7 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
       ...adaptSpellingFromAudioDrillsToExercises(spellingFromAudioDrills),
       ...adaptContextMeaningDrillsToExercises(contextMeaningDrills),
       ...adaptSynonymDrillsToExercises(synonymDrills),
-      ...adaptCollocationDrillsToExercises(collocationDrills),
       ...adaptPairMatchDrillsToExercises(pairMatchDrills),
-      ...adaptErrorDetectionDrillsToExercises(errorDetectionDrills),
     ],
   };
 }
@@ -687,7 +692,8 @@ export async function getStudentVocabularyPageData(
   accessCode: string,
   selectedMode: VocabularyPageMode = "mixed_practice",
   requestedPhase: VocabularySessionPhase | null = null,
-  preferredLessonId: string | null = null
+  preferredLessonId: string | null = null,
+  options: VocabularySessionEntryOptions = {}
 ) {
   const supabase = await createServerSupabaseClient();
 
@@ -1085,22 +1091,62 @@ export async function getStudentVocabularyPageData(
     wordProgressMap,
     isNewWord: false,
   });
+  const guidedWordKeySet = new Set(
+    (options.guidedWordTexts ?? [])
+      .map((itemText) => getNormalizedVocabularyWordKey(itemText))
+      .filter(Boolean)
+  );
+  const guidedLessonIntroCandidates =
+    options.guidedLessonIntro && preferredLessonId
+      ? adaptiveNewWordCandidates.filter((candidate) => {
+          if (candidate.sourceLessonId !== preferredLessonId) {
+            return false;
+          }
+
+          if (guidedWordKeySet.size === 0) {
+            return true;
+          }
+
+          return candidate.exercises.some((exercise) =>
+            guidedWordKeySet.has(
+              getNormalizedVocabularyWordKey(
+                exercise.target_word ?? exercise.targetWord ?? candidate.word
+              )
+            )
+          );
+        })
+      : [];
+  const shouldHoldForGuidedPreparation =
+    options.guidedLessonIntro &&
+    guidedWordKeySet.size > 0 &&
+    guidedLessonIntroCandidates.length < guidedWordKeySet.size;
   const priorityCandidates =
-    selectedMode === "learn_new_words"
-      ? adaptiveNewWordCandidates
-      : [...adaptiveQueueCandidates, ...adaptiveNewWordCandidates];
+    options.guidedLessonIntro && preferredLessonId
+      ? guidedLessonIntroCandidates
+      : selectedMode === "learn_new_words"
+        ? adaptiveNewWordCandidates
+        : [...adaptiveQueueCandidates, ...adaptiveNewWordCandidates];
   const continuationCandidates =
-    selectedMode === "learn_new_words"
-      ? [...adaptiveNewWordCandidates, ...adaptiveContinuationCandidates]
-      : [...adaptiveQueueCandidates, ...adaptiveNewWordCandidates, ...adaptiveContinuationCandidates];
-  const priorityTargetSize = Math.min(
-    selectedMode === "learn_new_words" ? 6 : 8,
-    Math.max(priorityCandidates.length, 0)
-  );
-  const continuationTargetSize = Math.min(
-    selectedMode === "learn_new_words" ? 6 : 8,
-    Math.max(continuationCandidates.length, 0)
-  );
+    options.guidedLessonIntro && preferredLessonId
+      ? []
+      : selectedMode === "learn_new_words"
+        ? [...adaptiveNewWordCandidates, ...adaptiveContinuationCandidates]
+        : [...adaptiveQueueCandidates, ...adaptiveNewWordCandidates, ...adaptiveContinuationCandidates];
+  const priorityTargetSize = shouldHoldForGuidedPreparation
+    ? 0
+    : options.guidedLessonIntro && preferredLessonId
+      ? guidedLessonIntroCandidates.length
+      : Math.min(
+          selectedMode === "learn_new_words" ? 6 : 8,
+          Math.max(priorityCandidates.length, 0)
+        );
+  const continuationTargetSize =
+    options.guidedLessonIntro && preferredLessonId
+      ? 0
+      : Math.min(
+          selectedMode === "learn_new_words" ? 6 : 8,
+          Math.max(continuationCandidates.length, 0)
+        );
   const today = new Date().toISOString().slice(0, 10);
   const prioritySelection =
     priorityTargetSize > 0
@@ -1282,9 +1328,9 @@ export async function getStudentVocabularyPageData(
       cloze: selectedDrillCounts.clozeDrills.length,
     },
     session,
-    preparationNeeded: !session &&
+    preparationNeeded: shouldHoldForGuidedPreparation || (!session &&
       (selectedMode === "learn_new_words"
         ? newWordExercises.length === 0 && vocabularyDetailRows.length > 0
-        : readyDrillsCount < totalQueueItems),
+        : readyDrillsCount < totalQueueItems)),
   } satisfies StudentVocabularyPageData;
 }

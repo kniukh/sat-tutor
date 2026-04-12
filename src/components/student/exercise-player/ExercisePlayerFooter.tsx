@@ -14,8 +14,15 @@ type Props = {
     correctAnswer?: string;
     answerLabel?: string;
     streakCount?: number;
+    translationText?: string | null;
+    translationLabel?: string | null;
   } | null;
   onContinue: () => void;
+  secondaryAction?: {
+    label: string;
+    onClick: () => void;
+    disabled?: boolean;
+  } | null;
 };
 
 export default function ExercisePlayerFooter({
@@ -27,6 +34,7 @@ export default function ExercisePlayerFooter({
   focused = false,
   feedback,
   onContinue,
+  secondaryAction = null,
 }: Props) {
   const toneClass = feedback?.isCorrect
     ? "border-emerald-200 bg-emerald-50 text-emerald-950"
@@ -44,6 +52,11 @@ export default function ExercisePlayerFooter({
     : "You still get the next rep right away, so keep the rhythm.";
   const focusedButtonClass =
     "min-h-14 w-full rounded-[1.25rem] bg-[var(--color-primary)] px-5 py-3 text-base font-semibold text-white shadow-[var(--shadow-button)] transition-all duration-150 hover:bg-[var(--color-primary-hover)] active:translate-y-[1px] active:scale-[0.985] disabled:cursor-not-allowed disabled:border disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-500";
+  const hasFocusedFeedbackContent = Boolean(
+    feedback &&
+      ((!feedback.isCorrect && feedback.correctAnswer) ||
+        (feedback.isCorrect && feedback.translationText))
+  );
   const buttonLabel = submitted
     ? feedback?.isCorrect
       ? "Correct"
@@ -103,9 +116,46 @@ export default function ExercisePlayerFooter({
               <span className="text-current/85">{feedback.correctAnswer}</span>
             </div>
           ) : null}
+          {feedback.isCorrect && feedback.translationText ? (
+            <div className="mt-1 text-sm leading-6">
+              <span className="font-semibold">
+                {feedback.translationLabel ?? "Translation"}:
+              </span>{" "}
+              <span className="text-current/85">{feedback.translationText}</span>
+            </div>
+          ) : null}
           {feedback.explanation ? (
             <div className="mt-3 rounded-2xl border border-current/15 bg-white/70 px-3 py-3 text-sm leading-6 text-slate-700">
               {feedback.explanation}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {focused && submitted && feedback && hasFocusedFeedbackContent ? (
+        <div
+          aria-live="polite"
+          className={`mb-3 rounded-[1.35rem] border px-4 py-3 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] ${
+            feedback.isCorrect
+              ? "border-emerald-200/80 bg-[linear-gradient(180deg,rgba(236,253,245,0.98)_0%,rgba(220,252,231,0.98)_100%)] text-slate-950"
+              : "border-rose-200/80 bg-[linear-gradient(180deg,rgba(255,241,242,0.98)_0%,rgba(255,228,230,0.98)_100%)] text-slate-950"
+          }`}
+        >
+          <div
+            className={`mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
+              feedback.isCorrect ? "text-emerald-700" : "text-rose-700"
+            }`}
+          >
+            {feedback.isCorrect ? "Translation" : "Correct Spelling"}
+          </div>
+          {!feedback.isCorrect && feedback.correctAnswer ? (
+            <div className="text-base font-semibold leading-6 sm:text-[1.05rem]">
+              {feedback.correctAnswer}
+            </div>
+          ) : null}
+          {feedback.isCorrect && feedback.translationText ? (
+            <div className="text-base font-semibold leading-6 sm:text-[1.05rem]">
+              {feedback.translationText}
             </div>
           ) : null}
         </div>
@@ -118,6 +168,18 @@ export default function ExercisePlayerFooter({
             : ""
         } flex items-center gap-3 ${focused ? "justify-stretch" : ""}`}
       >
+        {secondaryAction ? (
+          <button
+            type="button"
+            disabled={Boolean(secondaryAction.disabled)}
+            onClick={secondaryAction.onClick}
+            className={`rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-150 hover:bg-slate-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 ${
+              focused ? "min-h-14 shrink-0" : "shrink-0"
+            }`}
+          >
+            {secondaryAction.label}
+          </button>
+        ) : null}
         {!focused ? (
           <div aria-live="polite" className="min-h-6 flex-1 text-sm font-medium">
             {submitted && feedback ? (

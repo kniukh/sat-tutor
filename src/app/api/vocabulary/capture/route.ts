@@ -1,16 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-
-function normalizeItem(text: string) {
-  return text.trim().toLowerCase();
-}
-
-function getNextReviewDate(daysToAdd: number) {
-  const date = new Date();
-  date.setDate(date.getDate() + daysToAdd);
-  return date.toISOString().slice(0, 10);
-}
+import { recordVocabularyCaptures } from "@/services/vocabulary/vocabulary-capture.service";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -48,84 +38,24 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  const supabase = await createServerSupabaseClient();
-
-  for (const item of items) {
-    const itemText = normalizeItem(item.itemText);
-
-    if (!itemText) continue;
-
-    const { error: captureError } = await supabase
-      .from('vocabulary_capture_events')
-      .insert({
-        student_id: sessionStudentId,
-        lesson_id: lessonId,
-        passage_id: passageId ?? null,
-        item_text: itemText,
-        item_type: item.itemType,
-        context_text: item.contextText ?? null,
-        source_type:
-          item.sourceType === "question" || item.sourceType === "answer"
-            ? item.sourceType
-            : "passage",
+  try {
+    await recordVocabularyCaptures({
+      studentId: sessionStudentId,
+      lessonId,
+      passageId: passageId ?? null,
+      items: items.map((item) => ({
+        itemText: item.itemText,
+        itemType: item.itemType,
+        sourceType: item.sourceType,
+        contextText: item.contextText ?? null,
         metadata: {
           preview: item.preview ?? null,
         },
-      });
+      })),
+    });
 
-    if (captureError) {
-      return NextResponse.json({ error: captureError.message }, { status: 500 });
-    }
-
-    const { data: existing, error: existingError } = await supabase
-      .from('word_progress')
-      .select('*')
-      .eq('student_id', sessionStudentId)
-      .eq('word', itemText)
-      .eq('item_type', item.itemType)
-      .maybeSingle();
-
-    if (existingError) {
-      return NextResponse.json({ error: existingError.message }, { status: 500 });
-    }
-
-    if (!existing) {
-      const { error: insertError } = await supabase
-        .from('word_progress')
-        .insert({
-          student_id: sessionStudentId,
-          word: itemText,
-          item_type: item.itemType,
-          status: 'learning',
-          times_seen: 1,
-          times_correct: 0,
-          times_wrong: 1,
-          next_review_date: getNextReviewDate(1),
-          source_lesson_id: lessonId,
-          metadata: {},
-        });
-
-      if (insertError) {
-        return NextResponse.json({ error: insertError.message }, { status: 500 });
-      }
-    } else {
-      const { error: updateError } = await supabase
-        .from('word_progress')
-        .update({
-          status: 'learning',
-          times_seen: Number(existing.times_seen ?? 0) + 1,
-          times_wrong: Number(existing.times_wrong ?? 0) + 1,
-          next_review_date: getNextReviewDate(1),
-          source_lesson_id: lessonId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
-
-      if (updateError) {
-        return NextResponse.json({ error: updateError.message }, { status: 500 });
-      }
-    }
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error?.message ?? "Failed to save captures" }, { status: 500 });
   }
-
-  return NextResponse.json({ success: true });
 }

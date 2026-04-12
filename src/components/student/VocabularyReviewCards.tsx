@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 
 type VocabItem = {
   id: string;
@@ -10,6 +10,7 @@ type VocabItem = {
   example_text?: string | null;
   context_sentence?: string | null;
   audio_url?: string | null;
+  canonical_lemma?: string | null;
 };
 
 type Props = {
@@ -21,7 +22,7 @@ type Props = {
   onRequestAudio?: (options?: {
     force?: boolean;
     itemTexts?: string[];
-  }) => Promise<void> | void;
+  }) => Promise<VocabItem[] | void> | VocabItem[] | void;
   isAudioLoading?: boolean;
   title?: string;
   emptyTitle?: string;
@@ -32,6 +33,20 @@ type Props = {
 
 function getAudioItemKey(itemText: string) {
   return itemText.trim().toLowerCase();
+}
+
+function getAudioLemmaKey(item: Pick<VocabItem, "item_text" | "canonical_lemma">) {
+  return item.canonical_lemma?.trim().toLowerCase() || getAudioItemKey(item.item_text);
+}
+
+function createSilentWavUrl() {
+  const wavBytes = new Uint8Array([
+    82, 73, 70, 70, 38, 0, 0, 0, 87, 65, 86, 69, 102, 109, 116, 32,
+    16, 0, 0, 0, 1, 0, 1, 0, 64, 31, 0, 0, 128, 62, 0, 0,
+    2, 0, 16, 0, 100, 97, 116, 97, 2, 0, 0, 0, 0, 0,
+  ]);
+
+  return URL.createObjectURL(new Blob([wavBytes], { type: "audio/wav" }));
 }
 
 export default function VocabularyReviewCards({
@@ -50,7 +65,12 @@ export default function VocabularyReviewCards({
 }: Props) {
   const [pageIndex, setPageIndex] = useState(0);
   const [pendingAudioItemKey, setPendingAudioItemKey] = useState<string | null>(null);
+  const [audioOverrides, setAudioOverrides] = useState<Record<string, string>>({});
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const detachedAudioRef = useRef<HTMLAudioElement | null>(null);
+  const silentAudioUrlRef = useRef<string | null>(null);
+  const mediaUnlockedRef = useRef(false);
+  const detachedMediaUnlockedRef = useRef(false);
   const CARDS_PER_PAGE = 6;
   const itemsResetSignature = useMemo(
     () => items.map((item) => getAudioItemKey(item.item_text)).join("|"),
@@ -66,6 +86,22 @@ export default function VocabularyReviewCards({
   useEffect(() => {
     setPageIndex((current) => Math.min(current, totalPages - 1));
   }, [totalPages]);
+
+  useEffect(() => {
+    return () => {
+      if (detachedAudioRef.current) {
+        detachedAudioRef.current.pause();
+        detachedAudioRef.current.removeAttribute("src");
+        detachedAudioRef.current.load();
+        detachedAudioRef.current = null;
+      }
+
+      if (silentAudioUrlRef.current) {
+        URL.revokeObjectURL(silentAudioUrlRef.current);
+        silentAudioUrlRef.current = null;
+      }
+    };
+  }, []);
 
   const visibleItems = useMemo(() => {
     const start = pageIndex * CARDS_PER_PAGE;
@@ -85,36 +121,95 @@ export default function VocabularyReviewCards({
       (item) =>
         getAudioItemKey(item.item_text) === pendingAudioItemKey && item.audio_url
     );
+    const resolvedAudioUrl =
+      resolvedItem?.audio_url || audioOverrides[pendingAudioItemKey] || null;
 
-    if (!resolvedItem?.audio_url || !audioRef.current) {
+    if (!resolvedAudioUrl || !audioRef.current) {
       return;
     }
 
     audioRef.current.pause();
-    audioRef.current.src = resolvedItem.audio_url;
+    audioRef.current.src = resolvedAudioUrl;
     audioRef.current.currentTime = 0;
     audioRef.current.play().catch((error) => {
       console.error("VocabularyReviewCards playAudio error", error);
     });
     setPendingAudioItemKey(null);
-  }, [items, pendingAudioItemKey]);
+  }, [audioOverrides, items, pendingAudioItemKey]);
 
-  function playAudio(url: string) {
-    if (!audioRef.current) {
+  function playAudio(url: string, audioElement: HTMLAudioElement | null = audioRef.current) {
+    if (!audioElement) {
       return;
     }
 
-    audioRef.current.pause();
-    audioRef.current.src = url;
-    audioRef.current.currentTime = 0;
-    audioRef.current.play().catch((error) => {
+    if (audioElement !== audioRef.current && audioRef.current) {
+      audioRef.current.pause();
+    }
+
+    if (audioElement !== detachedAudioRef.current && detachedAudioRef.current) {
+      detachedAudioRef.current.pause();
+    }
+
+    audioElement.pause();
+    audioElement.src = url;
+    audioElement.currentTime = 0;
+    audioElement.play().catch((error) => {
       console.error("VocabularyReviewCards playAudio error", error);
     });
   }
 
+  async function ensureMediaPlaybackUnlockedForElement(
+    audio: HTMLAudioElement | null,
+    unlockedRef: MutableRefObject<boolean>
+  ) {
+    if (unlockedRef.current || !audio) {
+      return;
+    }
+
+    if (!silentAudioUrlRef.current) {
+      silentAudioUrlRef.current = createSilentWavUrl();
+    }
+
+    const previousSrc = audio.currentSrc || audio.src;
+    const previousMuted = audio.muted;
+    const previousVolume = audio.volume;
+
+    try {
+      audio.pause();
+      audio.muted = true;
+      audio.volume = 0;
+      audio.src = silentAudioUrlRef.current;
+      audio.currentTime = 0;
+      await audio.play();
+      audio.pause();
+      audio.currentTime = 0;
+      unlockedRef.current = true;
+    } catch (error) {
+      console.error("VocabularyReviewCards media unlock error", error);
+    } finally {
+      audio.muted = previousMuted;
+      audio.volume = previousVolume;
+
+      if (previousSrc) {
+        audio.src = previousSrc;
+      } else {
+        audio.removeAttribute("src");
+      }
+
+      audio.load();
+    }
+  }
+
+  async function ensureSharedMediaPlaybackUnlocked() {
+    await ensureMediaPlaybackUnlockedForElement(audioRef.current, mediaUnlockedRef);
+  }
+
   async function handleAudioPress(item: VocabItem) {
-    if (item.audio_url) {
-      playAudio(item.audio_url);
+    const itemKey = getAudioItemKey(item.item_text);
+    const immediateAudioUrl = item.audio_url || audioOverrides[itemKey];
+
+    if (immediateAudioUrl) {
+      playAudio(immediateAudioUrl);
       return;
     }
 
@@ -122,13 +217,44 @@ export default function VocabularyReviewCards({
       return;
     }
 
-    setPendingAudioItemKey(getAudioItemKey(item.item_text));
+    setPendingAudioItemKey(itemKey);
 
     try {
-      await onRequestAudio({
+      const detachedAudio = new Audio();
+      detachedAudio.preload = "none";
+      detachedAudio.setAttribute("playsinline", "true");
+      detachedAudioRef.current = detachedAudio;
+      detachedMediaUnlockedRef.current = false;
+
+      await Promise.all([
+        ensureSharedMediaPlaybackUnlocked(),
+        ensureMediaPlaybackUnlockedForElement(detachedAudio, detachedMediaUnlockedRef),
+      ]);
+
+      const responseItems = await onRequestAudio({
         force: true,
         itemTexts: [item.item_text],
       });
+
+      const matchingResponseItem = Array.isArray(responseItems)
+        ? responseItems.find((candidate) => {
+            const candidateTextKey = getAudioItemKey(candidate.item_text);
+            const candidateLemmaKey = getAudioLemmaKey(candidate);
+            return (
+              candidateTextKey === getAudioItemKey(item.item_text) ||
+              candidateLemmaKey === getAudioLemmaKey(item)
+            );
+          })
+        : null;
+
+      if (matchingResponseItem?.audio_url) {
+        setAudioOverrides((current) => ({
+          ...current,
+          [itemKey]: matchingResponseItem.audio_url as string,
+        }));
+        playAudio(matchingResponseItem.audio_url, detachedAudioRef.current);
+        setPendingAudioItemKey(null);
+      }
     } catch (error) {
       console.error("VocabularyReviewCards requestAudio error", error);
       setPendingAudioItemKey(null);
@@ -136,10 +262,12 @@ export default function VocabularyReviewCards({
   }
 
   function renderSpeakerButton(item: VocabItem) {
+    const itemKey = getAudioItemKey(item.item_text);
     const isPendingThisItem =
-      pendingAudioItemKey === getAudioItemKey(item.item_text);
-    const isLoadingThisItem = isPendingThisItem && isAudioLoading && !item.audio_url;
-    const isDisabled = isLoadingThisItem || (!item.audio_url && !onRequestAudio);
+      pendingAudioItemKey === itemKey;
+    const resolvedAudioUrl = item.audio_url || audioOverrides[itemKey] || null;
+    const isLoadingThisItem = isPendingThisItem && isAudioLoading && !resolvedAudioUrl;
+    const isDisabled = isLoadingThisItem || (!resolvedAudioUrl && !onRequestAudio);
 
     return (
       <button
@@ -147,7 +275,7 @@ export default function VocabularyReviewCards({
         onClick={() => void handleAudioPress(item)}
         disabled={isDisabled}
         aria-label={
-          item.audio_url
+          resolvedAudioUrl
             ? `Play audio for ${item.item_text}`
             : `Load and play audio for ${item.item_text}`
         }
@@ -177,7 +305,7 @@ export default function VocabularyReviewCards({
   if (!items.length) {
     return (
       <div className="mx-auto flex min-h-[calc(100svh-12rem)] max-w-3xl flex-col justify-center px-4 py-8 text-center sm:px-6">
-        <audio ref={audioRef} hidden />
+        <audio ref={audioRef} hidden playsInline preload="none" />
         <div className="card-surface space-y-3 px-6 py-8">
           <div className="text-2xl font-semibold token-text-primary">{emptyTitle}</div>
           <div className="token-text-secondary text-sm leading-6">
@@ -206,7 +334,7 @@ export default function VocabularyReviewCards({
 
   return (
     <div className="mx-auto flex min-h-[calc(100svh-12rem)] max-w-3xl flex-col px-4 py-4 sm:px-6">
-      <audio ref={audioRef} hidden />
+      <audio ref={audioRef} hidden playsInline preload="none" />
       <div className="space-y-1">
         <h2 className="token-text-primary text-2xl font-semibold">{title}</h2>
         {totalPages > 1 ? (

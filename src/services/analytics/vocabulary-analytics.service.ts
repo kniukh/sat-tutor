@@ -102,6 +102,7 @@ type WordProgressAnalyticsRow = Pick<
   | "id"
   | "word"
   | "word_id"
+  | "canonical_lemma"
   | "lifecycle_state"
   | "mastery_score"
   | "total_attempts"
@@ -112,6 +113,11 @@ type WordProgressAnalyticsRow = Pick<
   | "consecutive_correct"
   | "source_lesson_id"
 >;
+
+type CaptureAnalyticsRow = {
+  item_text: string | null;
+  canonical_lemma: string | null;
+};
 
 function toAccuracy(correct: number, attempts: number) {
   return attempts > 0 ? correct / attempts : 0;
@@ -392,6 +398,35 @@ function buildMasteryDistribution(wordProgressRows: WordProgressAnalyticsRow[]) 
   return grouped.filter((item) => item.count > 0);
 }
 
+function buildUniqueCapturedWordCount(params: {
+  captureRows: CaptureAnalyticsRow[];
+  wordProgressRows: WordProgressAnalyticsRow[];
+}) {
+  const keys = new Set<string>();
+
+  for (const row of params.captureRows) {
+    const key = String(row.canonical_lemma ?? row.item_text ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (key) {
+      keys.add(key);
+    }
+  }
+
+  for (const row of params.wordProgressRows) {
+    const key = String(row.canonical_lemma ?? row.word ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (key) {
+      keys.add(key);
+    }
+  }
+
+  return keys.size;
+}
+
 export async function getStudentVocabularyAnalytics(
   studentId: string
 ): Promise<StudentVocabularyAnalytics> {
@@ -402,7 +437,7 @@ export async function getStudentVocabularyAnalytics(
   const sevenDaysAgo = now.getTime() - 1000 * 60 * 60 * 24 * 7;
   const thirtyDaysAgo = now.getTime() - 1000 * 60 * 60 * 24 * 30;
 
-  const [attemptsResult, wordProgressResult] = await Promise.all([
+  const [attemptsResult, wordProgressResult, captureRowsResult] = await Promise.all([
     supabase
       .from("exercise_attempts")
       .select(
@@ -413,8 +448,12 @@ export async function getStudentVocabularyAnalytics(
     supabase
       .from("word_progress")
       .select(
-        "id, word, word_id, lifecycle_state, mastery_score, total_attempts, correct_attempts, last_seen_at, next_review_at, consecutive_incorrect, consecutive_correct, source_lesson_id"
+        "id, word, word_id, canonical_lemma, lifecycle_state, mastery_score, total_attempts, correct_attempts, last_seen_at, next_review_at, consecutive_incorrect, consecutive_correct, source_lesson_id"
       )
+      .eq("student_id", studentId),
+    supabase
+      .from("vocabulary_capture_events")
+      .select("item_text, canonical_lemma")
       .eq("student_id", studentId),
   ]);
 
@@ -426,8 +465,13 @@ export async function getStudentVocabularyAnalytics(
     throw wordProgressResult.error;
   }
 
+  if (captureRowsResult.error) {
+    throw captureRowsResult.error;
+  }
+
   const attempts = (attemptsResult.data ?? []) as AttemptAnalyticsRow[];
   const wordProgressRows = (wordProgressResult.data ?? []) as WordProgressAnalyticsRow[];
+  const captureRows = (captureRowsResult.data ?? []) as CaptureAnalyticsRow[];
   const totalExercisesCompleted = attempts.length;
   const totalCorrect = attempts.filter((attempt) => attempt.is_correct).length;
   const overallAccuracy = toAccuracy(totalCorrect, totalExercisesCompleted);
@@ -446,7 +490,10 @@ export async function getStudentVocabularyAnalytics(
   const allWeakWords = buildWeakWords(wordProgressRows);
   const recentWeakWords = allWeakWords.slice(0, 8);
   const improvedWords7d = buildImprovedWords(attempts, now);
-  const capturedWordsCount = wordProgressRows.length;
+  const capturedWordsCount = buildUniqueCapturedWordCount({
+    captureRows,
+    wordProgressRows,
+  });
   const masteredWordsCount = wordProgressRows.filter(
     (row) => row.lifecycle_state === "mastered"
   ).length;

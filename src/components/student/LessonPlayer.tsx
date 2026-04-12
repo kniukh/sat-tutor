@@ -16,8 +16,6 @@ import {
 import { useFeedbackSettings } from "@/services/feedback/use-feedback-settings";
 import {
   studentDashboardPath,
-  studentLessonPath,
-  studentVocabularyPath,
 } from "@/lib/routes/student";
 
 type OptionKey = "A" | "B" | "C" | "D";
@@ -45,6 +43,7 @@ type KnownWord = {
 type QuizVocabularyItem = {
   id: string;
   item_text: string;
+  canonical_lemma?: string | null;
   english_explanation?: string | null;
   translated_explanation?: string | null;
   example_text?: string | null;
@@ -143,7 +142,7 @@ type Props = {
   onRequestQuizVocabularyAudio?: (options?: {
     force?: boolean;
     itemTexts?: string[];
-  }) => Promise<void> | void;
+  }) => Promise<QuizVocabularyItem[] | void> | QuizVocabularyItem[] | void;
   isQuizVocabularyAudioLoading?: boolean;
   onPrepareQuizVocabularyReview?: () => Promise<void> | void;
   onVocabularyCaptured?: (item: CapturedVocabularyItem) => void;
@@ -483,7 +482,6 @@ export default function LessonPlayer({
     status: "correct" | "incorrect";
     message: string;
   } | null>(null);
-  const [quizContinueReady, setQuizContinueReady] = useState(false);
   const [sessionXpEarned, setSessionXpEarned] = useState(0);
   const [comboCount, setComboCount] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
@@ -502,6 +500,8 @@ export default function LessonPlayer({
   const questionStartedAtRef = useRef<number>(Date.now());
   const completionCuePlayedRef = useRef<string | null>(null);
   const requestedQuizAudioSignatureRef = useRef<string>("");
+  const pendingAnswerSavePromisesRef = useRef<Promise<void>[]>([]);
+  const autoAdvanceTimeoutRef = useRef<number | null>(null);
   const { settings: feedbackSettings } = useFeedbackSettings();
 
   const question = questions[index];
@@ -586,10 +586,6 @@ export default function LessonPlayer({
   }, [index]);
 
   useEffect(() => {
-    setQuizContinueReady(false);
-  }, [index]);
-
-  useEffect(() => {
     primeFeedbackAudio();
   }, []);
 
@@ -651,6 +647,36 @@ export default function LessonPlayer({
     quizPhase,
     quizVocabularyItems,
   ]);
+
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimeoutRef.current) {
+        clearTimeout(autoAdvanceTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function trackPendingAnswerSave(promise: Promise<void>) {
+    pendingAnswerSavePromisesRef.current = [
+      ...pendingAnswerSavePromisesRef.current,
+      promise,
+    ];
+
+    void promise.finally(() => {
+      pendingAnswerSavePromisesRef.current = pendingAnswerSavePromisesRef.current.filter(
+        (entry) => entry !== promise
+      );
+    });
+  }
+
+  async function flushPendingAnswerSaves() {
+    const pending = [...pendingAnswerSavePromisesRef.current];
+    if (pending.length === 0) {
+      return;
+    }
+
+    await Promise.allSettled(pending);
+  }
 
   useEffect(() => {
     const completionState =
@@ -748,6 +774,8 @@ export default function LessonPlayer({
     setSaving(true);
 
     try {
+      await flushPendingAnswerSaves();
+
       if (onBeforeComplete) {
         await onBeforeComplete();
       }
@@ -803,107 +831,124 @@ export default function LessonPlayer({
   }
 
   async function submitAnswer() {
-    if (!selected || !question) {
+    if (!selected || !question || submitted) {
       return;
     }
+    const questionId = question.id;
+    const selectedOption = selected as OptionKey;
+    const questionType = question.question_type;
+    const currentIndex = index;
+    const correctOption = question.correct_option;
+    const durationSec = Math.max(
+      1,
+      Math.round((Date.now() - questionStartedAtRef.current) / 1000)
+    );
+    const localIsCorrect = selectedOption === correctOption;
+    const localComboAfter = localIsCorrect ? comboCount + 1 : 0;
 
-    setSaving(true);
+    setAnswerMap((current) => ({
+      ...current,
+      [questionId]: selectedOption,
+    }));
+    setSubmitted(true);
+    triggerFeedbackCue(
+      getAnswerFeedbackCue({
+        isCorrect: localIsCorrect,
+        comboCountAfter: localComboAfter,
+      }),
+      feedbackSettings
+    );
+    onProgressChange?.((prev) => ({
+      totalQuestions: prev.totalQuestions,
+      answeredQuestions: Math.max(prev.answeredQuestions, currentIndex + 1),
+    }));
 
-    try {
-      const durationSec = Math.max(
-        1,
-        Math.round((Date.now() - questionStartedAtRef.current) / 1000)
-      );
-      const localIsCorrect = selected === question.correct_option;
-      const localComboAfter = localIsCorrect ? comboCount + 1 : 0;
+    const persistPromise = (async () => {
+      try {
+        const [progressResponse, attemptResponse] = await Promise.all([
+          fetch("/api/lesson/save-question-progress", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              studentId,
+              lessonId,
+              questionId,
+              selectedOption,
+              skill: questionType,
+            }),
+          }),
+          fetch("/api/question-attempt", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              studentId,
+              lessonId,
+              questionId,
+              selectedOption,
+              durationSec,
+            }),
+          }),
+        ]);
 
-      setAnswerMap((current) => ({
-        ...current,
-        [question.id]: selected as OptionKey,
-      }));
-      setSubmitted(true);
-      setQuizContinueReady(false);
-      window.setTimeout(() => {
-        setQuizContinueReady(true);
-      }, 380);
-      triggerFeedbackCue(
-        getAnswerFeedbackCue({
-          isCorrect: localIsCorrect,
-          comboCountAfter: localComboAfter,
-        }),
-        feedbackSettings
-      );
+        if (!progressResponse.ok) {
+          const progressPayload = await progressResponse.json().catch(() => null);
+          throw new Error(progressPayload?.error ?? "Failed to save question progress");
+        }
 
-      await fetch("/api/lesson/save-question-progress", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId,
-          lessonId,
-          questionId: question.id,
-          selectedOption: selected,
-          skill: question.question_type,
-        }),
-      });
+        const attemptPayload = await attemptResponse.json().catch(() => null);
 
-      const attemptResponse = await fetch("/api/question-attempt", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId,
-          lessonId,
-          questionId: question.id,
-          selectedOption: selected,
-          durationSec,
-        }),
-      });
+        if (!attemptResponse.ok) {
+          throw new Error(attemptPayload?.error ?? "Failed to save answer");
+        }
 
-      const attemptPayload = await attemptResponse.json().catch(() => null);
-
-      if (!attemptResponse.ok) {
-        throw new Error(attemptPayload?.error ?? "Failed to save answer");
+        const xpReward = attemptPayload?.result?.xpReward ?? null;
+        const awardedXp = Math.max(0, Number(xpReward?.xpAwarded ?? 0));
+        const comboAfter = Math.max(
+          0,
+          Number(
+            xpReward?.breakdown?.comboCountAfter ??
+              ((localIsCorrect ? comboCount + 1 : 0) as number)
+          )
+        );
+        const comboMultiplier = Number(xpReward?.breakdown?.comboMultiplier ?? 1);
+        setSessionXpEarned((prev) => prev + awardedXp);
+        setComboCount(localIsCorrect ? comboAfter : 0);
+        setMaxCombo((prev) => Math.max(prev, localIsCorrect ? comboAfter : prev));
+        setLevelProgress((current) => ({
+          previousLevel: xpReward?.progress?.previousLevel ?? current.previousLevel,
+          currentLevel:
+            xpReward?.progress?.currentLevel ??
+            xpReward?.gamification?.level ??
+            current.currentLevel,
+          leveledUp: Boolean(xpReward?.progress?.leveledUp) || current.leveledUp,
+          streakDays:
+            xpReward?.progress?.currentStreakDays ??
+            xpReward?.gamification?.streak_days ??
+            current.streakDays,
+        }));
+        triggerFloatingReward({
+          xp: awardedXp,
+          comboCount: localIsCorrect ? comboAfter : 0,
+          comboMultiplier,
+          leveledUp: Boolean(xpReward?.progress?.leveledUp),
+        });
+      } catch (error) {
+        console.error("submit answer error", error);
       }
+    })();
 
-      const xpReward = attemptPayload?.result?.xpReward ?? null;
-      const awardedXp = Math.max(0, Number(xpReward?.xpAwarded ?? 0));
-      const comboAfter = Math.max(
-        0,
-        Number(
-          xpReward?.breakdown?.comboCountAfter ??
-            ((selected === question.correct_option ? comboCount + 1 : 0) as number)
-        )
-      );
-      const comboMultiplier = Number(xpReward?.breakdown?.comboMultiplier ?? 1);
-      setSessionXpEarned((prev) => prev + awardedXp);
-      setComboCount(selected === question.correct_option ? comboAfter : 0);
-      setMaxCombo((prev) => Math.max(prev, selected === question.correct_option ? comboAfter : prev));
-      setLevelProgress((current) => ({
-        previousLevel: xpReward?.progress?.previousLevel ?? current.previousLevel,
-        currentLevel: xpReward?.progress?.currentLevel ?? xpReward?.gamification?.level ?? current.currentLevel,
-        leveledUp: Boolean(xpReward?.progress?.leveledUp) || current.leveledUp,
-        streakDays:
-          xpReward?.progress?.currentStreakDays ??
-          xpReward?.gamification?.streak_days ??
-          current.streakDays,
-      }));
-      triggerFloatingReward({
-        xp: awardedXp,
-        comboCount: selected === question.correct_option ? comboAfter : 0,
-        comboMultiplier,
-        leveledUp: Boolean(xpReward?.progress?.leveledUp),
-      });
-      onProgressChange?.((prev) => ({
-        totalQuestions: prev.totalQuestions,
-        answeredQuestions: Math.max(prev.answeredQuestions, index + 1),
-      }));
-    } catch (error) {
-      console.error("submit answer error", error);
-      alert("Failed to save answer");
-    } finally {
-      setSaving(false);
+    trackPendingAnswerSave(persistPromise);
+
+    if (autoAdvanceTimeoutRef.current) {
+      clearTimeout(autoAdvanceTimeoutRef.current);
     }
+
+    autoAdvanceTimeoutRef.current = window.setTimeout(() => {
+      void continueQuiz();
+      autoAdvanceTimeoutRef.current = null;
+    }, 420);
   }
 
   async function continueQuiz() {
@@ -1148,19 +1193,6 @@ export default function LessonPlayer({
       ? "primary-button min-h-14 flex-1 bg-emerald-600 hover:bg-emerald-500"
       : "primary-button min-h-14 flex-1"
     : "primary-button min-h-14 flex-1";
-  const finalQuizActionLabel =
-    quizVocabularyItems.length > 0
-      ? "Review Quiz Words"
-      : mistakeItems.length > 0
-        ? "Start Repair"
-        : "See Results";
-  const continueReadingHref = nextLessonId
-    ? studentLessonPath(nextLessonId)
-    : studentDashboardPath();
-  const startWordPracticeHref = studentVocabularyPath({
-    mode: "learn_new_words",
-    lesson: lessonId,
-  });
   const quizCompleteHeading =
     mistakeItems.length > 0
       ? "Mistakes turned into practice."
@@ -1548,19 +1580,11 @@ export default function LessonPlayer({
           <div className="space-y-3">
             <button
               type="button"
-              onClick={() => void completeLesson(continueReadingHref)}
+              onClick={() => void completeLesson()}
               disabled={saving}
               className="primary-button min-h-14 w-full"
             >
-              {saving ? "Saving..." : "Continue Reading"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void completeLesson(startWordPracticeHref)}
-              disabled={saving}
-              className="secondary-button min-h-14 w-full"
-            >
-              {saving ? "Saving..." : "Start Word Practice"}
+              {saving ? "Saving..." : "Continue"}
             </button>
             <button
               type="button"
@@ -1815,19 +1839,11 @@ export default function LessonPlayer({
           <div className="space-y-3">
             <button
               type="button"
-              onClick={() => void completeLesson(continueReadingHref)}
+              onClick={() => void completeLesson()}
               disabled={saving}
               className="primary-button min-h-14 w-full"
             >
-              {saving ? "Saving..." : "Continue Reading"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void completeLesson(startWordPracticeHref)}
-              disabled={saving}
-              className="secondary-button min-h-14 w-full"
-            >
-              {saving ? "Saving..." : "Start Word Practice"}
+              {saving ? "Saving..." : "Continue"}
             </button>
             <button
               type="button"
@@ -1847,28 +1863,13 @@ export default function LessonPlayer({
       {quizPhase === "quiz" ? (
         <div className="fixed-action-bar">
           <div className="fixed-action-bar__inner flex items-center gap-3">
-            {submitted ? (
-              <button
-                type="button"
-                onClick={() => void openExplanation(question)}
-                className="secondary-button min-h-14 px-5"
-              >
-                Why?
-              </button>
-            ) : null}
             <button
               type="button"
-              onClick={submitted ? () => void continueQuiz() : submitAnswer}
-              disabled={submitted ? saving || !quizContinueReady : !selected || saving}
+              onClick={submitAnswer}
+              disabled={!selected || saving || submitted}
               className={quizPrimaryButtonClass}
             >
-              {saving
-                ? "Saving..."
-                : submitted
-                  ? index >= questions.length - 1
-                    ? finalQuizActionLabel
-                    : "Continue"
-                  : "Submit"}
+              {saving ? "Saving..." : submitted ? "Continuing..." : "Continue"}
             </button>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createClient } from "@/lib/supabase/server";
 import { generateVocabularyAudioBulk } from "@/services/ai/generate-vocabulary-audio-bulk";
+import { resolveVocabularyLemma } from "@/services/vocabulary/vocabulary-normalization.service";
 
 const MAX_AUDIO_ITEMS_PER_REQUEST = 8;
 
@@ -14,6 +15,19 @@ export async function POST(request: Request) {
           body.itemTexts
             .filter((item: unknown): item is string => typeof item === "string")
             .map((item) => item.trim().toLowerCase())
+            .filter(Boolean)
+        )
+      : null;
+    const requestedLemmaKeys = Array.isArray(body.itemTexts)
+      ? new Set(
+          body.itemTexts
+            .filter((item: unknown): item is string => typeof item === "string")
+            .map((item) =>
+              resolveVocabularyLemma({
+                itemText: item,
+                itemType: item.includes(" ") ? "phrase" : "word",
+              }).canonicalLemma
+            )
             .filter(Boolean)
         )
       : null;
@@ -31,7 +45,7 @@ export async function POST(request: Request) {
 
     const { data: items, error } = await supabase
       .from("vocabulary_item_details")
-      .select("id, item_text, audio_status, audio_url")
+      .select("id, item_text, canonical_lemma, audio_status, audio_url")
       .eq("student_id", sessionStudentId)
       .eq("lesson_id", lessonId)
       .order("created_at", { ascending: true });
@@ -49,7 +63,14 @@ export async function POST(request: Request) {
 
         if (
           requestedKeys &&
-          !requestedKeys.has(item.item_text.trim().toLowerCase())
+          !requestedKeys.has(item.item_text.trim().toLowerCase()) &&
+          !requestedLemmaKeys?.has(
+            item.canonical_lemma?.trim().toLowerCase() ||
+              resolveVocabularyLemma({
+                itemText: item.item_text,
+                itemType: item.item_text.includes(" ") ? "phrase" : "word",
+              }).canonicalLemma
+          )
         ) {
           return false;
         }

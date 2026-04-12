@@ -40,6 +40,17 @@ export type VocabularyDrillAnswerSet = {
   normalization: VocabularyDrillAnswerNormalization;
 };
 
+export type VocabularyDrillAnswerSetMeta = {
+  refined_definition?: string | null;
+  context_explanation?: string | null;
+  practice_example_sentence?: string | null;
+  synonym_candidates?: string[];
+  antonym_candidates?: string[];
+  enriched_at?: string | null;
+};
+
 export type VocabularyDrillAnswerSetMap = Partial<
   Record<VocabularyDrillAnswerSetKey, VocabularyDrillAnswerSet>
->;
+> & {
+  __meta__?: VocabularyDrillAnswerSetMeta;
+};

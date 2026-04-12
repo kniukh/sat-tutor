@@ -1,6 +1,7 @@
 import Link from "next/link";
 import VocabularyAudioPrefetch from "@/components/student/VocabularyAudioPrefetch";
 import {
+  studentDashboardPath,
   studentMistakeBrainPath,
   studentVocabularyDrillPath,
 } from "@/lib/routes/student";
@@ -87,6 +88,9 @@ export default async function StudentVocabularyPage({
             </Link>
             <Link href={weakWordsHref} className="secondary-button flex-1 sm:flex-none">
               Review Weak Words
+            </Link>
+            <Link href={studentDashboardPath()} className="secondary-button flex-1 sm:flex-none">
+              Return to Dashboard
             </Link>
           </div>
 

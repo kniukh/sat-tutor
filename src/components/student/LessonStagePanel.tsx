@@ -7,7 +7,6 @@ import {
   studentLibraryPath,
   studentDashboardPath,
   studentVocabularyDrillPath,
-  studentVocabularyPath,
 } from "@/lib/routes/student";
 import PassageVocabularyCapture from "./PassageVocabularyCapture";
 import type { CapturedVocabularyItem } from "./PassageVocabularyCapture";
@@ -15,6 +14,7 @@ import VocabularyReviewCards from "./VocabularyReviewCards";
 import LessonPlayer from "./LessonPlayer";
 import InteractivePassageReader from "./InteractivePassageReader";
 import LessonVocabularyTray from "./LessonVocabularyTray";
+import { resolveVocabularyLemma } from "@/services/vocabulary/vocabulary-normalization.service";
 
 type Question = {
   id: string;
@@ -31,11 +31,13 @@ type Question = {
 type VocabItem = {
   id: string;
   item_text: string;
+  canonical_lemma?: string | null;
   english_explanation?: string | null;
   translated_explanation?: string | null;
   example_text?: string | null;
   context_sentence?: string | null;
   audio_url?: string | null;
+  audio_status?: "ready" | "pending" | "failed" | "missing" | null;
   lifecycle_state?: string | null;
   review_bucket?:
     | "recently_failed"
@@ -96,13 +98,31 @@ function mergeVocabularyItems(
   const merged = new Map<string, VocabItem>();
 
   for (const item of currentItems) {
-    merged.set(item.item_text.trim().toLowerCase(), item);
+    merged.set(getVocabularyItemMergeKey(item), item);
   }
 
   for (const item of nextItems) {
-    merged.set(item.item_text.trim().toLowerCase(), {
-      ...merged.get(item.item_text.trim().toLowerCase()),
+    const mergeKey = getVocabularyItemMergeKey(item);
+    const existing = merged.get(mergeKey);
+    merged.set(mergeKey, {
+      ...existing,
       ...item,
+      canonical_lemma: item.canonical_lemma ?? existing?.canonical_lemma ?? null,
+      item_text: existing?.item_text ?? item.item_text,
+      english_explanation:
+        item.english_explanation ?? existing?.english_explanation ?? null,
+      translated_explanation:
+        item.translated_explanation ?? existing?.translated_explanation ?? null,
+      example_text: item.example_text ?? existing?.example_text ?? null,
+      context_sentence: item.context_sentence ?? existing?.context_sentence ?? null,
+      audio_url: item.audio_url ?? existing?.audio_url ?? null,
+      audio_status:
+        item.audio_status === "ready"
+          ? "ready"
+          : item.audio_status ?? existing?.audio_status ?? null,
+      lifecycle_state: item.lifecycle_state ?? existing?.lifecycle_state ?? null,
+      review_bucket: item.review_bucket ?? existing?.review_bucket ?? null,
+      review_ready: item.review_ready ?? existing?.review_ready ?? false,
     });
   }
 
@@ -116,6 +136,10 @@ function buildFallbackVocabularyItemsForReview(
   return items.map((item, index) => ({
     id: `checkpoint-fallback:${lessonId}:${index}:${item.itemText.toLowerCase()}`,
     item_text: item.itemText,
+    canonical_lemma: resolveVocabularyLemma({
+      itemText: item.itemText,
+      itemType: item.itemType,
+    }).canonicalLemma,
     english_explanation:
       item.preview?.plainEnglishMeaning?.trim() ||
       item.preview?.contextMeaning?.trim() ||
@@ -139,14 +163,34 @@ function buildCapturedVocabularyReviewItems(params: {
   lessonId: string;
 }) {
   const sourceItemsByText = new Map(
-    params.sourceItems.map((item) => [item.item_text.trim().toLowerCase(), item])
+    params.sourceItems.map((item) => [getVocabularyItemMergeKey(item), item])
   );
   const fallbackItems = buildFallbackVocabularyItemsForReview(params.items, params.lessonId);
 
-  return fallbackItems.map((fallbackItem) => ({
-    ...fallbackItem,
-    ...sourceItemsByText.get(fallbackItem.item_text.trim().toLowerCase()),
-  }));
+  return fallbackItems.map((fallbackItem) => {
+    const matchedSourceItem =
+      sourceItemsByText.get(getVocabularyItemMergeKey(fallbackItem)) ?? null;
+
+    return matchedSourceItem
+      ? {
+          ...fallbackItem,
+          ...matchedSourceItem,
+          item_text: fallbackItem.item_text,
+          canonical_lemma:
+            matchedSourceItem.canonical_lemma ?? fallbackItem.canonical_lemma ?? null,
+        }
+      : fallbackItem;
+  });
+}
+
+function getVocabularyItemMergeKey(item: Pick<VocabItem, "item_text" | "canonical_lemma">) {
+  return (
+    item.canonical_lemma?.trim().toLowerCase() ||
+    resolveVocabularyLemma({
+      itemText: item.item_text,
+      itemType: item.item_text.includes(" ") ? "phrase" : "word",
+    }).canonicalLemma
+  );
 }
 
 function isFallbackVocabularyItem(item: VocabItem) {
@@ -698,13 +742,27 @@ export default function LessonStagePanel({
     const requestedKeys = options?.itemTexts?.length
       ? new Set(options.itemTexts.map((itemText) => getCapturedVocabularyKey(itemText)))
       : null;
+    const requestedLemmaKeys = options?.itemTexts?.length
+      ? new Set(
+          options.itemTexts.map((itemText) =>
+            resolveVocabularyLemma({
+              itemText,
+              itemType: itemText.includes(" ") ? "phrase" : "word",
+            }).canonicalLemma
+          )
+        )
+      : null;
     const relevantItems = requestedKeys
-      ? localVocabItems.filter((item) => requestedKeys.has(getCapturedVocabularyKey(item.item_text)))
+      ? localVocabItems.filter((item) => {
+          const itemTextKey = getCapturedVocabularyKey(item.item_text);
+          const itemLemmaKey = getVocabularyItemMergeKey(item);
+          return requestedKeys.has(itemTextKey) || Boolean(requestedLemmaKeys?.has(itemLemmaKey));
+        })
       : localVocabItems;
     const hasMissingAudio =
       options?.force || relevantItems.some((item) => !item.audio_url);
     if (!hasMissingAudio) {
-      return;
+      return relevantItems;
     }
 
     setIsVocabularyAudioLoading(true);
@@ -731,9 +789,11 @@ export default function LessonStagePanel({
       if (nextItems.length > 0) {
         setLocalVocabItems((current) => mergeVocabularyItems(current, nextItems));
       }
+      return nextItems;
     } catch (error) {
       console.error("requestVocabularyAudio error", error);
       requestedAudioSignatureRef.current = "";
+      return;
     } finally {
       setIsVocabularyAudioLoading(false);
     }
@@ -795,6 +855,12 @@ export default function LessonStagePanel({
   }
 
   const reviewReadyCount = localVocabItems.filter((item) => item.review_ready).length;
+  const uniqueCapturedLessonWords = Array.from(
+    new Map(
+      capturedItems.map((item) => [getCapturedVocabularyKey(item.itemText), item.itemText.trim()])
+    ).values()
+  );
+  const capturedLessonWordCount = uniqueCapturedLessonWords.length;
   const quizVocabularyItems = buildCapturedVocabularyReviewItems({
     items: capturedItems.filter(
       (item) => item.sourceType === "question" || item.sourceType === "answer"
@@ -807,13 +873,17 @@ export default function LessonStagePanel({
     const preparedCount =
       completionResult?.vocabularyPreparation?.totalItems ?? localVocabItems.length;
     const generatedCount = completionResult?.vocabularyPreparation?.generatedCount ?? 0;
-    const primaryCompletionHref =
+    const skipCompletionHref =
       nextLessonId ? studentLessonPath(nextLessonId) : studentLibraryPath();
-    const primaryCompletionLabel = nextLessonId ? "Continue Reading" : "Back to Library";
-    const vocabularyHref = studentVocabularyPath({
+    const guidedPracticeHref = studentVocabularyDrillPath({
       mode: "learn_new_words",
       lesson: lessonId,
+      guided: "lesson_intro",
+      guidedWords:
+        capturedLessonWordCount > 0 ? JSON.stringify(uniqueCapturedLessonWords) : undefined,
+      nextLesson: nextLessonId ?? undefined,
     });
+    const shouldPromptPractice = capturedLessonWordCount > 0;
 
     return (
       <div className="mx-auto max-w-2xl space-y-4">
@@ -823,15 +893,22 @@ export default function LessonStagePanel({
               <div className="app-kicker">
                 Lesson Complete
               </div>
-              <h2 className="app-heading-lg">Keep the lesson words alive</h2>
+              <h2 className="app-heading-lg">
+                {shouldPromptPractice ? "Your new words are ready" : "Ready for the next lesson"}
+              </h2>
               <p className="app-copy">
-                {preparedCount > 0
-                  ? `${preparedCount} words from ${lessonName} are ready for useful follow-up practice, so you can move straight from reading into reinforcement.`
-                  : "Your reading progress is saved. Vocabulary Studio can keep building follow-up practice as lesson words finish syncing."}
+                {shouldPromptPractice
+                  ? `${capturedLessonWordCount} new word${capturedLessonWordCount === 1 ? "" : "s"} came out of ${lessonName}. Do a quick intro round now so reading flows straight into practice.`
+                  : "Your reading progress is saved. Keep the momentum going with the next lesson whenever you're ready."}
               </p>
             </div>
 
             <div className="token-text-secondary flex flex-wrap gap-2 text-xs font-semibold">
+              {capturedLessonWordCount > 0 ? (
+                <span className="app-chip app-chip-success">
+                  {capturedLessonWordCount} new captures
+                </span>
+              ) : null}
               {preparedCount > 0 ? (
                 <span className="app-chip app-chip-success">
                   {preparedCount} lesson words ready
@@ -850,18 +927,29 @@ export default function LessonStagePanel({
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Link
-                href={primaryCompletionHref}
-                className="app-button app-button-primary"
-              >
-                {primaryCompletionLabel}
-              </Link>
-              <Link
-                href={vocabularyHref}
-                className="app-button app-button-secondary"
-              >
-                Go to Vocabulary
-              </Link>
+              {shouldPromptPractice ? (
+                <>
+                  <Link
+                    href={guidedPracticeHref}
+                    className="app-button app-button-primary"
+                  >
+                    Start Practice
+                  </Link>
+                  <Link
+                    href={skipCompletionHref}
+                    className="app-button app-button-secondary"
+                  >
+                    Skip for now
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  href={skipCompletionHref}
+                  className="app-button app-button-primary"
+                >
+                  {nextLessonId ? "Continue Reading" : "Back to Library"}
+                </Link>
+              )}
               <Link
                 href={studentDashboardPath()}
                 className="app-button app-button-muted"

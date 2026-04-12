@@ -1,6 +1,10 @@
 import Link from "next/link";
 import VocabSessionPlayer from "@/components/student/VocabSessionPlayer";
-import { studentVocabularyPath } from "@/lib/routes/student";
+import {
+  studentLessonPath,
+  studentLibraryPath,
+  studentVocabularyPath,
+} from "@/lib/routes/student";
 import {
   getStudentVocabularyPageData,
   normalizeVocabularyLessonId,
@@ -13,18 +17,53 @@ export default async function FocusedVocabularyDrillPage({
   searchParams,
 }: {
   params: Promise<{ code: string }>;
-  searchParams: Promise<{ mode?: string; phase?: string; lesson?: string }>;
+  searchParams: Promise<{
+    mode?: string;
+    phase?: string;
+    lesson?: string;
+    guided?: string;
+    guidedWords?: string;
+    nextLesson?: string;
+  }>;
 }) {
   const [{ code }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const selectedMode = normalizeVocabularyPageMode(resolvedSearchParams.mode);
   const selectedPhase = normalizeVocabularySessionPhase(resolvedSearchParams.phase);
   const preferredLessonId = normalizeVocabularyLessonId(resolvedSearchParams.lesson);
+  const guidedLessonIntro = resolvedSearchParams.guided === "lesson_intro";
+  const nextLessonId = normalizeVocabularyLessonId(resolvedSearchParams.nextLesson);
+  let guidedWordTexts: string[] = [];
+
+  if (resolvedSearchParams.guidedWords) {
+    try {
+      const parsed = JSON.parse(resolvedSearchParams.guidedWords);
+      if (Array.isArray(parsed)) {
+        guidedWordTexts = parsed
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter(Boolean);
+      }
+    } catch {
+      guidedWordTexts = [];
+    }
+  }
+
   const data = await getStudentVocabularyPageData(
     code,
     selectedMode,
     selectedPhase,
-    preferredLessonId
+    preferredLessonId,
+    {
+      guidedLessonIntro,
+      guidedWordTexts,
+    }
   );
+  const guidedCompletionAction =
+    guidedLessonIntro
+      ? {
+          href: nextLessonId ? studentLessonPath(nextLessonId, code) : studentLibraryPath(),
+          label: nextLessonId ? "Continue Reading" : "Back to Library",
+        }
+      : null;
 
   if (data.session) {
     return (
@@ -34,6 +73,7 @@ export default async function FocusedVocabularyDrillPage({
           studentId={data.student.id}
           accessCode={data.student.accessCode}
           focused
+          completionAction={guidedCompletionAction}
         />
       </main>
     );
@@ -48,7 +88,11 @@ export default async function FocusedVocabularyDrillPage({
           </div>
           <h1 className="text-3xl font-semibold text-slate-950">Nothing ready yet</h1>
           <p className="text-sm leading-6 text-slate-600">
-            {data.preparationNeeded
+            {guidedLessonIntro && data.preparationNeeded
+              ? data.summary.lessonFocus
+                ? `The new words from ${data.summary.lessonFocus.lessonName} are still finishing their practice setup. Give it a moment, then jump back in.`
+                : "Your new lesson words are still finishing their practice setup. Give it a moment, then jump back in."
+              : data.preparationNeeded
               ? data.summary.lessonFocus
                 ? `Words from ${data.summary.lessonFocus.lessonName} are still being prepared. Give it a moment, then jump back in.`
                 : "Your next drill is still being prepared. Give it a moment, then open the focused session again."
@@ -67,8 +111,16 @@ export default async function FocusedVocabularyDrillPage({
             })}
             className="primary-button w-full"
           >
-            Back to vocabulary
+            {guidedLessonIntro ? "Open Vocabulary Studio" : "Back to vocabulary"}
           </Link>
+          {guidedCompletionAction ? (
+            <Link
+              href={guidedCompletionAction.href}
+              className="secondary-button w-full"
+            >
+              Skip for now
+            </Link>
+          ) : null}
         </div>
       </div>
     </main>

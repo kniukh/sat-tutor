@@ -15,6 +15,7 @@ import {
   getExerciseSentenceText,
   getExerciseTargetWord,
   getExerciseTargetWordId,
+  getExerciseTranslationText,
 } from "@/types/vocab-exercises";
 import ExercisePlayerFooter from "./ExercisePlayerFooter";
 import ExerciseProgressHeader from "./ExerciseProgressHeader";
@@ -64,6 +65,8 @@ type ExerciseFeedbackState = {
   correctAnswer?: string;
   answerLabel?: string;
   streakCount?: number;
+  translationText?: string | null;
+  translationLabel?: string | null;
 };
 
 function parseSentenceBuilderResponse(value: string) {
@@ -118,6 +121,43 @@ function canQueueRetryExercise(exercise: Exercise) {
   }
 
   return getRetrySourceExerciseId(exercise) === null;
+}
+
+function isSingleWordTarget(exercise: Exercise) {
+  const targetWord = getExerciseTargetWord(exercise).trim();
+  return Boolean(targetWord) && !targetWord.includes(" ");
+}
+
+function canUseAlreadyKnowShortcut(exercise: Exercise, studentId?: string) {
+  if (!studentId || !isSingleWordTarget(exercise) || !getExerciseTargetWordId(exercise)) {
+    return false;
+  }
+
+  if (
+    exercise.type !== "translation_match" &&
+    exercise.type !== "context_meaning" &&
+    exercise.type !== "synonym" &&
+    exercise.type !== "spelling_from_audio" &&
+    exercise.type !== "meaning_match"
+  ) {
+    return false;
+  }
+
+  if (exercise.reviewMeta?.lifecycleState === "mastered") {
+    return false;
+  }
+
+  if (exercise.reviewMeta?.selectionRule === "retention_check") {
+    return false;
+  }
+
+  return (
+    Boolean(exercise.reviewMeta?.lessonFirstExposure) ||
+    exercise.reviewMeta?.lifecycleState === "new" ||
+    exercise.reviewMeta?.lifecycleState === "learning" ||
+    exercise.reviewMeta?.sourceOrigin === "new_word_pool" ||
+    exercise.reviewMeta?.selectionBucket === "newer_words"
+  );
 }
 
 function buildRetryExercise(exercise: Exercise): Exercise {
@@ -231,6 +271,7 @@ export default function ExercisePlayer({
     ? parseSentenceBuilderResponse(responseValue)
     : [];
   const pairCount = isPairStyleExercise ? getExercisePairs(currentExercise).length : 0;
+  const canUseAlreadyKnow = canUseAlreadyKnowShortcut(currentExercise, captureStudentId);
   const canSubmit = isPairStyleExercise
     ? pairCount > 0 && selectedPairKeys.length === pairCount
     : isSentenceBuilder
@@ -301,6 +342,13 @@ export default function ExercisePlayer({
 
     if (!canSubmit || isAdvancing) return;
 
+    if (isTypedResponse && typeof document !== "undefined") {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement) {
+        activeElement.blur();
+      }
+    }
+
     const timeSpentMs = Math.max(1, Date.now() - startedAtRef.current);
     const correctAnswerId = getExerciseCorrectAnswer(currentExercise);
     const questionText = getExerciseQuestionText(currentExercise);
@@ -356,6 +404,9 @@ export default function ExercisePlayer({
     const normalizedAcceptableAnswers = getExerciseAcceptableAnswers(currentExercise).map((answer) =>
       answer.trim().toLowerCase()
     );
+    const translationText = isTypedResponse
+      ? getExerciseTranslationText(currentExercise)
+      : null;
     const isCorrect = isTypedResponse
       ? normalizedAcceptableAnswers.includes(normalizedTypedAnswer)
       : isPairStyleExercise
@@ -460,6 +511,9 @@ export default function ExercisePlayer({
           ? "Your sentence"
           : "Your answer",
       streakCount: isCorrect ? currentStreak + 1 : 0,
+      translationText: isCorrect && isTypedResponse ? translationText : null,
+      translationLabel:
+        isCorrect && isTypedResponse && translationText ? "Translation" : null,
     });
     setResults((prev) => [
       ...prev.filter((item) => item.exercise_id !== result.exercise_id),
@@ -482,8 +536,87 @@ export default function ExercisePlayer({
         ? exerciseQueue.length + 1
         : exerciseQueue.length;
 
+    const autoAdvanceDelayMs = isTypedResponse
+      ? isCorrect && translationText
+        ? 1800
+        : 1600
+      : 520;
+
     autoAdvanceTimeoutRef.current = window.setTimeout(() => {
       if (currentIndex >= queueLengthAfterCheck - 1) {
+        onComplete?.(nextResults);
+        return;
+      }
+
+      setIsAdvancing(true);
+      window.setTimeout(() => {
+        setCurrentIndex((prev) => prev + 1);
+        setResponseValue("");
+        setSubmitted(false);
+        setCurrentFeedback(null);
+      }, 120);
+    }, autoAdvanceDelayMs);
+  }
+
+  function handleAlreadyKnow() {
+    if (submitted || isAdvancing || !canUseAlreadyKnow) {
+      return;
+    }
+
+    const timeSpentMs = Math.max(1, Date.now() - startedAtRef.current);
+    const result: ExerciseResult = {
+      response_time_ms: timeSpentMs,
+      session_id: sessionIdRef.current,
+      exercise_id: currentExercise.id,
+      exercise_type: currentExercise.type,
+      target_word_id: getExerciseTargetWordId(currentExercise),
+      target_word: getExerciseTargetWord(currentExercise),
+      selected_answer: "__already_known__",
+      correct_answer: getExerciseCorrectAnswer(currentExercise),
+      is_correct: true,
+      attempt_index: currentIndex + 1,
+      word_progress_id: currentExercise.reviewMeta?.sourceDrillId ?? null,
+      metadata: {
+        ...(sessionMetadata ?? {}),
+        already_known: true,
+        shortcut_action: "self_declared_known",
+        question_text: questionText,
+        sentence_text: getExerciseSentenceText(currentExercise) || null,
+        prompt: currentExercise.prompt,
+        instructions: currentExercise.instructions ?? null,
+        modality: getExerciseModality(currentExercise),
+      },
+      user_answer: "__already_known__",
+      attempt_count: currentExercise.reviewMeta?.attemptCount ?? 0,
+      lesson_id: currentExercise.reviewMeta?.sourceLessonId ?? null,
+      confidence: 1,
+      created_at: new Date().toISOString(),
+    };
+
+    setSubmitted(true);
+    setCurrentFeedback({
+      isCorrect: true,
+      explanation: "Moved to Mastered. We'll still bring it back lightly in a future mixed review.",
+      streakCount: currentStreak,
+    });
+    setResults((prev) => [
+      ...prev.filter((item) => item.exercise_id !== result.exercise_id),
+      result,
+    ]);
+
+    onExerciseComplete?.(result);
+
+    const nextResults = [
+      ...results.filter((item) => item.exercise_id !== result.exercise_id),
+      result,
+    ];
+
+    if (autoAdvanceTimeoutRef.current) {
+      clearTimeout(autoAdvanceTimeoutRef.current);
+    }
+
+    autoAdvanceTimeoutRef.current = window.setTimeout(() => {
+      if (currentIndex >= exerciseQueue.length - 1) {
         onComplete?.(nextResults);
         return;
       }
@@ -724,6 +857,15 @@ export default function ExercisePlayer({
         feedback={currentFeedback}
         focused={focused}
         onContinue={handleContinue}
+        secondaryAction={
+          canUseAlreadyKnow
+            ? {
+                label: "Already Know",
+                onClick: handleAlreadyKnow,
+                disabled: submitted || isAdvancing,
+              }
+            : null
+        }
       />
 
       {captureToast ? (

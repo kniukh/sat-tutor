@@ -24,6 +24,7 @@ export default function VocabularySessionResults({
   session,
   results,
   accessCode,
+  completionAction = null,
   progressSignals,
   rewardCredit,
   sessionGamification,
@@ -33,6 +34,10 @@ export default function VocabularySessionResults({
   session: VocabExerciseSession;
   results: ExerciseResult[];
   accessCode: string;
+  completionAction?: {
+    href: string;
+    label: string;
+  } | null;
   progressSignals?: VocabularySessionProgressSignal[];
   rewardCredit?: VocabularySessionRewardCredit | null;
   sessionGamification?: VocabularySessionGamificationSummary | null;
@@ -52,6 +57,8 @@ export default function VocabularySessionResults({
     mode: session.mode,
     phase: "endless_continuation",
   });
+  const primaryContinueHref = completionAction?.href ?? continueHref;
+  const primaryContinueLabel = completionAction?.label ?? summary.continueLabel;
   const weakWordsHref = studentVocabularyPath({
     mode: "review_weak_words",
     phase: "endless_continuation",
@@ -203,10 +210,10 @@ export default function VocabularySessionResults({
 
         <div className="space-y-3 pt-2">
           <Link
-            href={continueHref}
+            href={primaryContinueHref}
             className="app-button app-button-primary flex w-full"
           >
-            {summary.continueLabel}
+            {primaryContinueLabel}
           </Link>
           <Link
             href={weakWordsHref}
@@ -373,10 +380,10 @@ export default function VocabularySessionResults({
         </div>
         <div className="flex flex-wrap gap-3">
           <Link
-            href={continueHref}
+            href={primaryContinueHref}
             className="app-button app-button-primary"
           >
-            {summary.continueLabel}
+            {primaryContinueLabel}
           </Link>
           <Link
             href={weakWordsHref}

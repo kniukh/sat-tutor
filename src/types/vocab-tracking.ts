@@ -78,10 +78,15 @@ export type WordProgressRow = {
   student_id: string;
   word: string;
   word_id: string | null;
+  canonical_lemma: string | null;
   status: WordProgressStatus;
   lifecycle_state: WordLifecycleState;
   current_difficulty_band: VocabDifficultyBand | null;
   mastery_score: number;
+  captured_surface_forms: string[] | null;
+  capture_count: number | null;
+  first_captured_at: string | null;
+  last_captured_at: string | null;
   sessions_seen_count: number;
   sessions_correct_count: number;
   total_attempts: number;
