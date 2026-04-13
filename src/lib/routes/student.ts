@@ -43,6 +43,10 @@ export function studentVocabularyPath(query?: Record<string, string | null | und
   return appendQuery("/s/vocabulary", query);
 }
 
+export function studentVocabularyListPath(query?: Record<string, string | null | undefined>) {
+  return appendQuery("/s/vocabulary/list", query);
+}
+
 export function studentVocabularyDrillPath(query?: Record<string, string | null | undefined>) {
   return appendQuery("/s/vocabulary/drill", query);
 }

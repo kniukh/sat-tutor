@@ -70,6 +70,7 @@ async function listLessonVocabularyItems(studentId: string, lessonId: string) {
     .select("*")
     .eq("student_id", studentId)
     .eq("lesson_id", lessonId)
+    .eq("is_removed", false)
     .order("created_at", { ascending: true });
 
   if (error) {

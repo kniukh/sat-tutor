@@ -15,6 +15,10 @@ import LessonPlayer from "./LessonPlayer";
 import InteractivePassageReader from "./InteractivePassageReader";
 import LessonVocabularyTray from "./LessonVocabularyTray";
 import { resolveVocabularyLemma } from "@/services/vocabulary/vocabulary-normalization.service";
+import {
+  deleteStudentVocabularyItem,
+  regenerateStudentVocabularyMeaning,
+} from "@/services/vocabulary/student-vocabulary-client.service";
 
 type Question = {
   id: string;
@@ -34,6 +38,10 @@ type VocabItem = {
   canonical_lemma?: string | null;
   english_explanation?: string | null;
   translated_explanation?: string | null;
+  student_definition_override?: string | null;
+  student_translation_override?: string | null;
+  definition_override_generated_from_context?: boolean | null;
+  definition_override_updated_at?: string | null;
   example_text?: string | null;
   context_sentence?: string | null;
   audio_url?: string | null;
@@ -47,6 +55,7 @@ type VocabItem = {
     | "scheduled"
     | null;
   review_ready?: boolean;
+  is_removed?: boolean;
 };
 
 type InlinePreviewPayload = {
@@ -113,6 +122,18 @@ function mergeVocabularyItems(
         item.english_explanation ?? existing?.english_explanation ?? null,
       translated_explanation:
         item.translated_explanation ?? existing?.translated_explanation ?? null,
+      student_definition_override:
+        item.student_definition_override ?? existing?.student_definition_override ?? null,
+      student_translation_override:
+        item.student_translation_override ?? existing?.student_translation_override ?? null,
+      definition_override_generated_from_context:
+        item.definition_override_generated_from_context ??
+        existing?.definition_override_generated_from_context ??
+        false,
+      definition_override_updated_at:
+        item.definition_override_updated_at ??
+        existing?.definition_override_updated_at ??
+        null,
       example_text: item.example_text ?? existing?.example_text ?? null,
       context_sentence: item.context_sentence ?? existing?.context_sentence ?? null,
       audio_url: item.audio_url ?? existing?.audio_url ?? null,
@@ -123,6 +144,7 @@ function mergeVocabularyItems(
       lifecycle_state: item.lifecycle_state ?? existing?.lifecycle_state ?? null,
       review_bucket: item.review_bucket ?? existing?.review_bucket ?? null,
       review_ready: item.review_ready ?? existing?.review_ready ?? false,
+      is_removed: item.is_removed ?? existing?.is_removed ?? false,
     });
   }
 
@@ -190,6 +212,19 @@ function getVocabularyItemMergeKey(item: Pick<VocabItem, "item_text" | "canonica
       itemText: item.item_text,
       itemType: item.item_text.includes(" ") ? "phrase" : "word",
     }).canonicalLemma
+  );
+}
+
+function getCapturedVocabularyMergeKey(item: Pick<CapturedVocabularyItem, "itemText" | "itemType">) {
+  return resolveVocabularyLemma({
+    itemText: item.itemText,
+    itemType: item.itemType,
+  }).canonicalLemma;
+}
+
+function isPersistedVocabularyItemId(id: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    id
   );
 }
 
@@ -301,6 +336,7 @@ export default function LessonStagePanel({
   vocabItems,
 }: Props) {
   const [stage, setStage] = useState(state.stage);
+  const [readingView, setReadingView] = useState<"text" | "words">("text");
   const [capturedItems, setCapturedItems] = useState<CapturedVocabularyItem[]>([]);
   const [localVocabItems, setLocalVocabItems] = useState<VocabItem[]>(vocabItems ?? []);
   const [isVocabularyHydrating, setIsVocabularyHydrating] = useState(false);
@@ -309,7 +345,12 @@ export default function LessonStagePanel({
   const hydratedVocabularyKeysRef = useRef<Set<string>>(new Set());
   const inflightVocabularyKeysRef = useRef<Set<string>>(new Set());
   const requestedAudioSignatureRef = useRef<string>("");
+  const inflightVocabularyAudioRequestRef = useRef<Promise<VocabItem[] | void> | null>(null);
   const readingStageStartedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setReadingView("text");
+  }, [stage]);
 
   useEffect(() => {
     if (stage === "first_read" || stage === "second_read") {
@@ -736,7 +777,7 @@ export default function LessonStagePanel({
     itemTexts?: string[];
   }) {
     if (isVocabularyAudioLoading) {
-      return;
+      return inflightVocabularyAudioRequestRef.current ?? localVocabItems;
     }
 
     const requestedKeys = options?.itemTexts?.length
@@ -767,36 +808,42 @@ export default function LessonStagePanel({
 
     setIsVocabularyAudioLoading(true);
 
-    try {
-      const response = await fetch("/api/vocabulary/regenerate-audio", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId,
-          lessonId,
-          itemTexts: options?.itemTexts ?? null,
-        }),
-      });
+    const audioRequestPromise = (async () => {
+      try {
+        const response = await fetch("/api/vocabulary/regenerate-audio", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId,
+            lessonId,
+            itemTexts: options?.itemTexts ?? null,
+          }),
+        });
 
-      const payload = await response.json().catch(() => null);
+        const payload = await response.json().catch(() => null);
 
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Failed to load vocabulary audio");
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Failed to load vocabulary audio");
+        }
+
+        const nextItems = Array.isArray(payload?.items) ? payload.items : [];
+        if (nextItems.length > 0) {
+          setLocalVocabItems((current) => mergeVocabularyItems(current, nextItems));
+        }
+        return nextItems;
+      } catch (error) {
+        console.error("requestVocabularyAudio error", error);
+        requestedAudioSignatureRef.current = "";
+        return;
+      } finally {
+        setIsVocabularyAudioLoading(false);
+        inflightVocabularyAudioRequestRef.current = null;
       }
+    })();
 
-      const nextItems = Array.isArray(payload?.items) ? payload.items : [];
-      if (nextItems.length > 0) {
-        setLocalVocabItems((current) => mergeVocabularyItems(current, nextItems));
-      }
-      return nextItems;
-    } catch (error) {
-      console.error("requestVocabularyAudio error", error);
-      requestedAudioSignatureRef.current = "";
-      return;
-    } finally {
-      setIsVocabularyAudioLoading(false);
-    }
+    inflightVocabularyAudioRequestRef.current = audioRequestPromise;
+    return audioRequestPromise;
   }
 
   async function prepareQuizVocabularyReview() {
@@ -822,11 +869,134 @@ export default function LessonStagePanel({
 
     requestedAudioSignatureRef.current = "";
     setLocalVocabItems((current) => mergeVocabularyItems(current, fallbackItems));
-    await hydrateVisibleVocabularyItems(fallbackItems);
+    try {
+      const itemTexts = fallbackItems.map((item) => item.item_text);
+      const response = await fetch("/api/vocabulary/generate-from-captures", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId,
+          lessonId,
+          itemTexts,
+          limit: itemTexts.length,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Failed to prepare quiz vocabulary cards");
+      }
+
+      const generatedItems = Array.isArray(payload?.items) ? payload.items : [];
+
+      if (generatedItems.length > 0) {
+        setLocalVocabItems((current) => mergeVocabularyItems(current, generatedItems));
+        for (const item of generatedItems) {
+          const key = item.item_text.trim().toLowerCase();
+          if (isFallbackVocabularyItem(item)) {
+            hydratedVocabularyKeysRef.current.delete(key);
+          } else {
+            hydratedVocabularyKeysRef.current.add(key);
+          }
+        }
+      } else {
+        await hydrateVisibleVocabularyItems(fallbackItems);
+      }
+    } catch (error) {
+      console.error("prepareQuizVocabularyReview generate error", error);
+      await hydrateVisibleVocabularyItems(fallbackItems);
+    }
+
     await requestVocabularyAudio({
       force: true,
       itemTexts: fallbackItems.map((item) => item.item_text),
     });
+  }
+
+  async function openReadingWordsView() {
+    setReadingView("words");
+
+    if (capturedItems.length === 0) {
+      return;
+    }
+
+    await flushPendingVocabularyItems();
+
+    const fallbackItems = buildCapturedVocabularyReviewItems({
+      items: capturedItems,
+      sourceItems: localVocabItems,
+      lessonId: `${lessonId}:reading`,
+    });
+
+    if (fallbackItems.length > 0) {
+      requestedAudioSignatureRef.current = "";
+      setLocalVocabItems((current) => mergeVocabularyItems(current, fallbackItems));
+    }
+  }
+
+  async function handleDeleteVocabularyItem(item: VocabItem) {
+    const mergeKey = getVocabularyItemMergeKey(item);
+
+    if (isPersistedVocabularyItemId(item.id)) {
+      await deleteStudentVocabularyItem({
+        studentId,
+        vocabularyItemId: item.id,
+      });
+    }
+
+    requestedAudioSignatureRef.current = "";
+    setLocalVocabItems((current) =>
+      current.filter((candidate) => getVocabularyItemMergeKey(candidate) !== mergeKey)
+    );
+    setCapturedItems((current) =>
+      current.filter((candidate) => getCapturedVocabularyMergeKey(candidate) !== mergeKey)
+    );
+  }
+
+  async function handleRegenerateVocabularyItem(item: VocabItem) {
+    if (!isPersistedVocabularyItemId(item.id)) {
+      throw new Error("Save this word first, then regenerate its meaning.");
+    }
+
+    const updatedItem = await regenerateStudentVocabularyMeaning({
+      studentId,
+      vocabularyItemId: item.id,
+      contextText: item.context_sentence ?? item.example_text ?? null,
+    });
+
+    setLocalVocabItems((current) => mergeVocabularyItems(current, [updatedItem]));
+    return updatedItem;
+  }
+
+  function renderReadingViewToggle() {
+    return (
+      <div className="mb-3 flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-1">
+        <button
+          type="button"
+          onClick={() => setReadingView("text")}
+          className={`min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition ${
+            readingView === "text"
+              ? "bg-[var(--color-surface)] token-text-primary shadow-sm"
+              : "token-text-secondary"
+          }`}
+        >
+          Text
+        </button>
+        <button
+          type="button"
+          onClick={() => void openReadingWordsView()}
+          className={`min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition ${
+            readingView === "words"
+              ? "bg-[var(--color-surface)] token-text-primary shadow-sm"
+              : "token-text-secondary"
+          }`}
+        >
+          {capturedLessonWordCount > 0 ? `Words (${capturedLessonWordCount})` : "Words"}
+        </button>
+      </div>
+    );
   }
 
   function renderStageProgress() {
@@ -867,6 +1037,11 @@ export default function LessonStagePanel({
     ),
     sourceItems: localVocabItems,
     lessonId: `${lessonId}:quiz`,
+  });
+  const lessonVocabularyItems = buildCapturedVocabularyReviewItems({
+    items: capturedItems,
+    sourceItems: localVocabItems,
+    lessonId: `${lessonId}:reading`,
   });
 
   if (stage === "completed") {
@@ -982,6 +1157,8 @@ export default function LessonStagePanel({
             isQuizVocabularyAudioLoading={isVocabularyAudioLoading}
             onPrepareQuizVocabularyReview={prepareQuizVocabularyReview}
             onVocabularyCaptured={handleCaptured}
+            onDeleteQuizVocabularyItem={handleDeleteVocabularyItem}
+            onRegenerateQuizVocabularyItem={handleRegenerateVocabularyItem}
             onBeforeComplete={flushPendingVocabularyItems}
             onFinished={(result) => {
               setCompletionResult(result);
@@ -1011,6 +1188,8 @@ export default function LessonStagePanel({
           isHydrating={isVocabularyHydrating}
           onVisibleItemsChange={hydrateVisibleVocabularyItems}
           onRequestAudio={requestVocabularyAudio}
+          onDeleteItem={handleDeleteVocabularyItem}
+          onRegenerateItem={handleRegenerateVocabularyItem}
           isAudioLoading={isVocabularyAudioLoading}
           onBackToReading={() => setStage("first_read")}
           onDone={() => setStage("second_read")}
@@ -1027,15 +1206,32 @@ export default function LessonStagePanel({
 
           <div className="mx-auto max-w-[42rem] px-3 pb-7 pt-2 sm:px-5">
             <div className="reading-surface px-4 py-6 sm:px-7 sm:py-8">
-              <InteractivePassageReader
-                studentId={studentId}
-                lessonId={lessonId}
-                passageId={passageId}
-                passageText={passageText}
-                knownWords={localVocabItems}
-                onCaptured={handleCaptured}
-                mode="review"
-              />
+              {renderReadingViewToggle()}
+              {readingView === "words" ? (
+                <VocabularyReviewCards
+                  items={lessonVocabularyItems}
+                  embedded
+                  title="Words from this lesson"
+                  emptyTitle="No lesson words yet"
+                  emptyCopy="Capture a few words first, then switch back here to review them."
+                  isHydrating={isVocabularyHydrating}
+                  onVisibleItemsChange={hydrateVisibleVocabularyItems}
+                  onRequestAudio={requestVocabularyAudio}
+                  onDeleteItem={handleDeleteVocabularyItem}
+                  onRegenerateItem={handleRegenerateVocabularyItem}
+                  isAudioLoading={isVocabularyAudioLoading}
+                />
+              ) : (
+                <InteractivePassageReader
+                  studentId={studentId}
+                  lessonId={lessonId}
+                  passageId={passageId}
+                  passageText={passageText}
+                  knownWords={localVocabItems}
+                  onCaptured={handleCaptured}
+                  mode="review"
+                />
+              )}
             </div>
           </div>
 
@@ -1072,15 +1268,32 @@ export default function LessonStagePanel({
 
       <div className="mx-auto max-w-[42rem] px-3 pb-7 pt-2 sm:px-5">
         <div className="reading-surface px-4 py-6 sm:px-7 sm:py-8">
-          <InteractivePassageReader
-            studentId={studentId}
-            lessonId={lessonId}
-            passageId={passageId}
-            passageText={passageText}
-            knownWords={localVocabItems}
-            onCaptured={handleCaptured}
-            mode="capture"
-          />
+          {renderReadingViewToggle()}
+          {readingView === "words" ? (
+            <VocabularyReviewCards
+              items={lessonVocabularyItems}
+              embedded
+              title="Words from this lesson"
+              emptyTitle="No words captured yet"
+              emptyCopy="Long press any word in the passage and it will appear here."
+              isHydrating={isVocabularyHydrating}
+              onVisibleItemsChange={hydrateVisibleVocabularyItems}
+              onRequestAudio={requestVocabularyAudio}
+              onDeleteItem={handleDeleteVocabularyItem}
+              onRegenerateItem={handleRegenerateVocabularyItem}
+              isAudioLoading={isVocabularyAudioLoading}
+            />
+          ) : (
+            <InteractivePassageReader
+              studentId={studentId}
+              lessonId={lessonId}
+              passageId={passageId}
+              passageText={passageText}
+              knownWords={localVocabItems}
+              onCaptured={handleCaptured}
+              mode="capture"
+            />
+          )}
         </div>
       </div>
 

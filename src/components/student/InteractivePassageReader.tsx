@@ -6,6 +6,10 @@ import {
   getCachedInlinePreview,
   setCachedInlinePreview,
 } from "@/services/vocabulary/inline-preview-cache.client";
+import {
+  getEffectiveVocabularyDefinition,
+  getEffectiveVocabularyTranslation,
+} from "@/services/vocabulary/vocabulary-item-overrides";
 import type { CapturedVocabularyItem } from "./PassageVocabularyCapture";
 
 type KnownWord = {
@@ -13,6 +17,8 @@ type KnownWord = {
   item_text: string;
   english_explanation?: string | null;
   translated_explanation?: string | null;
+  student_definition_override?: string | null;
+  student_translation_override?: string | null;
   context_sentence?: string | null;
   audio_url?: string | null;
   lifecycle_state?: string | null;
@@ -289,11 +295,11 @@ export default function InteractivePassageReader({
         item_text: localMatch.item_text,
         item_type: itemText.includes(" ") ? "phrase" : "word",
         plain_english_meaning:
-          localMatch.english_explanation?.trim() || "Meaning available in review.",
-        translation: localMatch.translated_explanation?.trim() || "",
+          getEffectiveVocabularyDefinition(localMatch) || "Meaning available in review.",
+        translation: getEffectiveVocabularyTranslation(localMatch) || "",
         context_meaning:
           localMatch.context_sentence?.trim() ||
-          localMatch.english_explanation?.trim() ||
+          getEffectiveVocabularyDefinition(localMatch) ||
           "Meaning available in this passage.",
       });
       setPreviewError(null);
@@ -768,18 +774,18 @@ export default function InteractivePassageReader({
             ) : null}
           </div>
 
-          {hoverCard.item.english_explanation ? (
+          {getEffectiveVocabularyDefinition(hoverCard.item) ? (
             <div>
               <div className="token-text-secondary text-sm leading-6">
-                {hoverCard.item.english_explanation}
+                {getEffectiveVocabularyDefinition(hoverCard.item)}
               </div>
             </div>
           ) : null}
 
-          {hoverCard.item.translated_explanation ? (
+          {getEffectiveVocabularyTranslation(hoverCard.item) ? (
             <div>
               <div className="token-text-secondary text-sm leading-6">
-                {hoverCard.item.translated_explanation}
+                {getEffectiveVocabularyTranslation(hoverCard.item)}
               </div>
             </div>
           ) : null}

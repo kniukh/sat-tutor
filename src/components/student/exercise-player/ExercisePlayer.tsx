@@ -496,13 +496,16 @@ export default function ExercisePlayer({
       isCorrect,
       explanation: currentExercise.explanation,
       selectedAnswer: selectedAnswer,
-      correctAnswer: isTypedResponse
-        ? correctAnswerId
-        : isPairStyleExercise
-          ? correctPairs.map((pair) => pair.label).join(" | ")
-        : isSentenceBuilder
-          ? correctAnswerId
-          : correctOption?.label ?? correctAnswerId,
+      correctAnswer:
+        !isCorrect && currentExercise.type === "context_meaning"
+          ? null
+          : isTypedResponse
+            ? correctAnswerId
+            : isPairStyleExercise
+              ? correctPairs.map((pair) => pair.label).join(" | ")
+            : isSentenceBuilder
+              ? correctAnswerId
+              : correctOption?.label ?? correctAnswerId,
       answerLabel: isTypedResponse
         ? "Your spelling"
         : isPairStyleExercise
@@ -538,7 +541,7 @@ export default function ExercisePlayer({
 
     const autoAdvanceDelayMs = isTypedResponse
       ? isCorrect && translationText
-        ? 1800
+        ? 2300
         : 1600
       : 520;
 

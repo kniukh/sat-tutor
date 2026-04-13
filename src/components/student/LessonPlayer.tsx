@@ -35,6 +35,10 @@ type Question = {
 type KnownWord = {
   id: string;
   item_text: string;
+  english_explanation?: string | null;
+  translated_explanation?: string | null;
+  student_definition_override?: string | null;
+  student_translation_override?: string | null;
   lifecycle_state?: string | null;
   review_bucket?: "recently_failed" | "weak_again" | "overdue" | "reinforcement" | "scheduled" | null;
   review_ready?: boolean;
@@ -46,6 +50,9 @@ type QuizVocabularyItem = {
   canonical_lemma?: string | null;
   english_explanation?: string | null;
   translated_explanation?: string | null;
+  student_definition_override?: string | null;
+  student_translation_override?: string | null;
+  definition_override_generated_from_context?: boolean | null;
   example_text?: string | null;
   context_sentence?: string | null;
   audio_url?: string | null;
@@ -146,6 +153,10 @@ type Props = {
   isQuizVocabularyAudioLoading?: boolean;
   onPrepareQuizVocabularyReview?: () => Promise<void> | void;
   onVocabularyCaptured?: (item: CapturedVocabularyItem) => void;
+  onDeleteQuizVocabularyItem?: (item: QuizVocabularyItem) => Promise<void> | void;
+  onRegenerateQuizVocabularyItem?: (
+    item: QuizVocabularyItem
+  ) => Promise<QuizVocabularyItem | void> | QuizVocabularyItem | void;
   onBeforeComplete?: () => Promise<void>;
   onFinished?: (result: LessonCompletionPayload) => void;
   onProgressChange?: Dispatch<
@@ -444,6 +455,8 @@ export default function LessonPlayer({
   isQuizVocabularyAudioLoading = false,
   onPrepareQuizVocabularyReview,
   onVocabularyCaptured,
+  onDeleteQuizVocabularyItem,
+  onRegenerateQuizVocabularyItem,
   onBeforeComplete,
   onFinished,
   onProgressChange,
@@ -476,6 +489,7 @@ export default function LessonPlayer({
     {}
   );
   const [repairIndex, setRepairIndex] = useState(0);
+  const [repairedQuestionIds, setRepairedQuestionIds] = useState<string[]>([]);
   const [repairStep, setRepairStep] = useState<"review" | "microtask">("microtask");
   const [repairChoice, setRepairChoice] = useState<OptionKey | null>(null);
   const [repairFeedback, setRepairFeedback] = useState<{
@@ -578,8 +592,19 @@ export default function LessonPlayer({
   }, [answeredQuestions, passageText]);
 
   const activeRepairItem = mistakeItems[repairIndex] ?? null;
+  const repairedQuestionIdSet = useMemo(() => new Set(repairedQuestionIds), [repairedQuestionIds]);
+  const repairedMistakeCount = useMemo(
+    () => mistakeItems.filter((item) => repairedQuestionIdSet.has(item.question.id)).length,
+    [mistakeItems, repairedQuestionIdSet]
+  );
   const repairProgressPercent =
-    mistakeItems.length > 0 ? ((repairIndex + 1) / mistakeItems.length) * 100 : 0;
+    mistakeItems.length > 0 ? (repairedMistakeCount / mistakeItems.length) * 100 : 0;
+  const willFinishRepairAfterCurrent =
+    Boolean(activeRepairItem) &&
+    mistakeItems.every(
+      (item) =>
+        repairedQuestionIdSet.has(item.question.id) || item.question.id === activeRepairItem?.question.id
+    );
 
   useEffect(() => {
     questionStartedAtRef.current = Date.now();
@@ -962,6 +987,7 @@ export default function LessonPlayer({
 
   function startQuizRepair() {
     setRepairIndex(0);
+    setRepairedQuestionIds([]);
     setRepairStep("microtask");
     setRepairChoice(null);
     setRepairFeedback(null);
@@ -1065,6 +1091,11 @@ export default function LessonPlayer({
         status: "correct",
         message: activeRepairItem.microTask.successMessage,
       });
+      setRepairedQuestionIds((current) =>
+        current.includes(activeRepairItem.question.id)
+          ? current
+          : [...current, activeRepairItem.question.id]
+      );
       return;
     }
 
@@ -1088,12 +1119,31 @@ export default function LessonPlayer({
   }
 
   function continueRepair() {
-    if (repairIndex >= mistakeItems.length - 1) {
-      setQuizPhase("repair_complete");
+    const repairedIds = new Set(repairedQuestionIds);
+
+    if (activeRepairItem) {
+      repairedIds.add(activeRepairItem.question.id);
+    }
+
+    const nextIndex = mistakeItems.findIndex(
+      (item, index) => index > repairIndex && !repairedIds.has(item.question.id)
+    );
+
+    if (nextIndex >= 0) {
+      setRepairIndex(nextIndex);
       return;
     }
 
-    setRepairIndex((current) => current + 1);
+    const remainingIndex = mistakeItems.findIndex((item) => !repairedIds.has(item.question.id));
+
+    if (remainingIndex >= 0) {
+      setRepairIndex(remainingIndex);
+      return;
+    }
+
+    if (repairedIds.size >= mistakeItems.length) {
+      setQuizPhase("repair_complete");
+    }
   }
 
   function selectRepairChoice(nextChoice: OptionKey) {
@@ -1606,6 +1656,8 @@ export default function LessonPlayer({
           isHydrating={isQuizVocabularyHydrating}
           onVisibleItemsChange={onQuizVocabularyVisibleItemsChange}
           onRequestAudio={onRequestQuizVocabularyAudio}
+          onDeleteItem={onDeleteQuizVocabularyItem}
+          onRegenerateItem={onRegenerateQuizVocabularyItem}
           isAudioLoading={isQuizVocabularyAudioLoading}
           title="Words Picked Up from Quiz"
           emptyTitle="No quiz words this time"
@@ -1780,7 +1832,7 @@ export default function LessonPlayer({
                   onClick={continueRepair}
                   className="primary-button min-h-14 flex-1"
                 >
-                  {repairIndex >= mistakeItems.length - 1 ? "Finish Repair" : "Next Mistake"}
+                  {willFinishRepairAfterCurrent ? "Finish Repair" : "Next Mistake"}
                 </button>
               ) : (
                 <button

@@ -32,9 +32,9 @@ export async function POST(request: Request) {
         )
       : null;
 
-    if (!lessonId) {
+    if (!studentId || (!lessonId && !requestedKeys?.size && !requestedLemmaKeys?.size)) {
       return NextResponse.json(
-        { error: "studentId and lessonId are required" },
+        { error: "studentId plus lessonId or itemTexts are required" },
         { status: 400 }
       );
     }
@@ -43,12 +43,18 @@ export async function POST(request: Request) {
 
     const supabase = await createClient();
 
-    const { data: items, error } = await supabase
+    let itemsQuery = supabase
       .from("vocabulary_item_details")
-      .select("id, item_text, canonical_lemma, audio_status, audio_url")
+      .select("id, item_text, canonical_lemma, lesson_id, audio_status, audio_url, is_removed")
       .eq("student_id", sessionStudentId)
-      .eq("lesson_id", lessonId)
+      .eq("is_removed", false)
       .order("created_at", { ascending: true });
+
+    if (lessonId) {
+      itemsQuery = itemsQuery.eq("lesson_id", lessonId);
+    }
+
+    const { data: items, error } = await itemsQuery;
 
     if (error) {
       console.error("regenerate-audio items error", error);
@@ -121,12 +127,18 @@ export async function POST(request: Request) {
       }
     }
 
-    const { data: updatedItems, error: updatedItemsError } = await supabase
+    let updatedItemsQuery = supabase
       .from("vocabulary_item_details")
       .select("*")
       .eq("student_id", sessionStudentId)
-      .eq("lesson_id", lessonId)
+      .eq("is_removed", false)
       .order("created_at", { ascending: true });
+
+    if (lessonId) {
+      updatedItemsQuery = updatedItemsQuery.eq("lesson_id", lessonId);
+    }
+
+    const { data: updatedItems, error: updatedItemsError } = await updatedItemsQuery;
 
     if (updatedItemsError) {
       console.error("regenerate-audio updatedItemsError", updatedItemsError);
@@ -136,7 +148,29 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, items: updatedItems ?? [] });
+    const responseItems =
+      requestedKeys || requestedLemmaKeys
+        ? (updatedItems ?? []).filter((item) => {
+            if (!item?.item_text) {
+              return false;
+            }
+
+            const itemTextKey = item.item_text.trim().toLowerCase();
+            const itemLemmaKey =
+              item.canonical_lemma?.trim().toLowerCase() ||
+              resolveVocabularyLemma({
+                itemText: item.item_text,
+                itemType: item.item_text.includes(" ") ? "phrase" : "word",
+              }).canonicalLemma;
+
+            return (
+              Boolean(requestedKeys?.has(itemTextKey)) ||
+              Boolean(requestedLemmaKeys?.has(itemLemmaKey))
+            );
+          })
+        : updatedItems ?? [];
+
+    return NextResponse.json({ ok: true, items: responseItems });
   } catch (error) {
     if (isStudentApiAuthError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status });

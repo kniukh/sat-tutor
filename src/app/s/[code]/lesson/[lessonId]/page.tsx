@@ -54,6 +54,7 @@ export default async function StudentLessonPage({
     .select("*")
     .eq("student_id", student.id)
     .eq("lesson_id", lesson.id)
+    .eq("is_removed", false)
     .order("created_at", { ascending: true });
 
   const vocabItemIds = (vocabItems ?? []).map((item: any) => item.id).filter(Boolean);

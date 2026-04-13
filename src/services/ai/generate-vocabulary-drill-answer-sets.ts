@@ -18,10 +18,13 @@ type RawVocabularyDrillAnswerSetMap = Partial<
 type RawVocabularyDrillAnswerSetBatchItem = {
   item_text?: string;
   refined_definition?: string;
+  alternate_definitions?: unknown;
   context_explanation?: string;
   practice_example_sentence?: string;
   synonym_candidates?: unknown;
   antonym_candidates?: unknown;
+  collocation_candidates?: unknown;
+  confusion_pairs?: unknown;
   answer_sets?: RawVocabularyDrillAnswerSetMap;
 };
 
@@ -47,7 +50,7 @@ export type VocabularyDrillAnswerSetBatchResult = {
 const VOCABULARY_DRILL_ANSWER_SETS_BATCH_SYSTEM_PROMPT = `You are creating reusable answer sets for SAT-style vocabulary drills.
 
 Return ONLY valid JSON in this exact shape:
-{"items":[{"item_text":"string","refined_definition":"string","context_explanation":"string","practice_example_sentence":"string","synonym_candidates":["string","string"],"antonym_candidates":["string"],"answer_sets":{"translation_english_to_native":{"drill_correct_answer":"string","distractors":["string","string","string","string"]},"translation_native_to_english":{"drill_correct_answer":"string","distractors":["string","string","string","string"]},"synonym":{"drill_correct_answer":"string","distractors":["string","string","string","string"]},"context_meaning":{"drill_correct_answer":"string","distractors":["string","string","string","string"]},"collocation":{"drill_correct_answer":"string","distractors":["string","string","string","string"]}}}]}
+{"items":[{"item_text":"string","refined_definition":"string","alternate_definitions":["string"],"context_explanation":"string","practice_example_sentence":"string","synonym_candidates":["string","string"],"antonym_candidates":["string"],"collocation_candidates":["string"],"confusion_pairs":["string"],"answer_sets":{"translation_english_to_native":{"drill_correct_answer":"string","distractors":["string","string","string","string"]},"translation_native_to_english":{"drill_correct_answer":"string","distractors":["string","string","string","string"]},"synonym":{"drill_correct_answer":"string","distractors":["string","string","string","string"]},"context_meaning":{"drill_correct_answer":"string","distractors":["string","string","string","string"]},"collocation":{"drill_correct_answer":"string","distractors":["string","string","string","string"]}}}]}
 
 Rules:
 - Preserve each item_text exactly.
@@ -59,12 +62,15 @@ Rules:
 - For translation_native_to_english and collocation, use English words or phrases that match the target item's part of speech and shape.
 - For collocation, drill_correct_answer should be the actual target word or phrase, and distractors should still look plausible in the sentence without becoming correct.
 - refined_definition should be a short polished definition if you can improve wording; otherwise closely match the provided definition.
+- alternate_definitions should contain 1-3 short paraphrase variants when useful; otherwise [].
 - context_explanation should be one short sentence only when the supplied context clarifies the sense; otherwise return an empty string.
 - practice_example_sentence should be one short, natural, complete English sentence that uses item_text in the intended sense.
 - practice_example_sentence must not be a passage fragment, must end with punctuation, and should usually be 8-16 words.
 - If item_text is a phrase, keep the full phrase exactly in the sentence.
 - synonym_candidates should contain 2-4 short plausible near-synonyms.
 - antonym_candidates should contain 0-3 short plausible antonyms only when the opposite is natural and high-confidence; otherwise return [].
+- collocation_candidates should contain 0-4 short natural collocation partners or phrase fragments that commonly pair with item_text.
+- confusion_pairs should contain 0-4 short high-confidence words or phrases that students might confuse with item_text.
 - Short answer choices only.
 - No explanations outside the JSON fields.
 - No markdown.
@@ -147,28 +153,37 @@ function sanitizeCandidateList(value: unknown, limit: number) {
 
 function sanitizeBatchMeta(item: RawVocabularyDrillAnswerSetBatchItem): VocabularyDrillAnswerSetMeta {
   const refinedDefinition = normalizeCandidate(item.refined_definition ?? "");
+  const alternateDefinitions = sanitizeCandidateList(item.alternate_definitions, 3);
   const contextExplanation = normalizeCandidate(item.context_explanation ?? "");
   const practiceExampleSentence = normalizeWhitespace(item.practice_example_sentence ?? "");
   const synonymCandidates = sanitizeCandidateList(item.synonym_candidates, 4);
   const antonymCandidates = sanitizeCandidateList(item.antonym_candidates, 3);
+  const collocationCandidates = sanitizeCandidateList(item.collocation_candidates, 4);
+  const confusionPairs = sanitizeCandidateList(item.confusion_pairs, 4);
 
   return {
     refined_definition: refinedDefinition || null,
+    alternate_definitions: alternateDefinitions,
     context_explanation: contextExplanation || null,
     practice_example_sentence: practiceExampleSentence || null,
     synonym_candidates: synonymCandidates,
     antonym_candidates: antonymCandidates,
+    collocation_candidates: collocationCandidates,
+    confusion_pairs: confusionPairs,
   };
 }
 
 function hasAnswerSetMeta(meta: VocabularyDrillAnswerSetMeta | null | undefined) {
   return Boolean(
-    meta &&
+        meta &&
       ((meta.refined_definition && meta.refined_definition.trim()) ||
+        (meta.alternate_definitions?.length ?? 0) > 0 ||
         (meta.context_explanation && meta.context_explanation.trim()) ||
         (meta.practice_example_sentence && meta.practice_example_sentence.trim()) ||
         (meta.synonym_candidates?.length ?? 0) > 0 ||
         (meta.antonym_candidates?.length ?? 0) > 0 ||
+        (meta.collocation_candidates?.length ?? 0) > 0 ||
+        (meta.confusion_pairs?.length ?? 0) > 0 ||
         (meta.enriched_at && meta.enriched_at.trim()))
   );
 }

@@ -214,6 +214,28 @@ function getPreferredNativeTranslation(item: MeaningDrillItem | ClozeDrillItem) 
   return candidates[0]?.value ?? null;
 }
 
+function getFeedbackNativeTranslation(item: MeaningDrillItem | ClozeDrillItem) {
+  const preferred = getPreferredNativeTranslation(item);
+  if (preferred) {
+    return preferred;
+  }
+
+  const fallbackCandidates = [getTranslatedMeaning(item), getStoredNativeTranslation(item)]
+    .map((candidate) => normalizeTranslationLabel(candidate ?? ""))
+    .filter(Boolean);
+
+  for (const candidate of fallbackCandidates) {
+    const normalizedCandidate = normalizePairSideText(candidate);
+    const normalizedWord = normalizePairSideText(item.itemText);
+
+    if (normalizedCandidate && normalizedCandidate !== normalizedWord) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 function hasUsableNativeTranslation(item: MeaningDrillItem | ClozeDrillItem) {
   return Boolean(getPreferredNativeTranslation(item));
 }
@@ -1672,7 +1694,7 @@ export function adaptSpellingFromAudioDrillToExercise(
 ): SupportedVocabExercise {
   const sourceSentence = getSourceSentence(item);
   const plainMeaning = getPlainMeaning(item);
-  const translatedMeaning = getPreferredNativeTranslation(item);
+  const translatedMeaning = getFeedbackNativeTranslation(item);
 
   return {
     id: `${item.wordProgressId}:spelling_from_audio`,

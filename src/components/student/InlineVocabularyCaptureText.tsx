@@ -7,12 +7,18 @@ import {
   getCachedInlinePreview,
   setCachedInlinePreview,
 } from "@/services/vocabulary/inline-preview-cache.client";
+import {
+  getEffectiveVocabularyDefinition,
+  getEffectiveVocabularyTranslation,
+} from "@/services/vocabulary/vocabulary-item-overrides";
 import type { CapturedVocabularyItem } from "./PassageVocabularyCapture";
 
 type KnownWord = {
   item_text: string;
   english_explanation?: string | null;
   translated_explanation?: string | null;
+  student_definition_override?: string | null;
+  student_translation_override?: string | null;
   review_bucket?:
     | "recently_failed"
     | "weak_again"
@@ -339,10 +345,10 @@ export default function InlineVocabularyCaptureText({
         item_text: known.item_text,
         item_type: selectionPopup.itemType,
         plain_english_meaning:
-          known.english_explanation?.trim() || "Already in your lesson vocabulary.",
-        translation: known.translated_explanation?.trim() || "",
+          getEffectiveVocabularyDefinition(known) || "Already in your lesson vocabulary.",
+        translation: getEffectiveVocabularyTranslation(known) || "",
         context_meaning:
-          known.english_explanation?.trim() ||
+          getEffectiveVocabularyDefinition(known) ||
           "This word is already being tracked in your review queue.",
       });
       setPreviewLoading(false);
@@ -650,15 +656,15 @@ export default function InlineVocabularyCaptureText({
                 {hoverKnownWordCard.item.item_text}
               </div>
 
-              {hoverKnownWordCard.item.english_explanation ? (
+              {getEffectiveVocabularyDefinition(hoverKnownWordCard.item) ? (
                 <div className="token-text-secondary text-sm leading-6">
-                  {hoverKnownWordCard.item.english_explanation}
+                  {getEffectiveVocabularyDefinition(hoverKnownWordCard.item)}
                 </div>
               ) : null}
 
-              {hoverKnownWordCard.item.translated_explanation ? (
+              {getEffectiveVocabularyTranslation(hoverKnownWordCard.item) ? (
                 <div className="token-text-secondary text-sm leading-6">
-                  {hoverKnownWordCard.item.translated_explanation}
+                  {getEffectiveVocabularyTranslation(hoverKnownWordCard.item)}
                 </div>
               ) : null}
             </div>,

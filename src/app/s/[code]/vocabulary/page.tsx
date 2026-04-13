@@ -4,6 +4,7 @@ import {
   studentDashboardPath,
   studentMistakeBrainPath,
   studentVocabularyDrillPath,
+  studentVocabularyListPath,
 } from "@/lib/routes/student";
 import {
   normalizeVocabularyLessonId,
@@ -88,6 +89,9 @@ export default async function StudentVocabularyPage({
             </Link>
             <Link href={weakWordsHref} className="secondary-button flex-1 sm:flex-none">
               Review Weak Words
+            </Link>
+            <Link href={studentVocabularyListPath()} className="secondary-button flex-1 sm:flex-none">
+              My Vocabulary
             </Link>
             <Link href={studentDashboardPath()} className="secondary-button flex-1 sm:flex-none">
               Return to Dashboard

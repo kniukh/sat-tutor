@@ -42,10 +42,13 @@ export type VocabularyDrillAnswerSet = {
 
 export type VocabularyDrillAnswerSetMeta = {
   refined_definition?: string | null;
+  alternate_definitions?: string[];
   context_explanation?: string | null;
   practice_example_sentence?: string | null;
   synonym_candidates?: string[];
   antonym_candidates?: string[];
+  collocation_candidates?: string[];
+  confusion_pairs?: string[];
   enriched_at?: string | null;
 };
 

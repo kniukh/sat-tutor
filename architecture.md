@@ -111,15 +111,17 @@ Main UI:
 - [LessonStagePanel.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/LessonStagePanel.tsx)
   - mobile-first single-column lesson stages
   - full-screen reading focus during first and second read
+  - `Text | Words` toggle so reading screens can switch between the passage and the captured lesson word list
   - passage/question/answer vocabulary capture hooks into shared vocab storage
   - lesson-scoped Word Bank tray with pending/saved state
   - first-read checkpoints save pending vocabulary and move the stage forward without a submit-centric UI
+  - completed stage can branch into a guided vocabulary intro before the next reading lesson
 - [LessonPlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/LessonPlayer.tsx)
   - SAT-style one-question-per-screen quiz shell
   - `quiz -> quiz_words -> repair -> quiz_complete` subflow inside the question stage
   - optional `Why?` reasoning bottom sheet backed by `/api/question-explanation`
   - quiz-word cards reuse the same vocabulary card system as passage words, including targeted audio generation for quiz-only captures
-  - repair retries the original SAT item directly and keeps `See Passage` as a returnable helper instead of a separate reveal screen
+  - repair retries the original SAT item directly until each missed question is answered correctly and keeps `See Passage` as a returnable helper instead of a separate reveal screen
   - canonical session-based route now also exists at `/s/lesson/[lessonId]`
 
 ### `/s/[code]/vocabulary`
@@ -131,6 +133,7 @@ Current shape:
 - queue-backed summary with progress-first metrics
 - three explicit modes
 - focused drill launcher
+- entry point into `My Vocabulary`
 - inline drill player fallback on the same page
 - automatic drill-preparation backfill for legacy vocab rows with missing normalized answer sets
 - two conceptual phases in the same flow:
@@ -138,6 +141,20 @@ Current shape:
   - `endless_continuation`
 - page load avoids blocking on heavy drill preparation; background prep and audio can happen after render
 - canonical session-based route now also exists at `/s/vocabulary`
+
+### `/s/[code]/vocabulary/list`
+Student-wide vocabulary list.
+
+Current shape:
+- thin page
+- data from [student-vocabulary.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/student-vocabulary.service.ts)
+- search over word, definition, and translation
+- reuses [VocabularyReviewCards.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/VocabularyReviewCards.tsx)
+- student actions stay personal:
+  - soft delete
+  - regenerate definition from context
+  - play audio
+- canonical session-based route also exists at `/s/vocabulary/list`
 
 ### `/s/[code]/vocabulary/drill`
 Focused full-screen drill page.
@@ -187,7 +204,9 @@ Current shape:
 - `/api/vocabulary/session-complete`
 - `/api/vocabulary/capture`
 - `/api/vocabulary/capture-inline`
+- `/api/vocabulary/delete-item`
 - `/api/vocabulary/preview-inline`
+- `/api/vocabulary/regenerate-item-meaning`
 - `/api/vocabulary/generate-audio`
 - `/api/vocabulary/generate-audio-bulk`
 - `/api/vocabulary/regenerate-audio`
@@ -196,6 +215,7 @@ Current note:
 - `prepare-drills` and `generate-from-captures` now thinly wrap shared vocabulary prep services instead of owning the orchestration directly
 - lesson completion also triggers the same preparation pipeline in the backend
 - `preview-inline`, `generate-from-captures`, and `prepare-drills` use the shared `vocabulary_dictionary_cache` before AI generation
+- `delete-item` and `regenerate-item-meaning` only affect the student's own vocabulary row and never delete or overwrite shared global reusable content
 - `preview-inline` is no longer required just to save a selected word; lesson selection popups can add first and load meaning on demand
 - `regenerate-audio` supports targeted generation for specific vocabulary item texts so quiz-only cards do not compete with the full lesson bank
 - student-facing vocabulary session completion is guarded against async save/completion races
@@ -211,6 +231,7 @@ Current note:
   - stage-driven reading workflow
   - reading metrics post
   - vocab review cards
+  - reading `Text | Words` toggle and guided completion bridge into vocabulary practice
 - [LessonPlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/LessonPlayer.tsx)
   - one-question-per-screen flow
   - passage recall overlay during quiz
@@ -233,6 +254,10 @@ Current note:
 
 ### Vocabulary surfaces
 - [VocabSessionPlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/VocabSessionPlayer.tsx)
+- [VocabularyReviewCards.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/VocabularyReviewCards.tsx)
+  - shared card surface for lesson words, quiz words, and `My Vocabulary`
+  - inline `Delete | Regenerate | Audio` actions
+- [MyVocabularyPageClient.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/MyVocabularyPageClient.tsx)
 - reusable shell under `src/components/student/exercise-player/`
 - dev gallery at `/test/exercise-gallery`
 
@@ -241,6 +266,7 @@ Current patterns:
 - drill text can now long-press capture into shared vocabulary storage from answer choices and sentence fragments
 - grouped `listen_match` can render as a two-column audio-to-text matching exercise
 - live drill flow is now intentionally minimal: progress, question, answer area, and one `Continue` CTA with short correctness animation
+- saved-word management stays inside the same card system instead of introducing a separate vocabulary manager UI path
 
 ## Vocab Exercise Architecture
 
@@ -266,13 +292,11 @@ Current live-session emphasis:
 - `pair_match`
 - `listen_match`
 - `spelling_from_audio`
-- `error_detection`
 - `context_meaning`
 - `synonym`
-- `collocation`
 
 Current note:
-- `fill_blank` and `sentence_builder` remain supported in the normalized renderer system and dev gallery, but are not part of the current live student session mix
+- `fill_blank`, `sentence_builder`, `error_detection`, and `collocation` remain supported in the normalized renderer system and dev gallery, but are not part of the current live student session mix
 
 ### Shared shell
 - [ExercisePlayer.tsx](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/components/student/exercise-player/ExercisePlayer.tsx)
@@ -299,6 +323,7 @@ Current note:
 - [drill-session-builder.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/drill-session-builder.ts)
 - [drill-answer-sets.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/drill-answer-sets.service.ts)
 - [drill-preparation.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/drill-preparation.service.ts)
+- [drill-content-engine.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/drill-content-engine.service.ts)
 
 Current vocab session shaping also includes:
 - adaptive word selection from `word_progress`, `review_queue`, and recent `exercise_attempts`
@@ -405,9 +430,12 @@ Current responsibilities:
 - generate and fetch `review_queue`
 - aggregate vocabulary page data
 - normalize and store reusable drill answer sets
+- keep reusable global word/drill content in a shared cache keyed by lemma/profile
+- materialize student-specific vocabulary rows from shared content without duplicating global AI content
 - generate lesson vocabulary from captures
 - prepare drill-ready vocab payloads for lesson completion and vocabulary APIs
 - reuse shared dictionary cache entries across students before AI fallback
+- support student-specific soft delete and context-regenerated overrides without overwriting global reusable content
 - deduplicate inline preview requests with client/server cache
 
 Important files:
@@ -418,6 +446,9 @@ Important files:
 - [review-policy.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/review-policy.service.ts)
 - [review-queue.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/review-queue.service.ts)
 - [vocabulary-dictionary-cache.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/vocabulary-dictionary-cache.service.ts)
+- [drill-content-engine.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/drill-content-engine.service.ts)
+- [student-vocabulary.service.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/student-vocabulary.service.ts)
+- [vocabulary-item-overrides.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/vocabulary-item-overrides.ts)
 - [inline-preview-cache.client.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/inline-preview-cache.client.ts)
 - [inline-preview-cache.server.ts](/c:/Users/user/Desktop/Проект/SAT%20Tutor/sat-tutor/src/services/vocabulary/inline-preview-cache.server.ts)
 

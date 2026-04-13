@@ -22,6 +22,7 @@ Student sees the passage and can collect unknown words or phrases.
 
 Current supported actions:
 - full-width mobile-first reading screen
+- `Text | Words` toggle so the student can swap between the passage and the captured lesson word list
 - long-press a passage word on mobile or select text on desktop to capture it quickly
 - selection popups can save immediately and load meaning only on demand through `Show Meaning`
 - add vocabulary manually if needed
@@ -38,6 +39,7 @@ After `Continue`:
 - pending Word Bank items are checkpoint-saved
 - vocabulary review opens quickly from saved/fallback data
 - cards are paged for mobile-friendly review
+- cards now support personal `Delete`, `Regenerate`, and `Audio` actions without touching shared global content
 - captured lesson words are stored so they can later enter Vocabulary Studio with lesson-aware context
 - capture metadata can now preserve where the word came from:
   - passage
@@ -60,6 +62,7 @@ Student rereads the passage with more support.
 
 Current behavior:
 - known words remain visible in the passage
+- `Words` view can open the current lesson word list without leaving the lesson flow
 - hover/tap a saved word to see meaning + translation quickly
 - reading metrics are finalized when the reading stage ends
 
@@ -68,9 +71,9 @@ Quiz runs one question at a time.
 
 Current behavior:
 - select answer
-- submit
-- if correct, show success feedback
-- if wrong, show short trap-aware feedback without revealing the correct answer immediately
+- tap `Continue`
+- get a short correct/incorrect feedback state
+- move forward without a separate `Check -> Continue` sequence
 - optionally open a `Why?` bottom sheet for structured reasoning help
 - open a temporary `See Passage` view and return back to the same question
 - select words on desktop or long press on mobile in question text / answer text to capture them into lesson vocabulary
@@ -83,6 +86,7 @@ Current repair behavior:
 - there is no separate `You missed this` reveal screen inside lesson repair anymore
 - `See Passage` opens the relevant passage context and returns back to the same repair question
 - the overlay button reads `Back to Question` during repair
+- repair keeps going until every missed question has been answered correctly at least once
 
 Current analytics hooks:
 - per-question timing is saved through `/api/question-attempt`
@@ -97,7 +101,11 @@ When the lesson is completed:
 - skill tracking is updated
 - Mistake Brain runs after completion
 - lesson-derived vocabulary is automatically generated and normalized into drill-ready items
-- completion screen offers `Continue Reading` or `Back to Library` depending on whether a next lesson exists, plus `Go to Vocabulary` and `Return to Dashboard`
+- if the lesson produced new captured words, completion can branch into a guided vocab intro first
+- completion screen now keeps the next step simple:
+  - `Start Practice`
+  - `Skip for now`
+  - `Return to Dashboard`
 
 ## Current Post-Lesson AI Layer
 
@@ -165,6 +173,7 @@ Current bridge behavior:
 - source context comes from captured passage/question/answer snippets, `context_sentence`, and `example_text`
 - answer sets for key drill types are normalized and stored before the words become session-ready
 - shared `vocabulary_dictionary_cache` is checked before AI when a card meaning, translation, distractors, or drill answer sets are needed
+- reusable drill content is now generated once per normalized word/profile and then reused across students
 - fresh lesson words can later reappear in Vocabulary Studio through a softer first-exposure path:
   - `meaning_match`
   - `translation_match`
@@ -173,10 +182,13 @@ Current bridge behavior:
 - when the session gets more demanding, they may later enter:
   - `listen_match`
   - `spelling_from_audio`
-  - `error_detection`
   - `synonym`
-  - `collocation`
 - adaptive difficulty can keep those first lesson-linked exposures on a more supportive path before the session grows more demanding
+
+Current guided loop:
+- `Read -> Capture -> Practice -> Continue`
+- lesson completion can hand the student straight into a guided vocab intro session built from the new words from that lesson
+- after that guided intro, the student can continue to the next reading lesson without leaving the main flow
 
 ## Current Vocabulary Studio Follow-Through
 Vocabulary Studio now closes the loop after a student finishes a vocab session:
@@ -185,9 +197,10 @@ Vocabulary Studio now closes the loop after a student finishes a vocab session:
 - `review_queue` is regenerated
 - the focused drill route keeps the interaction full-screen and mobile-first
 - the main Vocabulary Studio page can also render the live drill player inline
+- `My Vocabulary` gives the student a full saved-word list with search plus `Delete / Regenerate / Audio`
 - the session is no longer framed as “finish your due count”
 - the first checkpoint can roll into endless continuation without rebuilding a parallel session system
-- current live session mix emphasizes `meaning_match`, `translation_match`, `pair_match`, `listen_match`, `spelling_from_audio`, `error_detection`, `context_meaning`, `synonym`, and `collocation`
+- current live session mix emphasizes `meaning_match`, `translation_match`, `pair_match`, `listen_match`, `spelling_from_audio`, `context_meaning`, and `synonym`
 - `listen_match` now ships in both `audio -> English` and `audio -> translation` variants when enough audio-ready items exist
 - an end-of-session results summary highlights:
   - correct / incorrect totals

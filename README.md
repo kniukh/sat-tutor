@@ -1,12 +1,13 @@
 # SAT Tutor
 
-SAT Tutor is a Next.js + Supabase learning app focused on SAT Reading, guided book progress, lesson analytics, and vocabulary review.
+SAT Tutor is a Next.js + Supabase learning app focused on SAT Reading, guided book progress, lesson analytics, and reusable vocabulary practice.
 
-The project currently has four major student surfaces:
+The project currently has these major student surfaces:
 - Reading lessons at `/s/lesson/[lessonId]`
 - Books library and chapter-grouped book detail at `/s/book`
 - Vocabulary Studio at `/s/vocabulary`
 - Focused vocabulary drill mode at `/s/vocabulary/drill`
+- My Vocabulary at `/s/vocabulary/list`
 - Student dashboard at `/s`
 - Insights at `/s/mistake-brain`
 - Mistake Replay at `/s/[code]/mistake-replay`
@@ -19,19 +20,21 @@ Legacy `/s/[code]/...` URLs still work as compatibility redirects after student 
 - Stage-based lesson flow: `first_read -> vocab_review -> second_read -> questions -> completed`
 - Mobile-first reading layout with no split view during reading
 - Long-press vocabulary capture inside the passage
+- `Text | Words` toggle during reading so the student can switch between the passage and the captured lesson word list
 - Shared lesson-scoped `Word Bank` tray across first read, second read, quiz, and repair
 - Quiz can capture words from question text and answer text into the same Word Bank
-- Vocabulary cards with fast meaning + translation review and lightweight paging
+- Vocabulary cards with fast meaning + translation review, lightweight paging, and personal `Delete / Regenerate / Audio` actions
 - `Words Picked Up from Quiz` review step now appears between quiz and quiz repair when the student captured quiz words
 - Second-read hover/tap meaning review on saved words
 - Question-by-question SAT practice with passage recall
 - Optional post-answer reasoning explanations in a bottom sheet during quiz
-- SAT-style repair flow that retries the original question directly, with a `See Passage` return path instead of an extra intermediate reveal screen
+- SAT-style repair flow that retries the original question directly until each missed question is answered correctly, with a `See Passage` return path instead of an extra intermediate reveal screen
 - Reading analytics and per-question timing
 - AI Tutor text explanation from the passage
 - Mistake Brain analysis after lesson completion
 - Mistake Replay repair sessions built from recent reading and vocabulary mistakes
 - Automatic vocabulary drill preparation after lesson completion in a best-effort background path
+- Guided lesson-complete loop that can route straight into a focused vocabulary intro before the next reading lesson
 
 ### Books
 - Kindle-style library page
@@ -45,11 +48,14 @@ Legacy `/s/[code]/...` URLs still work as compatibility redirects after student 
 - Lesson-connected fresh vocabulary from reading sessions
 - Dedicated focused drill route for full-screen practice
 - Inline drill player on the main Vocabulary Studio page
+- Dedicated `My Vocabulary` page with search and personal card controls
 - Three student modes:
   - `learn_new_words`
   - `review_weak_words`
   - `mixed_practice`
 - Reusable vocab exercise shell
+- Reusable global drill content engine backed by `vocabulary_dictionary_cache`
+- Student-specific vocabulary state layered on top of shared content through `vocabulary_item_details`, `word_progress`, overrides, and review state
 - Supported normalized exercise types:
   - `meaning_match`
   - `translation_match`
@@ -68,10 +74,8 @@ Legacy `/s/[code]/...` URLs still work as compatibility redirects after student 
   - `pair_match`
   - `listen_match`
   - `spelling_from_audio`
-  - `error_detection`
   - `context_meaning`
   - `synonym`
-  - `collocation`
 - Session builder and drill session builder
 - Controlled mixed sequencing with rule-based modality progression
 - Rule-based adaptive difficulty with `easy`, `medium`, and `hard` session lanes
@@ -80,7 +84,7 @@ Legacy `/s/[code]/...` URLs still work as compatibility redirects after student 
 - Automatic drill preparation pipeline for new lesson captures
 - Auto-backfill drill preparation for older vocabulary rows when a student opens Vocabulary Studio with legacy items that are not drill-ready yet
 - Long-press vocabulary capture inside drills from answers, distractors, and sentence fragments
-- Shared DB-first dictionary cache for `meaning + translation + distractors + drill answer sets`
+- Shared DB-first reusable content cache for `meaning + translation + distractors + drill answer sets + drill ingredients`
 - Normalized attempt logging and local debug telemetry
 - One-button drill flow: choose an answer, tap `Continue`, see a short correct/incorrect animation, then auto-advance
 - Session completion is race-safe: pending attempt saves are awaited client-side and the backend can create a fallback `vocab_sessions` row if completion arrives first
@@ -91,7 +95,7 @@ Legacy `/s/[code]/...` URLs still work as compatibility redirects after student 
   - `priority_review`
   - `endless_continuation`
 - Progress-first student metrics:
-  - `Captured`
+  - `Captured` (unique captured words)
   - `Mastered`
   - `Practiced today`
 - Review queue stays internal, while UI emphasizes `words ready now`, `Start Practice`, `Continue Practice`, and `Review Weak Words`
@@ -176,6 +180,7 @@ npm run build
 - `/s/book/[sourceDocumentId]` — single book detail
 - `/s/lesson/[lessonId]` — reading lesson flow
 - `/s/vocabulary` — vocabulary studio
+- `/s/vocabulary/list` — full personal vocabulary list
 - `/s/vocabulary/drill` — focused full-screen drill session
 - `/s/progress` — student progress page
 - `/s/mistake-brain` — insights and weak-area analysis
@@ -227,14 +232,18 @@ The exercise gallery is useful for quickly previewing all vocab exercise types w
 - Mistake Replay now turns recent reading and vocabulary mistakes into short repair sessions.
 - Vocab attempt persistence and word progress updates are live.
 - Review queue generation is rule-based for now.
+- Total captured vocabulary is now counted by unique normalized lemma rather than raw repeated captures.
 - Lesson-derived vocabulary now carries source lesson/context metadata into Vocabulary Studio sessions.
 - Reading lessons can now capture vocabulary from passage, question text, and answer text with source-aware metadata.
 - Vocabulary drills can now capture words from answer choices, distractors, and sentence fragments with `vocab_drill` source metadata.
 - Shared lesson Word Bank shows `Pending / Saved` status and auto-saves on checkpoints.
 - Vocabulary cards now reuse a shared dictionary cache and avoid blocking lesson transitions on heavy AI/audio work.
+- Shared reusable drill content now lives in `vocabulary_dictionary_cache`, while student-specific progress, overrides, removal state, and review history stay separate.
+- Students can now manage saved words directly from cards through `Delete`, `Regenerate`, and `Audio` actions without deleting shared global content.
+- Reading lessons, guided vocab intro, and Vocabulary Studio now form one continuous `Read -> Capture -> Practice -> Continue` loop when a lesson produces new words.
 - Audio-backed vocab practice now includes `listen_match` and `spelling_from_audio`.
 - `listen_match` supports grouped 8-10 pair sets and now has both `audio -> English` and `audio -> translation` variants in live sessions when enough audio-ready items exist.
-- Matching and SAT-style language drills now include `pair_match` and `error_detection`, while `sentence_builder` and `fill_blank` remain available in the normalized exercise system and dev gallery.
+- Matching and SAT-style language drills now include `pair_match`, while `sentence_builder`, `fill_blank`, `error_detection`, and `collocation` remain available in the normalized exercise system for future/live-mix use as quality improves.
 - Adaptive difficulty v1 is implemented as a transparent rule-based layer in the session pipeline.
 - Vocabulary Analytics v1 is implemented for exercise totals, accuracy breakdowns, weak words, lifecycle distribution, and recent vocab sessions.
 - Vocabulary drill preparation is now automatic after lesson completion and reused by the existing vocabulary APIs.

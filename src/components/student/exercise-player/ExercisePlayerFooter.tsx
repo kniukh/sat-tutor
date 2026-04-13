@@ -137,8 +137,8 @@ export default function ExercisePlayerFooter({
           aria-live="polite"
           className={`mb-3 rounded-[1.35rem] border px-4 py-3 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] ${
             feedback.isCorrect
-              ? "border-emerald-200/80 bg-[linear-gradient(180deg,rgba(236,253,245,0.98)_0%,rgba(220,252,231,0.98)_100%)] text-slate-950"
-              : "border-rose-200/80 bg-[linear-gradient(180deg,rgba(255,241,242,0.98)_0%,rgba(255,228,230,0.98)_100%)] text-slate-950"
+              ? "border-emerald-200 bg-emerald-50"
+              : "border-rose-200 bg-rose-50"
           }`}
         >
           <div
@@ -149,12 +149,16 @@ export default function ExercisePlayerFooter({
             {feedback.isCorrect ? "Translation" : "Correct Spelling"}
           </div>
           {!feedback.isCorrect && feedback.correctAnswer ? (
-            <div className="text-base font-semibold leading-6 sm:text-[1.05rem]">
+            <div className="token-text-primary text-base font-semibold leading-6 sm:text-[1.05rem]">
+              <span className="font-semibold text-rose-700">Correct Spelling:</span>{" "}
               {feedback.correctAnswer}
             </div>
           ) : null}
           {feedback.isCorrect && feedback.translationText ? (
-            <div className="text-base font-semibold leading-6 sm:text-[1.05rem]">
+            <div className="token-text-primary text-base font-semibold leading-6 sm:text-[1.05rem]">
+              <span className="font-semibold text-emerald-700">
+                {feedback.translationLabel ?? "Translation"}:
+              </span>{" "}
               {feedback.translationText}
             </div>
           ) : null}

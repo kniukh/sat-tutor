@@ -38,6 +38,7 @@ Stage-based reading flow:
 
 Key current capabilities:
 - mobile-first reading flow with full-width passage focus
+- `Text | Words` toggle inside reading so captured lesson words are always one tap away
 - long-press vocabulary capture on mobile and text-selection capture on desktop
 - shared floating `Word Bank` tray across first read, second read, quiz, repair, and drills
 - vocabulary card review with paged mobile-friendly cards
@@ -50,6 +51,7 @@ Key current capabilities:
 - per-question timing
 - post-lesson Mistake Brain analysis
 - Mistake Replay entry point after completion
+- guided lesson-complete handoff into vocabulary practice when new words were captured
 
 ### 4. Vocabulary Studio
 Separate review surface from lesson runtime.
@@ -67,12 +69,14 @@ Current foundations:
 - session builder
 - review queue
 - word progress lifecycle
+- reusable global drill content engine built on `vocabulary_dictionary_cache`
 - exercise attempt logging
 - adaptive difficulty v1
 - end-of-session results
 - vocabulary analytics summaries
 - lesson-to-vocabulary bridge through captured lesson words and source-aware session shaping
 - shared DB-first dictionary cache for fast meaning/translation and reusable distractors/answer sets
+- personal `My Vocabulary` list with search and student-only `Delete / Regenerate / Audio` controls
 - stored normalized drill answer sets
 - automatic drill preparation after reading completion
 - long-press capture inside drill sessions
@@ -93,11 +97,9 @@ Current foundations:
 - higher-variety drills:
   - `translation_match`
   - `pair_match`
-  - `error_detection`
   - `context_meaning`
   - `synonym`
-  - `collocation`
-- `fill_blank` and `sentence_builder` remain supported in the normalized exercise system and dev gallery, but are not part of the current live session mix
+- `fill_blank`, `sentence_builder`, `error_detection`, and `collocation` remain supported in the normalized exercise system and dev gallery, but are not part of the current live session mix
 - one-button in-session drill flow with instant correct/incorrect feedback and auto-advance
 
 ## Current Product Decisions
@@ -111,10 +113,12 @@ Current foundations:
 - Review should be session-based, not a flat random list.
 - Start with transparent rule-based scheduling before heavier adaptive systems.
 - Keep a reusable exercise shell so new vocab modalities do not create new players.
+- Generate reusable AI vocab/drill content once per normalized word/profile when possible, then reuse it across students.
 - Keep lesson-derived words connected to their original reading context when they reappear in Vocabulary Studio.
 - Keep distractor generation and correct-answer shaping reusable at the data layer, not inside individual UIs.
 - Let drill capture reuse the same storage model as lesson capture instead of creating a second vocabulary inbox.
 - Prefer cache-first dictionary lookup before AI fallback for shared meanings, translations, distractors, and answer sets.
+- Keep student-specific edits, soft delete, and context-regenerated meanings in local override fields rather than mutating shared global content.
 - Keep due logic internal and important for prioritization, but do not make it the dominant student-facing goal.
 - Let practice continue through the same adaptive pipeline after the first priority checkpoint rather than ending at the due boundary.
 
@@ -157,14 +161,17 @@ Current foundations:
 - queue-backed summary buckets
 - learn/review/mixed mode switch
 - focused full-screen drill mode
+- `My Vocabulary` page with search
 - inline drill player on the main Vocabulary Studio page
 - queue-aware session composition
 - lesson-aware session composition for fresh words from recent reading lessons
 - audio preparation and audio-aware session inclusion
+- reusable global enrichment plus student-local overrides
 - dev exercise gallery for all exercise types
 - normalized attempt telemetry and shared debug panels
 - drill-time long-press vocabulary capture from answers, distractors, and sentence fragments
 - Word Bank tray shows `Pending / Saved` states and checkpoint-saves pending items
+- vocabulary cards support `Delete`, `Regenerate`, and `Audio` without deleting shared content
 - progress-first student dashboard and Vocabulary Studio entry points built around `Start Practice`, `Continue Practice`, and `Review Weak Words`
 - short Mistake Replay repair sessions built from recent incorrect reading and vocabulary attempts
 

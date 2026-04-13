@@ -34,6 +34,7 @@ import {
   hasReadyVocabularyDrillAnswerSets,
   parseVocabularyDrillAnswerSets,
 } from "@/services/vocabulary/drill-answer-sets.service";
+import { hydrateVocabularyDetailsWithGlobalContent } from "@/services/vocabulary/drill-content-engine.service";
 import { getStudentGamificationSnapshot } from "@/services/gamification/gamification.service";
 import {
   getExerciseTargetWordId,
@@ -699,7 +700,7 @@ export async function getStudentVocabularyPageData(
 
   const { data: student, error: studentError } = await supabase
     .from("students")
-    .select("id, full_name, access_code")
+    .select("id, full_name, access_code, native_language")
     .eq("access_code", accessCode)
     .eq("is_active", true)
     .single();
@@ -740,6 +741,7 @@ export async function getStudentVocabularyPageData(
         .from("vocabulary_item_details")
         .select("*")
         .eq("student_id", studentData.id)
+        .eq("is_removed", false)
         .order("created_at", { ascending: false })
         .limit(200),
       supabase
@@ -759,7 +761,11 @@ export async function getStudentVocabularyPageData(
     throw attemptedWordIds.error;
   }
 
-  let vocabularyDetailRows = (allVocabDetails.data ?? []) as any[];
+  const translationLanguage = student.native_language || "ru";
+  let vocabularyDetailRows = await hydrateVocabularyDetailsWithGlobalContent({
+    details: (allVocabDetails.data ?? []) as any[],
+    translationLanguage,
+  });
   const hasAnyReadyVocabularyItems = vocabularyDetailRows.some((detail: any) => {
     if (!detail?.id || detail.is_understood === true || !detail.english_explanation) {
       return false;
@@ -808,6 +814,7 @@ export async function getStudentVocabularyPageData(
     .from("vocabulary_item_details")
     .select("*")
     .eq("student_id", studentData.id)
+    .eq("is_removed", false)
     .in("id", queueWordIds.length > 0 ? queueWordIds : [EMPTY_UUID]);
 
   if (queueVocabDetailsError) {
@@ -815,8 +822,12 @@ export async function getStudentVocabularyPageData(
   }
 
   const wordProgressMap = new Map((wordProgressRows ?? []).map((row) => [row.word_id, row]));
+  const hydratedQueueVocabDetails = await hydrateVocabularyDetailsWithGlobalContent({
+    details: (queueVocabDetails ?? []) as any[],
+    translationLanguage,
+  });
   const queueVocabDetailMap = new Map(
-    (queueVocabDetails ?? []).map((row: any) => [row.id, row])
+    hydratedQueueVocabDetails.map((row: any) => [row.id, row])
   );
   const queueCandidateMap = new Map(
     activeQueueCandidates.map((candidate) => [candidate.word_id, candidate])

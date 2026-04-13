@@ -162,6 +162,7 @@ function sanitizeStoredAnswerSetMeta(value: unknown): VocabularyDrillAnswerSetMe
     typeof input.refined_definition === "string"
       ? normalizeWhitespace(input.refined_definition)
       : "";
+  const alternateDefinitions = sanitizeMetaCandidateList(input.alternate_definitions, 3);
   const contextExplanation =
     typeof input.context_explanation === "string"
       ? normalizeWhitespace(input.context_explanation)
@@ -174,24 +175,32 @@ function sanitizeStoredAnswerSetMeta(value: unknown): VocabularyDrillAnswerSetMe
     typeof input.enriched_at === "string" ? normalizeWhitespace(input.enriched_at) : "";
   const synonymCandidates = sanitizeMetaCandidateList(input.synonym_candidates, 4);
   const antonymCandidates = sanitizeMetaCandidateList(input.antonym_candidates, 3);
+  const collocationCandidates = sanitizeMetaCandidateList(input.collocation_candidates, 4);
+  const confusionPairs = sanitizeMetaCandidateList(input.confusion_pairs, 4);
 
   if (
     !refinedDefinition &&
+    alternateDefinitions.length === 0 &&
     !contextExplanation &&
     !practiceExampleSentence &&
     !enrichedAt &&
     synonymCandidates.length === 0 &&
-    antonymCandidates.length === 0
+    antonymCandidates.length === 0 &&
+    collocationCandidates.length === 0 &&
+    confusionPairs.length === 0
   ) {
     return undefined;
   }
 
   return {
     refined_definition: refinedDefinition || null,
+    alternate_definitions: alternateDefinitions,
     context_explanation: contextExplanation || null,
     practice_example_sentence: practiceExampleSentence || null,
     synonym_candidates: synonymCandidates,
     antonym_candidates: antonymCandidates,
+    collocation_candidates: collocationCandidates,
+    confusion_pairs: confusionPairs,
     enriched_at: enrichedAt || null,
   };
 }
@@ -200,10 +209,13 @@ function hasAnswerSetMeta(meta: VocabularyDrillAnswerSetMeta | undefined) {
   return Boolean(
     meta &&
       ((meta.refined_definition && meta.refined_definition.trim()) ||
+        (meta.alternate_definitions?.length ?? 0) > 0 ||
         (meta.context_explanation && meta.context_explanation.trim()) ||
         (meta.practice_example_sentence && meta.practice_example_sentence.trim()) ||
         (meta.synonym_candidates?.length ?? 0) > 0 ||
         (meta.antonym_candidates?.length ?? 0) > 0 ||
+        (meta.collocation_candidates?.length ?? 0) > 0 ||
+        (meta.confusion_pairs?.length ?? 0) > 0 ||
         (meta.enriched_at && meta.enriched_at.trim()))
   );
 }
@@ -218,6 +230,18 @@ function mergeAnswerSetMeta(
   const antonymCandidates = sanitizeMetaCandidateList(
     metaCandidates.flatMap((meta) => meta?.antonym_candidates ?? []),
     3
+  );
+  const alternateDefinitions = sanitizeMetaCandidateList(
+    metaCandidates.flatMap((meta) => meta?.alternate_definitions ?? []),
+    3
+  );
+  const collocationCandidates = sanitizeMetaCandidateList(
+    metaCandidates.flatMap((meta) => meta?.collocation_candidates ?? []),
+    4
+  );
+  const confusionPairs = sanitizeMetaCandidateList(
+    metaCandidates.flatMap((meta) => meta?.confusion_pairs ?? []),
+    4
   );
   const refinedDefinition =
     metaCandidates
@@ -238,10 +262,13 @@ function mergeAnswerSetMeta(
 
   const merged: VocabularyDrillAnswerSetMeta = {
     refined_definition: refinedDefinition,
+    alternate_definitions: alternateDefinitions,
     context_explanation: contextExplanation,
     practice_example_sentence: practiceExampleSentence,
     synonym_candidates: synonymCandidates,
     antonym_candidates: antonymCandidates,
+    collocation_candidates: collocationCandidates,
+    confusion_pairs: confusionPairs,
     enriched_at: enrichedAt,
   };
 
