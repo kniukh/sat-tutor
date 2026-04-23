@@ -346,3 +346,75 @@ Correct-answer support:
   - new materialized fields are optional
   - hydration now populates the new gold content fields safely
 - Current live drill behavior does not need to change immediately to benefit from the new schema plumbing.
+
+## Current Exercise Assembly Mapping
+
+The live adapter layer now prefers the gold content fields for exercise assembly while preserving explicit safe fallbacks for legacy rows.
+
+### Fast meaning surfaces
+
+Used by:
+
+- `meaning_match`
+- `pair_match` word -> meaning
+- grouped `listen_match` audio -> meaning
+- `context_meaning`
+
+Priority:
+
+1. `core_meaning`
+2. `drill_answer_sets.context_meaning.drill_correct_answer` when concise
+3. `drill_answer_sets.__meta__.refined_definition` when concise
+4. legacy `english_explanation` / `plainMeaning` only when concise for grouped surfaces
+5. `definition` only for non-compact single-card fallback
+
+Grouped meaning drills require concise labels and do not intentionally fall back to long definition-like text.
+
+### Translation surfaces
+
+Used by:
+
+- `translation_match`
+- `pair_match` English -> translation
+- grouped `listen_match` audio -> translation
+- `spelling_from_audio` feedback
+
+Priority:
+
+1. `translation_word`
+2. `drill_answer_sets.translation_english_to_native.drill_correct_answer` only when short and native-looking
+3. `translation_meaning` only when concise enough for the UI
+4. legacy `translated_explanation` only when concise enough for the UI
+
+Fast grouped translation drills should not use long meaning translations. If no concise lexical translation is available, the item is excluded from the grouped translation exercise.
+
+### Context surfaces
+
+Used by:
+
+- `context_meaning`
+- synonym/substitution sentence prompts
+- future sentence-driven drills
+
+Priority:
+
+1. `example_sentence`
+2. `drill_answer_sets.__meta__.practice_example_sentence`
+3. legacy `example_text`
+4. source context only as a fallback where the exercise can still render safely
+
+### Semantic candidate surfaces
+
+Used by:
+
+- `synonym`
+- antonym variant of `synonym`
+
+Priority:
+
+1. `synonyms` / `antonyms`
+2. `drill_answer_sets.__meta__.synonym_candidates`
+3. `drill_answer_sets.__meta__.antonym_candidates`
+4. stored normalized answer-set distractors and captured-word pools as distractors only
+
+Antonym variants require concise high-confidence candidates; otherwise the variant is not emitted.

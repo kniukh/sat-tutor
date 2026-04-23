@@ -117,12 +117,40 @@ function makeBlank(sentence: string, itemText: string) {
   return `_____ — ${sentence}`;
 }
 
-function getPlainMeaning(item: MeaningDrillItem | ClozeDrillItem) {
+function isConciseDrillLabel(text: string | null | undefined, maxTokens = 10, maxLength = 90) {
+  const normalized = text?.trim().replace(/\s+/g, " ") ?? "";
+  return Boolean(normalized) && countTokens(normalized) <= maxTokens && normalized.length <= maxLength;
+}
+
+function getLegacyPlainMeaning(item: MeaningDrillItem | ClozeDrillItem) {
   return item.plainMeaning ?? item.correctAnswer;
 }
 
+function getFastMeaningLabel(item: MeaningDrillItem | ClozeDrillItem) {
+  const candidates = [
+    item.coreMeaning,
+    getStoredAnswerSet(item, "context_meaning")?.drill_correct_answer,
+    getRefinedDefinition(item),
+    getLegacyPlainMeaning(item),
+    item.definition,
+  ];
+
+  return (
+    candidates.find((candidate) => isConciseDrillLabel(candidate))?.trim() ?? null
+  );
+}
+
+function getPlainMeaning(item: MeaningDrillItem | ClozeDrillItem) {
+  return (
+    getFastMeaningLabel(item) ??
+    item.coreMeaning?.trim() ??
+    item.definition?.trim() ??
+    getLegacyPlainMeaning(item)
+  );
+}
+
 function getTranslatedMeaning(item: MeaningDrillItem | ClozeDrillItem) {
-  return item.translatedExplanation?.trim() ?? null;
+  return item.translationMeaning?.trim() ?? item.translatedExplanation?.trim() ?? null;
 }
 
 function normalizeTranslationLabel(text: string) {
@@ -154,7 +182,11 @@ function getExpectedTranslationScript(item: MeaningDrillItem | ClozeDrillItem) {
 
 function scoreNativeTranslationCandidate(
   candidate: string | null | undefined,
-  item: MeaningDrillItem | ClozeDrillItem
+  item: MeaningDrillItem | ClozeDrillItem,
+  options: {
+    maxTokens?: number;
+    scoreBoost?: number;
+  } = {}
 ) {
   const normalized = normalizeTranslationLabel(candidate ?? "");
   if (!normalized) {
@@ -174,13 +206,13 @@ function scoreNativeTranslationCandidate(
   }
 
   const tokenCount = countTokens(normalized);
-  if (tokenCount > 8) {
+  if (tokenCount > (options.maxTokens ?? 8)) {
     return null;
   }
 
   const expectedScript = getExpectedTranslationScript(item);
   const actualScript = inferScriptProfile(normalized);
-  let score = 0;
+  let score = options.scoreBoost ?? 0;
 
   if (tokenCount <= 4) {
     score += 4;
@@ -225,8 +257,21 @@ function getStoredNativeTranslation(item: MeaningDrillItem | ClozeDrillItem) {
 
 function getPreferredNativeTranslation(item: MeaningDrillItem | ClozeDrillItem) {
   const candidates = [
-    scoreNativeTranslationCandidate(getStoredNativeTranslation(item), item),
-    scoreNativeTranslationCandidate(getTranslatedMeaning(item), item),
+    scoreNativeTranslationCandidate(item.translationWord, item, {
+      maxTokens: 4,
+      scoreBoost: 20,
+    }),
+    scoreNativeTranslationCandidate(getStoredNativeTranslation(item), item, {
+      maxTokens: 4,
+      scoreBoost: 8,
+    }),
+    scoreNativeTranslationCandidate(item.translationMeaning, item, {
+      maxTokens: 6,
+      scoreBoost: 2,
+    }),
+    scoreNativeTranslationCandidate(getTranslatedMeaning(item), item, {
+      maxTokens: 6,
+    }),
   ]
     .filter((candidate): candidate is { value: string; score: number } => Boolean(candidate))
     .sort((left, right) => right.score - left.score);
@@ -261,7 +306,7 @@ function hasUsableNativeTranslation(item: MeaningDrillItem | ClozeDrillItem) {
 }
 
 function getSourceSentence(item: MeaningDrillItem | ClozeDrillItem) {
-  return item.contextSentence || item.exampleText || "";
+  return item.contextSentence || item.exampleSentence || item.exampleText || "";
 }
 
 function uniqueNonEmpty(items: Array<string | null | undefined>) {
@@ -356,11 +401,26 @@ function getAiBackedPracticeSentence(item: MeaningDrillItem | ClozeDrillItem) {
     : null;
 }
 
+function getGoldPracticeSentence(item: MeaningDrillItem | ClozeDrillItem) {
+  return isUsableGeneratedPracticeSentence(item.exampleSentence, item.itemText)
+    ? normalizeSentence(item.exampleSentence)
+    : null;
+}
+
 function getStoredPracticeExampleSentence(item: MeaningDrillItem | ClozeDrillItem) {
   return getStoredAnswerSetMeta(item)?.practice_example_sentence?.trim() || null;
 }
 
 function getPreferredPracticeSentence(item: MeaningDrillItem | ClozeDrillItem) {
+  const goldPracticeSentence = getGoldPracticeSentence(item);
+
+  if (goldPracticeSentence) {
+    return {
+      sentence: goldPracticeSentence,
+      source: "gold_example_sentence" as const,
+    };
+  }
+
   const storedPracticeSentence = getStoredPracticeExampleSentence(item);
 
   if (isUsableGeneratedPracticeSentence(storedPracticeSentence, item.itemText)) {
@@ -438,11 +498,25 @@ function getContextExplanation(item: MeaningDrillItem | ClozeDrillItem) {
 }
 
 function getSynonymCandidates(item: MeaningDrillItem | ClozeDrillItem) {
-  return uniqueNonEmpty(getStoredAnswerSetMeta(item)?.synonym_candidates ?? []);
+  return uniqueNonEmpty([
+    ...(item.synonyms ?? []),
+    ...(getStoredAnswerSetMeta(item)?.synonym_candidates ?? []),
+  ]).filter(
+    (candidate) =>
+      isConciseDrillLabel(candidate, 4, 56) &&
+      normalizePairSideText(candidate) !== normalizePairSideText(item.itemText)
+  );
 }
 
 function getAntonymCandidates(item: MeaningDrillItem | ClozeDrillItem) {
-  return uniqueNonEmpty(getStoredAnswerSetMeta(item)?.antonym_candidates ?? []);
+  return uniqueNonEmpty([
+    ...(item.antonyms ?? []),
+    ...(getStoredAnswerSetMeta(item)?.antonym_candidates ?? []),
+  ]).filter(
+    (candidate) =>
+      isConciseDrillLabel(candidate, 4, 56) &&
+      normalizePairSideText(candidate) !== normalizePairSideText(item.itemText)
+  );
 }
 
 function hasDistinctVariantText(primary: string, candidate: string | null | undefined) {
@@ -610,11 +684,14 @@ function getDefinitionCandidatePool(
   return allItems
     .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
     .flatMap((candidate) => [
+      getFastMeaningLabel(candidate),
+      candidate.coreMeaning,
       getRefinedDefinition(candidate),
       getStoredAnswerSet(candidate, "context_meaning")?.drill_correct_answer,
-      getPlainMeaning(candidate),
+      candidate.definition,
       ...(candidate.distractors ?? []),
-    ]);
+    ])
+    .filter((candidate) => isConciseDrillLabel(candidate));
 }
 
 function buildListenAnswerOptions(params: {
@@ -654,10 +731,12 @@ function getMeaningCandidatePool(
   return allItems
     .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
     .flatMap((candidate) => [
+      getFastMeaningLabel(candidate),
       getStoredAnswerSet(candidate, "context_meaning")?.drill_correct_answer,
       getStoredAnswerSet(candidate, "synonym")?.drill_correct_answer,
-      getPlainMeaning(candidate),
-    ]);
+      candidate.coreMeaning,
+    ])
+    .filter((candidate) => isConciseDrillLabel(candidate));
 }
 
 function getSynonymCandidatePool(
@@ -724,14 +803,14 @@ function getListenPairRightLabel(
   variant: "english" | "meaning" | "translation"
 ) {
   if (variant === "translation") {
-    return getPreferredNativeTranslation(item) ?? getPlainMeaning(item);
+    return getPreferredNativeTranslation(item) ?? "";
   }
 
   if (variant === "english") {
     return item.itemText;
   }
 
-  return getPlainMeaning(item);
+  return getFastMeaningLabel(item) ?? "";
 }
 
 function dedupeListenPairItems(
@@ -1022,7 +1101,11 @@ function adaptMeaningDrillToExerciseWithPool(
     source_drill_id: item.wordProgressId,
     source_item_type: item.itemType,
     definition_source:
-      params?.variant === "definition_variant_match" ? "refined_definition" : "stored_meaning",
+      params?.variant === "definition_variant_match"
+        ? "refined_definition"
+        : item.coreMeaning
+          ? "core_meaning"
+          : "safe_core_meaning_fallback",
     context_explanation: getContextExplanation(item),
   };
 
@@ -1122,22 +1205,22 @@ export function adaptTranslationDrillToExercises(
     item,
     "translation_native_to_english"
   );
-  const englishToNativeCorrectAnswer =
-    englishToNativeAnswerSet?.drill_correct_answer ?? translatedMeaning;
-  const nativeToEnglishCorrectAnswer =
-    nativeToEnglishAnswerSet?.drill_correct_answer ?? item.itemText;
-  const englishToNativeOptions = englishToNativeAnswerSet
-    ? buildStoredAnswerSetOptions(
-        englishToNativeAnswerSet,
-        `translation-native-${item.vocabularyItemId}`
-      )
-    : buildTranslationOptions(item, allItems, `translation-native-${item.vocabularyItemId}`);
-  const nativeToEnglishOptions = nativeToEnglishAnswerSet
-    ? buildStoredAnswerSetOptions(
-        nativeToEnglishAnswerSet,
-        `translation-english-${item.wordProgressId}`
-      )
-    : buildLexicalOptions(item, allItems, `translation-english-${item.wordProgressId}`);
+  const englishToNativeCorrectAnswer = translatedMeaning;
+  const nativeToEnglishCorrectAnswer = item.itemText;
+  const englishToNativeOptions = buildRankedOptions({
+    correctAnswer: englishToNativeCorrectAnswer,
+    optionPrefix: `translation-native-${item.vocabularyItemId}`,
+    storedAnswerSet: englishToNativeAnswerSet,
+    poolCandidates: getTranslationCandidatePool(item, allItems),
+    fallbackCandidates: item.distractors,
+  });
+  const nativeToEnglishOptions = buildRankedOptions({
+    correctAnswer: nativeToEnglishCorrectAnswer,
+    optionPrefix: `translation-english-${item.wordProgressId}`,
+    storedAnswerSet: nativeToEnglishAnswerSet,
+    poolCandidates: getLexicalDistractorCandidates(item, allItems),
+    fallbackCandidates: item.distractors,
+  });
 
   return [
     {
@@ -1166,6 +1249,7 @@ export function adaptTranslationDrillToExercises(
         source_drill_id: item.wordProgressId,
         source_item_type: item.itemType,
         translation_language: item.translationLanguage ?? null,
+        content_field: item.translationWord ? "translation_word" : "safe_translation_fallback",
       },
       tags: [item.itemType, "translation", "english_to_native"],
       skill: "translation_match",
@@ -1206,6 +1290,7 @@ export function adaptTranslationDrillToExercises(
         source_drill_id: item.wordProgressId,
         source_item_type: item.itemType,
         translation_language: item.translationLanguage ?? null,
+        content_field: item.translationWord ? "translation_word" : "safe_translation_fallback",
       },
       tags: [item.itemType, "translation", "native_to_english"],
       skill: "translation_match",
@@ -1228,11 +1313,13 @@ export function adaptPairMatchDrillsToExercises(
 ): SupportedVocabExercise[] {
   const exercises: SupportedVocabExercise[] = [];
   const definitionEntries = dedupePairEntries(
-    items.map((item) => ({
-      item,
-      left: item.itemText,
-      right: getPlainMeaning(item),
-    }))
+    items
+      .map((item) => ({
+        item,
+        left: item.itemText,
+        right: getFastMeaningLabel(item) ?? "",
+      }))
+      .filter((entry) => Boolean(entry.right))
   );
   const definitionGroups = chunkItemsBalanced(definitionEntries, 6, 8, 4);
 
@@ -1263,8 +1350,9 @@ export function adaptPairMatchDrillsToExercises(
       .map((item) => ({
         item,
         left: item.itemText,
-        right: getPreferredNativeTranslation(item) ?? getPlainMeaning(item),
+        right: getPreferredNativeTranslation(item) ?? "",
       }))
+      .filter((entry) => Boolean(entry.right))
   );
   const translationGroups = chunkItemsBalanced(translationEntries, 6, 8, 4);
 
@@ -1393,12 +1481,12 @@ export function adaptListenMatchDrillToExercise(
 ): SupportedVocabExercise {
   const sourceSentence = getSourceSentence(item);
   const plainMeaning = getPlainMeaning(item);
-  const translatedMeaning = getTranslatedMeaning(item);
+  const translatedMeaning = getPreferredNativeTranslation(item);
   const translationAnswerSet = getStoredAnswerSet(item, "translation_english_to_native");
   const meaningAnswerSet = getStoredAnswerSet(item, "context_meaning");
   const translationPayload = translatedMeaning
     ? buildListenAnswerOptions({
-        correctAnswer: translationAnswerSet?.drill_correct_answer ?? translatedMeaning,
+        correctAnswer: translatedMeaning,
         storedAnswerSet: translationAnswerSet,
         poolCandidates: getTranslationCandidatePool(item, allItems),
         fallbackCandidates: translatedMeaning ? [translatedMeaning] : [],
@@ -1406,7 +1494,7 @@ export function adaptListenMatchDrillToExercise(
       })
     : null;
   const meaningPayload = buildListenAnswerOptions({
-    correctAnswer: meaningAnswerSet?.drill_correct_answer ?? plainMeaning,
+    correctAnswer: getFastMeaningLabel(item) ?? plainMeaning,
     storedAnswerSet: meaningAnswerSet,
     poolCandidates: getMeaningCandidatePool(item, allItems),
     fallbackCandidates: item.distractors,
@@ -1438,8 +1526,8 @@ export function adaptListenMatchDrillToExercise(
     variant === "translation" && translationPayload ? translationPayload : meaningPayload;
   const drillCorrectAnswer =
     variant === "translation"
-      ? translationAnswerSet?.drill_correct_answer ?? translatedMeaning ?? plainMeaning
-      : meaningAnswerSet?.drill_correct_answer ?? plainMeaning;
+      ? translatedMeaning ?? plainMeaning
+      : getFastMeaningLabel(item) ?? plainMeaning;
   const explanation =
     variant === "translation"
       ? `The audio matches the translation ${drillCorrectAnswer}.`
@@ -1490,9 +1578,13 @@ export function adaptListenMatchDrillToExercise(
       listen_variant: variant,
       listens_for_meaning: true,
       answer_source: variant === "translation" && translationAnswerSet
-        ? "normalized_translation_set"
+        ? item.translationWord
+          ? "translation_word_plus_normalized_distractors"
+          : "safe_translation_fallback_plus_normalized_distractors"
         : variant === "meaning" && meaningAnswerSet
-          ? "normalized_meaning_set"
+          ? item.coreMeaning
+            ? "core_meaning_plus_normalized_distractors"
+            : "safe_core_meaning_fallback_plus_normalized_distractors"
           : "ranked_candidate_pool",
     },
     tags:
@@ -1963,7 +2055,16 @@ export function adaptContextMeaningDrillToExercise(
     item.itemType === "phrase"
       ? `What does "${item.itemText}" mean in this sentence?`
       : `What does "${item.itemText}" mean in this sentence?`;
-  const plainMeaning = answerSet?.drill_correct_answer ?? getPlainMeaning(item);
+  const plainMeaning = getFastMeaningLabel(item) ?? getPlainMeaning(item);
+  const options = answerSet
+    ? buildRankedOptions({
+        correctAnswer: plainMeaning,
+        optionPrefix: `context-${item.wordProgressId}`,
+        storedAnswerSet: answerSet,
+        poolCandidates: getMeaningCandidatePool(item, [item]),
+        fallbackCandidates: item.distractors,
+      })
+    : buildMeaningOptions(item, `context-${item.wordProgressId}`);
 
   return {
     id: `${item.wordProgressId}:context_meaning`,
@@ -1983,9 +2084,7 @@ export function adaptContextMeaningDrillToExercise(
     sentenceText: contextText,
     contextText,
     focusText: item.itemText,
-    options: answerSet
-      ? buildStoredAnswerSetOptions(answerSet, `context-${item.wordProgressId}`)
-      : buildMeaningOptions(item, `context-${item.wordProgressId}`),
+    options,
     correct_answer: "correct",
     correctAnswer: "correct",
     drill_correct_answer: plainMeaning,
@@ -2000,6 +2099,10 @@ export function adaptContextMeaningDrillToExercise(
       source_drill_id: item.wordProgressId,
       source_item_type: item.itemType,
       source_context_sentence: contextText,
+      content_fields: {
+        sentence: preferredPracticeSentence.source,
+        answer: item.coreMeaning ? "core_meaning" : "safe_core_meaning_fallback",
+      },
       prompt_sentence_source:
         preferredPracticeSentence.source !== "none"
           ? preferredPracticeSentence.source
