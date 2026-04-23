@@ -123,6 +123,18 @@ function canQueueRetryExercise(exercise: Exercise) {
   return getRetrySourceExerciseId(exercise) === null;
 }
 
+function getRetryLearningFamily(exercise: Exercise) {
+  if (exercise.type === "meaning_match" || exercise.type === "translation_match") {
+    return "recognition";
+  }
+
+  if (exercise.type === "spelling_from_audio" || exercise.type === "listen_match") {
+    return "audio_form";
+  }
+
+  return "context_semantic";
+}
+
 function isSingleWordTarget(exercise: Exercise) {
   const targetWord = getExerciseTargetWord(exercise).trim();
   return Boolean(targetWord) && !targetWord.includes(" ");
@@ -170,6 +182,49 @@ function buildRetryExercise(exercise: Exercise): Exercise {
       retry_pass: 1,
     },
   };
+}
+
+function buildCorrectiveRetryExercise(params: {
+  missedExercise: Exercise;
+  exerciseQueue: Exercise[];
+}) {
+  const missedWordId = getExerciseTargetWordId(params.missedExercise);
+  const missedFamily = getRetryLearningFamily(params.missedExercise);
+  const eligibleAlternatives = params.exerciseQueue.filter((candidate) => {
+    if (candidate.id === params.missedExercise.id) {
+      return false;
+    }
+
+    if (getRetrySourceExerciseId(candidate)) {
+      return false;
+    }
+
+    if (!canQueueRetryExercise(candidate)) {
+      return false;
+    }
+
+    return getExerciseTargetWordId(candidate) === missedWordId;
+  });
+  const preferredAlternative =
+    eligibleAlternatives.find(
+      (candidate) => getRetryLearningFamily(candidate) !== missedFamily
+    ) ?? eligibleAlternatives[0];
+
+  if (!preferredAlternative) {
+    return buildRetryExercise(params.missedExercise);
+  }
+
+  return {
+    ...preferredAlternative,
+    id: `${preferredAlternative.id}:retry-for:${params.missedExercise.id}`,
+    metadata: {
+      ...(preferredAlternative.metadata ?? {}),
+      retry_source_exercise_id: params.missedExercise.id,
+      retry_followup_exercise_id: preferredAlternative.id,
+      retry_strategy: "corrective_followup_type",
+      retry_pass: 1,
+    },
+  } satisfies Exercise;
 }
 
 export default function ExercisePlayer({
@@ -524,7 +579,13 @@ export default function ExercisePlayer({
     ]);
 
     if (!isCorrect && canQueueRetryExercise(currentExercise)) {
-      setExerciseQueue((current) => [...current, buildRetryExercise(currentExercise)]);
+      setExerciseQueue((current) => [
+        ...current,
+        buildCorrectiveRetryExercise({
+          missedExercise: currentExercise,
+          exerciseQueue: current,
+        }),
+      ]);
     }
 
     console.debug("Vocab exercise attempt", result);

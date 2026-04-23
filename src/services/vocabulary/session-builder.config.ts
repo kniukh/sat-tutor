@@ -16,6 +16,21 @@ type SessionBuilderMode =
   | "review_weak_words"
   | "mixed_practice";
 
+export type VocabularyLearningFamily =
+  | "recognition"
+  | "audio_form"
+  | "context_semantic"
+  | "grouped_support";
+
+export type SessionTouchPolicy = {
+  anchorWordTarget: number;
+  reinforcementBudget: number;
+  groupedSupportBudget: number;
+  primaryFamilyOrder: VocabularyLearningFamily[];
+  reinforcementFamilyOrder: VocabularyLearningFamily[];
+  maxSpellingTouches: number;
+};
+
 type ProgressionRuleKey =
   | "lesson_word_intro"
   | "new_word_intro"
@@ -184,6 +199,85 @@ export const SESSION_BUCKET_TARGET_RATIOS_BY_MODE: Record<
     scheduled: 0.05,
   },
 };
+
+export const SESSION_TOUCH_POLICY_BY_MODE: Record<
+  SessionBuilderMode,
+  SessionTouchPolicy
+> = {
+  default_review: {
+    anchorWordTarget: 8,
+    reinforcementBudget: 2,
+    groupedSupportBudget: 1,
+    primaryFamilyOrder: ["recognition", "audio_form", "context_semantic"],
+    reinforcementFamilyOrder: ["audio_form", "context_semantic", "recognition"],
+    maxSpellingTouches: 3,
+  },
+  weak_first: {
+    anchorWordTarget: 8,
+    reinforcementBudget: 4,
+    groupedSupportBudget: 1,
+    primaryFamilyOrder: ["recognition", "context_semantic", "audio_form"],
+    reinforcementFamilyOrder: ["context_semantic", "audio_form", "recognition"],
+    maxSpellingTouches: 4,
+  },
+  mixed: {
+    anchorWordTarget: 8,
+    reinforcementBudget: 2,
+    groupedSupportBudget: 1,
+    primaryFamilyOrder: ["recognition", "audio_form", "context_semantic"],
+    reinforcementFamilyOrder: ["audio_form", "context_semantic", "recognition"],
+    maxSpellingTouches: 3,
+  },
+  learn_new_words: {
+    anchorWordTarget: 6,
+    reinforcementBudget: 8,
+    groupedSupportBudget: 2,
+    primaryFamilyOrder: ["recognition", "audio_form", "context_semantic"],
+    reinforcementFamilyOrder: ["audio_form", "context_semantic", "recognition"],
+    maxSpellingTouches: 4,
+  },
+  review_weak_words: {
+    anchorWordTarget: 8,
+    reinforcementBudget: 4,
+    groupedSupportBudget: 1,
+    primaryFamilyOrder: ["recognition", "context_semantic", "audio_form"],
+    reinforcementFamilyOrder: ["context_semantic", "audio_form", "recognition"],
+    maxSpellingTouches: 4,
+  },
+  mixed_practice: {
+    anchorWordTarget: 8,
+    reinforcementBudget: 2,
+    groupedSupportBudget: 1,
+    primaryFamilyOrder: ["recognition", "audio_form", "context_semantic"],
+    reinforcementFamilyOrder: ["audio_form", "context_semantic", "recognition"],
+    maxSpellingTouches: 3,
+  },
+};
+
+export function resolveSessionTouchPolicy(
+  mode: SessionBuilderMode,
+  anchorWordTarget?: number
+): SessionTouchPolicy {
+  const basePolicy = SESSION_TOUCH_POLICY_BY_MODE[mode];
+  const resolvedAnchorTarget = Math.max(
+    0,
+    Math.floor(anchorWordTarget ?? basePolicy.anchorWordTarget)
+  );
+
+  if (mode === "learn_new_words") {
+    return {
+      ...basePolicy,
+      anchorWordTarget: resolvedAnchorTarget,
+      reinforcementBudget: resolvedAnchorTarget + Math.min(2, resolvedAnchorTarget),
+    };
+  }
+
+  return {
+    ...basePolicy,
+    anchorWordTarget: resolvedAnchorTarget,
+    reinforcementBudget: Math.min(basePolicy.reinforcementBudget, resolvedAnchorTarget),
+  };
+}
 
 export const SESSION_PROGRESSION_RULES: Record<
   ProgressionRuleKey,
