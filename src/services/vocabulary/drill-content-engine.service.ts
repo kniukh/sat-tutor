@@ -22,6 +22,7 @@ import {
   upsertVocabularyDictionaryCacheEntries,
 } from "@/services/vocabulary/vocabulary-dictionary-cache.service";
 import { resolveVocabularyLemma } from "@/services/vocabulary/vocabulary-normalization.service";
+import { resolveSafeVocabularyDrillContent } from "@/services/vocabulary/resolved-vocabulary-drill-content.service";
 import type { VocabularyDrillAnswerSetMap } from "@/types/vocabulary-answer-sets";
 
 export type ReusableVocabularyContentCandidate = {
@@ -172,6 +173,12 @@ function isReusableVocabularyContentReady(
 function buildReusableDrillIngredients(params: {
   itemText: string;
   exampleText: string | null;
+  audioText: string | null;
+  partOfSpeech: string | null;
+  coreMeaning: string | null;
+  definition: string | null;
+  translationWord: string | null;
+  translationMeaning: string | null;
   answerSets: VocabularyDrillAnswerSetMap;
 }) {
   const meta = params.answerSets.__meta__;
@@ -212,6 +219,14 @@ function buildReusableDrillIngredients(params: {
     translation_variants: {
       english_to_native: Boolean(params.answerSets.translation_english_to_native),
       native_to_english: Boolean(params.answerSets.translation_native_to_english),
+    },
+    gold_content_fields: {
+      core_meaning: Boolean(params.coreMeaning),
+      definition: Boolean(params.definition),
+      translation_word: Boolean(params.translationWord),
+      translation_meaning: Boolean(params.translationMeaning),
+      audio_text: Boolean(params.audioText),
+      part_of_speech: Boolean(params.partOfSpeech),
     },
     context_variant: Boolean(params.answerSets.context_meaning),
     collocation_variant: Boolean(params.answerSets.collocation),
@@ -276,6 +291,28 @@ function buildGlobalSeedFromPreparedContent(params: {
   refreshedAt: string;
 }) {
   const meta = params.answerSets.__meta__;
+  const resolvedContent = resolveSafeVocabularyDrillContent({
+    itemText: params.candidate.itemText,
+    itemType: params.candidate.itemType,
+    englishExplanation: params.englishExplanation,
+    translatedExplanation: params.translatedExplanation,
+    exampleText: params.exampleText,
+    drillAnswerSets: params.answerSets,
+    coreMeaning: params.existingEntry?.coreMeaning ?? null,
+    definition: params.existingEntry?.definition ?? null,
+    translationWord: params.existingEntry?.translationWord ?? null,
+    translationMeaning: params.existingEntry?.translationMeaning ?? null,
+    synonyms: params.existingEntry?.synonyms ?? [],
+    antonyms: params.existingEntry?.antonyms ?? [],
+    exampleSentence: params.existingEntry?.exampleSentence ?? null,
+    exampleTranslation: params.existingEntry?.exampleTranslation ?? null,
+    audioText: params.existingEntry?.audioText ?? null,
+    partOfSpeech: params.existingEntry?.partOfSpeech ?? null,
+    alternateDefinitions: params.existingEntry?.alternateDefinitions ?? [],
+    synonymCandidates: params.existingEntry?.synonymCandidates ?? [],
+    antonymCandidates: params.existingEntry?.antonymCandidates ?? [],
+    exampleSentences: params.existingEntry?.exampleSentences ?? [],
+  });
   const alternateDefinitions = uniqueTextValues(
     [
       ...(meta?.alternate_definitions ?? []),
@@ -316,6 +353,16 @@ function buildGlobalSeedFromPreparedContent(params: {
     translationLanguage: params.translationLanguage,
     sourceLanguage: params.sourceLanguage,
     contentProfile: params.contentProfile,
+    coreMeaning: resolvedContent.coreMeaning,
+    definition: resolvedContent.definition,
+    translationWord: resolvedContent.translationWord,
+    translationMeaning: resolvedContent.translationMeaning,
+    synonyms: resolvedContent.synonyms,
+    antonyms: resolvedContent.antonyms,
+    exampleSentence: resolvedContent.exampleSentence,
+    exampleTranslation: resolvedContent.exampleTranslation,
+    audioText: resolvedContent.audioText,
+    partOfSpeech: resolvedContent.partOfSpeech,
     englishExplanation: params.englishExplanation,
     translatedExplanation: params.translatedExplanation,
     exampleText: params.exampleText,
@@ -330,6 +377,12 @@ function buildGlobalSeedFromPreparedContent(params: {
     drillIngredients: buildReusableDrillIngredients({
       itemText: params.candidate.itemText,
       exampleText: params.exampleText,
+      audioText: resolvedContent.audioText,
+      partOfSpeech: resolvedContent.partOfSpeech,
+      coreMeaning: resolvedContent.coreMeaning,
+      definition: resolvedContent.definition,
+      translationWord: resolvedContent.translationWord,
+      translationMeaning: resolvedContent.translationMeaning,
       answerSets: params.answerSets,
     }),
     sourceQuality: params.existingEntry?.sourceQuality ?? "ai_generated",
@@ -638,9 +691,20 @@ export async function hydrateVocabularyDetailsWithGlobalContent<
     canonical_lemma?: string | null;
     translation_language?: string | null;
     global_content_id?: string | null;
+    core_meaning?: string | null;
+    definition?: string | null;
+    translation_word?: string | null;
+    translation_meaning?: string | null;
+    synonyms?: unknown;
+    antonyms?: unknown;
+    example_sentence?: string | null;
+    example_translation?: string | null;
+    audio_text?: string | null;
+    part_of_speech?: string | null;
     english_explanation?: string | null;
     translated_explanation?: string | null;
     example_text?: string | null;
+    context_sentence?: string | null;
     distractors?: unknown;
     drill_answer_sets?: unknown;
   },
@@ -689,10 +753,54 @@ export async function hydrateVocabularyDetailsWithGlobalContent<
 
     usedEntries.push(entry);
 
+    const resolvedContent = resolveSafeVocabularyDrillContent({
+      itemText: detail.item_text,
+      itemType: detail.item_type,
+      englishExplanation: entry.englishExplanation || detail.english_explanation,
+      translatedExplanation:
+        entry.translatedExplanation || detail.translated_explanation,
+      exampleText: entry.exampleText || detail.example_text,
+      contextSentence: detail.context_sentence ?? null,
+      drillAnswerSets:
+        hasReadyVocabularyDrillAnswerSets(entry.drillAnswerSets)
+          ? entry.drillAnswerSets
+          : parseVocabularyDrillAnswerSets(detail.drill_answer_sets ?? {}),
+      coreMeaning: detail.core_meaning ?? entry.coreMeaning,
+      definition: detail.definition ?? entry.definition,
+      translationWord: detail.translation_word ?? entry.translationWord,
+      translationMeaning: detail.translation_meaning ?? entry.translationMeaning,
+      synonyms:
+        Array.isArray(detail.synonyms) && detail.synonyms.every((value) => typeof value === "string")
+          ? (detail.synonyms as string[])
+          : entry.synonyms,
+      antonyms:
+        Array.isArray(detail.antonyms) && detail.antonyms.every((value) => typeof value === "string")
+          ? (detail.antonyms as string[])
+          : entry.antonyms,
+      exampleSentence: detail.example_sentence ?? entry.exampleSentence,
+      exampleTranslation: detail.example_translation ?? entry.exampleTranslation,
+      audioText: detail.audio_text ?? entry.audioText,
+      partOfSpeech: detail.part_of_speech ?? entry.partOfSpeech,
+      alternateDefinitions: entry.alternateDefinitions,
+      synonymCandidates: entry.synonymCandidates,
+      antonymCandidates: entry.antonymCandidates,
+      exampleSentences: entry.exampleSentences,
+    });
+
     return {
       ...detail,
       global_content_id: detail.global_content_id ?? entry.id,
       canonical_lemma: detail.canonical_lemma ?? entry.canonicalLemma,
+      core_meaning: resolvedContent.coreMeaning,
+      definition: resolvedContent.definition,
+      translation_word: resolvedContent.translationWord,
+      translation_meaning: resolvedContent.translationMeaning,
+      synonyms: resolvedContent.synonyms,
+      antonyms: resolvedContent.antonyms,
+      example_sentence: resolvedContent.exampleSentence,
+      example_translation: resolvedContent.exampleTranslation,
+      audio_text: resolvedContent.audioText,
+      part_of_speech: resolvedContent.partOfSpeech,
       english_explanation: entry.englishExplanation || detail.english_explanation,
       translated_explanation:
         entry.translatedExplanation || detail.translated_explanation,

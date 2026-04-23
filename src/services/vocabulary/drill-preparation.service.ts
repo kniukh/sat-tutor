@@ -18,6 +18,7 @@ import {
   mergeVocabularySurfaceForms,
   resolveVocabularyLemma,
 } from "@/services/vocabulary/vocabulary-normalization.service";
+import { resolveSafeVocabularyDrillContent } from "@/services/vocabulary/resolved-vocabulary-drill-content.service";
 
 type VocabularyItemRow = {
   id: string;
@@ -31,6 +32,16 @@ type VocabularyItemRow = {
   first_captured_at: string | null;
   last_captured_at: string | null;
   global_content_id?: string | null;
+  core_meaning?: string | null;
+  definition?: string | null;
+  translation_word?: string | null;
+  translation_meaning?: string | null;
+  synonyms?: string[] | null;
+  antonyms?: string[] | null;
+  example_sentence?: string | null;
+  example_translation?: string | null;
+  audio_text?: string | null;
+  part_of_speech?: string | null;
   english_explanation: string | null;
   translated_explanation: string | null;
   translation_language: string | null;
@@ -323,6 +334,33 @@ export async function generateVocabularyItemsFromCaptures(params: {
         reusableEntry && hasReadyVocabularyDrillAnswerSets(reusableEntry.drillAnswerSets)
           ? parseVocabularyDrillAnswerSets(reusableEntry.drillAnswerSets)
           : parseVocabularyDrillAnswerSets(existingItem?.drill_answer_sets ?? {});
+      const resolvedGoldContent = resolveSafeVocabularyDrillContent({
+        itemText: existingItem?.item_text ?? item.item_text,
+        itemType: item.item_type as "word" | "phrase",
+        englishExplanation,
+        translatedExplanation,
+        exampleText,
+        contextSentence,
+        drillAnswerSets,
+        coreMeaning: reusableEntry?.coreMeaning ?? existingItem?.core_meaning ?? null,
+        definition: reusableEntry?.definition ?? existingItem?.definition ?? null,
+        translationWord:
+          reusableEntry?.translationWord ?? existingItem?.translation_word ?? null,
+        translationMeaning:
+          reusableEntry?.translationMeaning ?? existingItem?.translation_meaning ?? null,
+        synonyms: reusableEntry?.synonyms ?? existingItem?.synonyms ?? [],
+        antonyms: reusableEntry?.antonyms ?? existingItem?.antonyms ?? [],
+        exampleSentence:
+          reusableEntry?.exampleSentence ?? existingItem?.example_sentence ?? null,
+        exampleTranslation:
+          reusableEntry?.exampleTranslation ?? existingItem?.example_translation ?? null,
+        audioText: reusableEntry?.audioText ?? existingItem?.audio_text ?? null,
+        partOfSpeech: reusableEntry?.partOfSpeech ?? existingItem?.part_of_speech ?? null,
+        alternateDefinitions: reusableEntry?.alternateDefinitions ?? [],
+        synonymCandidates: reusableEntry?.synonymCandidates ?? [],
+        antonymCandidates: reusableEntry?.antonymCandidates ?? [],
+        exampleSentences: reusableEntry?.exampleSentences ?? [],
+      });
 
       const nextRow = {
         student_id: params.studentId,
@@ -332,6 +370,16 @@ export async function generateVocabularyItemsFromCaptures(params: {
         item_text: existingItem?.item_text ?? item.item_text,
         item_type: item.item_type,
         canonical_lemma: item.canonical_lemma,
+        core_meaning: resolvedGoldContent.coreMeaning,
+        definition: resolvedGoldContent.definition,
+        translation_word: resolvedGoldContent.translationWord,
+        translation_meaning: resolvedGoldContent.translationMeaning,
+        synonyms: resolvedGoldContent.synonyms,
+        antonyms: resolvedGoldContent.antonyms,
+        example_sentence: resolvedGoldContent.exampleSentence,
+        example_translation: resolvedGoldContent.exampleTranslation,
+        audio_text: resolvedGoldContent.audioText,
+        part_of_speech: resolvedGoldContent.partOfSpeech,
         captured_surface_forms: mergeVocabularySurfaceForms(
           existingItem?.captured_surface_forms ?? [],
           item.captured_surface_forms
@@ -473,6 +521,31 @@ export async function prepareVocabularyDrillsForStudent(params: {
     const nextTranslatedExplanation =
       reusableEntry?.translatedExplanation ?? item.translated_explanation ?? null;
     const nextExampleText = reusableEntry?.exampleText ?? item.example_text ?? null;
+    const resolvedGoldContent = resolveSafeVocabularyDrillContent({
+      itemText: item.item_text,
+      itemType: (item.item_type ?? "word") as "word" | "phrase",
+      englishExplanation: nextEnglishExplanation,
+      translatedExplanation: nextTranslatedExplanation,
+      exampleText: nextExampleText,
+      contextSentence: item.context_sentence ?? null,
+      drillAnswerSets: nextAnswerSets,
+      coreMeaning: reusableEntry?.coreMeaning ?? item.core_meaning ?? null,
+      definition: reusableEntry?.definition ?? item.definition ?? null,
+      translationWord: reusableEntry?.translationWord ?? item.translation_word ?? null,
+      translationMeaning:
+        reusableEntry?.translationMeaning ?? item.translation_meaning ?? null,
+      synonyms: reusableEntry?.synonyms ?? item.synonyms ?? [],
+      antonyms: reusableEntry?.antonyms ?? item.antonyms ?? [],
+      exampleSentence: reusableEntry?.exampleSentence ?? item.example_sentence ?? null,
+      exampleTranslation:
+        reusableEntry?.exampleTranslation ?? item.example_translation ?? null,
+      audioText: reusableEntry?.audioText ?? item.audio_text ?? null,
+      partOfSpeech: reusableEntry?.partOfSpeech ?? item.part_of_speech ?? null,
+      alternateDefinitions: reusableEntry?.alternateDefinitions ?? [],
+      synonymCandidates: reusableEntry?.synonymCandidates ?? [],
+      antonymCandidates: reusableEntry?.antonymCandidates ?? [],
+      exampleSentences: reusableEntry?.exampleSentences ?? [],
+    });
 
     if (
       JSON.stringify(currentDistractors) === JSON.stringify(nextDistractors) &&
@@ -480,7 +553,17 @@ export async function prepareVocabularyDrillsForStudent(params: {
       (item.global_content_id ?? null) === (reusableEntry?.id ?? null) &&
       (item.english_explanation ?? null) === nextEnglishExplanation &&
       (item.translated_explanation ?? null) === nextTranslatedExplanation &&
-      (item.example_text ?? null) === nextExampleText
+      (item.example_text ?? null) === nextExampleText &&
+      (item.core_meaning ?? null) === resolvedGoldContent.coreMeaning &&
+      (item.definition ?? null) === resolvedGoldContent.definition &&
+      (item.translation_word ?? null) === resolvedGoldContent.translationWord &&
+      (item.translation_meaning ?? null) === resolvedGoldContent.translationMeaning &&
+      JSON.stringify(item.synonyms ?? []) === JSON.stringify(resolvedGoldContent.synonyms) &&
+      JSON.stringify(item.antonyms ?? []) === JSON.stringify(resolvedGoldContent.antonyms) &&
+      (item.example_sentence ?? null) === resolvedGoldContent.exampleSentence &&
+      (item.example_translation ?? null) === resolvedGoldContent.exampleTranslation &&
+      (item.audio_text ?? null) === resolvedGoldContent.audioText &&
+      (item.part_of_speech ?? null) === resolvedGoldContent.partOfSpeech
     ) {
       continue;
     }
@@ -489,6 +572,16 @@ export async function prepareVocabularyDrillsForStudent(params: {
       .from("vocabulary_item_details")
       .update({
         global_content_id: reusableEntry?.id ?? item.global_content_id ?? null,
+        core_meaning: resolvedGoldContent.coreMeaning,
+        definition: resolvedGoldContent.definition,
+        translation_word: resolvedGoldContent.translationWord,
+        translation_meaning: resolvedGoldContent.translationMeaning,
+        synonyms: resolvedGoldContent.synonyms,
+        antonyms: resolvedGoldContent.antonyms,
+        example_sentence: resolvedGoldContent.exampleSentence,
+        example_translation: resolvedGoldContent.exampleTranslation,
+        audio_text: resolvedGoldContent.audioText,
+        part_of_speech: resolvedGoldContent.partOfSpeech,
         english_explanation: nextEnglishExplanation,
         translated_explanation: nextTranslatedExplanation,
         example_text: nextExampleText,

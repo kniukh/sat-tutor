@@ -35,6 +35,7 @@ import {
   parseVocabularyDrillAnswerSets,
 } from "@/services/vocabulary/drill-answer-sets.service";
 import { hydrateVocabularyDetailsWithGlobalContent } from "@/services/vocabulary/drill-content-engine.service";
+import { resolveSafeVocabularyDrillContent } from "@/services/vocabulary/resolved-vocabulary-drill-content.service";
 import { getStudentGamificationSnapshot } from "@/services/gamification/gamification.service";
 import {
   getExerciseTargetWordId,
@@ -64,6 +65,16 @@ type DrillItem = {
   translatedExplanation: string | null;
   translationLanguage: string | null;
   exampleText: string;
+  coreMeaning: string | null;
+  definition: string | null;
+  translationWord: string | null;
+  translationMeaning: string | null;
+  synonyms: string[];
+  antonyms: string[];
+  exampleSentence: string | null;
+  exampleTranslation: string | null;
+  audioText: string;
+  partOfSpeech: string | null;
   audioUrl: string | null;
   audioStatus: "ready" | "pending" | "failed" | "missing" | null;
   sourceLessonId: string | null;
@@ -316,6 +327,25 @@ function toDrillItem(
       : null;
   const sourceCapture = sourceKey ? sourceCaptureMap?.get(sourceKey) ?? null : null;
   const lessonMeta = detail.lesson_id ? lessonMetaMap?.get(detail.lesson_id) ?? null : null;
+  const resolvedGoldContent = resolveSafeVocabularyDrillContent({
+    itemText: detail.item_text,
+    itemType: itemType,
+    englishExplanation: detail.english_explanation ?? null,
+    translatedExplanation: detail.translated_explanation ?? null,
+    exampleText: detail.example_text ?? null,
+    contextSentence: detail.context_sentence ?? null,
+    drillAnswerSets: parseVocabularyDrillAnswerSets(detail.drill_answer_sets),
+    coreMeaning: detail.core_meaning ?? null,
+    definition: detail.definition ?? null,
+    translationWord: detail.translation_word ?? null,
+    translationMeaning: detail.translation_meaning ?? null,
+    synonyms: Array.isArray(detail.synonyms) ? detail.synonyms : [],
+    antonyms: Array.isArray(detail.antonyms) ? detail.antonyms : [],
+    exampleSentence: detail.example_sentence ?? null,
+    exampleTranslation: detail.example_translation ?? null,
+    audioText: detail.audio_text ?? null,
+    partOfSpeech: detail.part_of_speech ?? null,
+  });
 
   return {
     wordProgressId,
@@ -330,6 +360,16 @@ function toDrillItem(
     translatedExplanation: detail.translated_explanation || null,
     translationLanguage: detail.translation_language || null,
     exampleText: detail.example_text || "",
+    coreMeaning: resolvedGoldContent.coreMeaning,
+    definition: resolvedGoldContent.definition,
+    translationWord: resolvedGoldContent.translationWord,
+    translationMeaning: resolvedGoldContent.translationMeaning,
+    synonyms: resolvedGoldContent.synonyms,
+    antonyms: resolvedGoldContent.antonyms,
+    exampleSentence: resolvedGoldContent.exampleSentence,
+    exampleTranslation: resolvedGoldContent.exampleTranslation,
+    audioText: resolvedGoldContent.audioText,
+    partOfSpeech: resolvedGoldContent.partOfSpeech,
     audioUrl: detail.audio_url || null,
     audioStatus: (detail.audio_status ?? null) as
       | "ready"

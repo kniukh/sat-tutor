@@ -16,6 +16,16 @@ export type VocabularyDictionaryCacheEntry = {
   sourceLanguage: string;
   translationLanguage: string;
   contentProfile: string;
+  coreMeaning: string | null;
+  definition: string | null;
+  translationWord: string | null;
+  translationMeaning: string | null;
+  synonyms: string[];
+  antonyms: string[];
+  exampleSentence: string | null;
+  exampleTranslation: string | null;
+  audioText: string | null;
+  partOfSpeech: string | null;
   englishExplanation: string;
   translatedExplanation: string;
   exampleText: string | null;
@@ -44,6 +54,16 @@ export type VocabularyDictionaryCacheSeed = {
   sourceLanguage?: string | null;
   translationLanguage: string;
   contentProfile?: string | null;
+  coreMeaning?: string | null;
+  definition?: string | null;
+  translationWord?: string | null;
+  translationMeaning?: string | null;
+  synonyms?: string[] | null;
+  antonyms?: string[] | null;
+  exampleSentence?: string | null;
+  exampleTranslation?: string | null;
+  audioText?: string | null;
+  partOfSpeech?: string | null;
   englishExplanation: string;
   translatedExplanation: string;
   exampleText?: string | null;
@@ -140,6 +160,15 @@ function sanitizeDrillIngredients(value: unknown) {
   return value as Record<string, unknown>;
 }
 
+function sanitizeNullableText(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().replace(/\s+/g, " ");
+  return normalized || null;
+}
+
 export function buildVocabularyDictionaryCacheKey(params: {
   itemText: string;
   itemType: string | null | undefined;
@@ -171,6 +200,16 @@ function mapDictionaryRow(row: any): VocabularyDictionaryCacheEntry {
       row.translation_language as string | null
     ),
     contentProfile: normalizeCacheContentProfile(row.content_profile as string | null),
+    coreMeaning: sanitizeNullableText(row.core_meaning),
+    definition: sanitizeNullableText(row.definition),
+    translationWord: sanitizeNullableText(row.translation_word),
+    translationMeaning: sanitizeNullableText(row.translation_meaning),
+    synonyms: sanitizeTextArray(row.synonyms, 8),
+    antonyms: sanitizeTextArray(row.antonyms, 6),
+    exampleSentence: sanitizeNullableText(row.example_sentence),
+    exampleTranslation: sanitizeNullableText(row.example_translation),
+    audioText: sanitizeNullableText(row.audio_text),
+    partOfSpeech: sanitizeNullableText(row.part_of_speech),
     englishExplanation: row.english_explanation as string,
     translatedExplanation: row.translated_explanation as string,
     exampleText: (row.example_text as string | null) ?? null,
@@ -330,6 +369,16 @@ export async function upsertVocabularyDictionaryCacheEntries(
         source_language: normalizeCacheSourceLanguage(seed.sourceLanguage),
         translation_language: normalizeCacheTranslationLanguage(seed.translationLanguage),
         content_profile: normalizeCacheContentProfile(seed.contentProfile),
+        core_meaning: sanitizeNullableText(seed.coreMeaning),
+        definition: sanitizeNullableText(seed.definition),
+        translation_word: sanitizeNullableText(seed.translationWord),
+        translation_meaning: sanitizeNullableText(seed.translationMeaning),
+        synonyms: sanitizeTextArray(seed.synonyms, 8),
+        antonyms: sanitizeTextArray(seed.antonyms, 6),
+        example_sentence: sanitizeNullableText(seed.exampleSentence),
+        example_translation: sanitizeNullableText(seed.exampleTranslation),
+        audio_text: sanitizeNullableText(seed.audioText),
+        part_of_speech: sanitizeNullableText(seed.partOfSpeech),
         english_explanation: englishExplanation,
         translated_explanation: translatedExplanation,
         example_text: seed.exampleText?.trim() || null,
