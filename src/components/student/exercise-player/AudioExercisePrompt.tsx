@@ -42,6 +42,27 @@ export default function AudioExercisePrompt({ exercise, fallbackContent }: Props
     }
   }, [audioStatus, audioUrl, exercise.id, hasAudio]);
 
+  async function playAudioElement(element: HTMLAudioElement) {
+    element.currentTime = 0;
+    await element.play();
+    setAudioState("replay");
+  }
+
+  async function handleAudioReady() {
+    setAudioState((current) => (current === "replay" ? current : "ready"));
+
+    if (shouldAutoplayRef.current && audioRef.current) {
+      shouldAutoplayRef.current = false;
+      try {
+        await playAudioElement(audioRef.current);
+      } catch (error) {
+        console.error("audio exercise autoplay error", error);
+        setAudioState("error");
+        setAudioError("The audio loaded but playback was blocked.");
+      }
+    }
+  }
+
   async function handlePlay() {
     if (!audioRef.current || !audioUrl) {
       setAudioState("error");
@@ -49,10 +70,14 @@ export default function AudioExercisePrompt({ exercise, fallbackContent }: Props
       return;
     }
 
-    if (audioState === "ready" || audioState === "replay") {
+    if (
+      audioState === "ready" ||
+      audioState === "replay" ||
+      audioRef.current.readyState >= 2
+    ) {
       try {
-        await audioRef.current.play();
-        setAudioState("replay");
+        shouldAutoplayRef.current = false;
+        await playAudioElement(audioRef.current);
       } catch (error) {
         console.error("audio exercise play error", error);
         setAudioState("error");
@@ -92,22 +117,10 @@ export default function AudioExercisePrompt({ exercise, fallbackContent }: Props
       <audio
         ref={audioRef}
         preload="none"
+        playsInline
         src={audioUrl ?? undefined}
-        onCanPlay={async () => {
-          setAudioState((current) => (current === "replay" ? current : "ready"));
-
-          if (shouldAutoplayRef.current && audioRef.current) {
-            shouldAutoplayRef.current = false;
-            try {
-              await audioRef.current.play();
-              setAudioState("replay");
-            } catch (error) {
-              console.error("audio exercise autoplay error", error);
-              setAudioState("error");
-              setAudioError("The audio loaded but playback was blocked.");
-            }
-          }
-        }}
+        onCanPlay={() => void handleAudioReady()}
+        onLoadedData={() => void handleAudioReady()}
         onEnded={() => setAudioState("replay")}
         onError={() => {
           shouldAutoplayRef.current = false;

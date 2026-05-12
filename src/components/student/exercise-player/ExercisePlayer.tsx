@@ -720,6 +720,7 @@ export default function ExercisePlayer({
           sourceText={contextText ?? questionText ?? text}
           className={className}
           as={as}
+          allowSaving={false}
           onCaptured={(item) => {
             setCaptureToast(item.itemText);
             window.setTimeout(() => {
@@ -883,6 +884,7 @@ export default function ExercisePlayer({
               text={questionText}
               sourceType="question"
               sourceText={getExerciseSentenceText(currentExercise) || questionText}
+              allowSaving={false}
               className={
                 focused
                   ? "drill-question"

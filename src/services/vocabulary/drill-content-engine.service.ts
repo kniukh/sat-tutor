@@ -22,6 +22,7 @@ import {
   upsertVocabularyDictionaryCacheEntries,
 } from "@/services/vocabulary/vocabulary-dictionary-cache.service";
 import { resolveVocabularyLemma } from "@/services/vocabulary/vocabulary-normalization.service";
+import { hasPlaceholderVocabularyContent } from "@/services/vocabulary/vocabulary-placeholder-content";
 import { resolveSafeVocabularyDrillContent } from "@/services/vocabulary/resolved-vocabulary-drill-content.service";
 import type { VocabularyDrillAnswerSetMap } from "@/types/vocabulary-answer-sets";
 
@@ -150,7 +151,13 @@ function isReusableVocabularyContentReady(
   entry: VocabularyDictionaryCacheEntry,
   params: { requireDrillAssets: boolean }
 ) {
+  const hasPlaceholderContent = hasPlaceholderVocabularyContent({
+    itemText: entry.itemText,
+    englishExplanation: entry.englishExplanation,
+    translatedExplanation: entry.translatedExplanation,
+  });
   const hasBase =
+    !hasPlaceholderContent &&
     Boolean(entry.englishExplanation.trim()) &&
     Boolean(entry.translatedExplanation.trim()) &&
     entry.generationVersion >= CURRENT_VOCABULARY_CONTENT_GENERATION_VERSION &&

@@ -11,6 +11,10 @@ import {
   getEffectiveVocabularyDefinition,
   getEffectiveVocabularyTranslation,
 } from "@/services/vocabulary/vocabulary-item-overrides";
+import {
+  buildContextSnippet,
+  extractSourceSentence,
+} from "@/services/vocabulary/source-sentence";
 import type { CapturedVocabularyItem } from "./PassageVocabularyCapture";
 
 type KnownWord = {
@@ -48,6 +52,7 @@ type Props = {
   as?: "span" | "div";
   knownWords?: KnownWord[];
   onCaptured?: (item: CapturedVocabularyItem) => void;
+  allowSaving?: boolean;
 };
 
 type SelectionPopupState = {
@@ -55,6 +60,8 @@ type SelectionPopupState = {
   y: number;
   itemText: string;
   itemType: "word" | "phrase";
+  itemStartOffset?: number | null;
+  sourceSentence?: string | null;
 } | null;
 
 type KnownWordHoverCardState = {
@@ -132,20 +139,6 @@ function getPopupPositionFromAnchor(params: {
   return clampPopupPosition(centeredX, chosenY);
 }
 
-function buildSnippet(fullText: string, itemText: string) {
-  const lowerText = fullText.toLowerCase();
-  const lowerItem = itemText.toLowerCase();
-  const index = lowerText.indexOf(lowerItem);
-
-  if (index === -1) {
-    return fullText.replace(/\s+/g, " ").trim().slice(0, 72);
-  }
-
-  const start = Math.max(0, index - 28);
-  const end = Math.min(fullText.length, index + itemText.length + 28);
-  return fullText.slice(start, end).replace(/\s+/g, " ").trim();
-}
-
 function getKnownWordTokenClass(item: KnownWord) {
   if (item.review_ready || item.review_bucket === "weak_again") {
     return "reading-known-word reading-known-word--review-ready";
@@ -179,6 +172,7 @@ export default function InlineVocabularyCaptureText({
   as = "span",
   knownWords = [],
   onCaptured,
+  allowSaving = true,
 }: Props) {
   const rootRef = useRef<HTMLDivElement | HTMLSpanElement | null>(null);
   const longPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -226,7 +220,34 @@ export default function InlineVocabularyCaptureText({
     window.getSelection()?.removeAllRanges();
   }
 
-  function openSelectionPopup(itemText: string, x: number, y: number) {
+  function getRangeStartOffset(range: Range) {
+    const root = rootRef.current;
+    if (!root) {
+      return null;
+    }
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let offset = 0;
+    let node = walker.nextNode();
+
+    while (node) {
+      if (node === range.startContainer) {
+        return offset + range.startOffset;
+      }
+
+      offset += node.textContent?.length ?? 0;
+      node = walker.nextNode();
+    }
+
+    return null;
+  }
+
+  function openSelectionPopup(
+    itemText: string,
+    x: number,
+    y: number,
+    itemStartOffset: number | null = null
+  ) {
     const trimmed = itemText.trim();
     if (!trimmed) {
       return;
@@ -234,11 +255,18 @@ export default function InlineVocabularyCaptureText({
 
     suppressClickUntilRef.current = Date.now() + 700;
     const position = clampPopupPosition(x, y);
+    const sourceSentence = extractSourceSentence({
+      sourceText: contextSourceText,
+      itemText: trimmed,
+      itemStartOffset,
+    })?.sentence ?? null;
     setSelectionPopup({
       x: position.x,
       y: position.y,
       itemText: trimmed,
       itemType: trimmed.includes(" ") ? "phrase" : "word",
+      itemStartOffset,
+      sourceSentence,
     });
     setPreview(null);
     setPreviewError(null);
@@ -278,10 +306,15 @@ export default function InlineVocabularyCaptureText({
       anchorWidth: rect.width,
       anchorHeight: rect.height,
     });
-    openSelectionPopup(selectedText, position.x, position.y);
+    openSelectionPopup(selectedText, position.x, position.y, getRangeStartOffset(range));
   }
 
-  function startLongPress(rawToken: string, clientX?: number, clientY?: number) {
+  function startLongPress(
+    rawToken: string,
+    clientX?: number,
+    clientY?: number,
+    tokenStartOffset: number | null = null
+  ) {
     const itemText = normalizeWord(rawToken);
     if (!itemText) {
       return;
@@ -299,7 +332,7 @@ export default function InlineVocabularyCaptureText({
         anchorWidth: 36,
         anchorHeight: 36,
       });
-      openSelectionPopup(itemText, position.x, position.y);
+      openSelectionPopup(itemText, position.x, position.y, tokenStartOffset);
     }, 420);
   }
 
@@ -401,7 +434,8 @@ export default function InlineVocabularyCaptureText({
         const payload = await response.json().catch(() => null);
 
         if (!response.ok) {
-          throw new Error(payload?.error ?? "Preview unavailable");
+          const reason = payload?.error ?? response.statusText ?? "Preview unavailable";
+          throw new Error(`${response.status}: ${reason}`);
         }
 
         if (!cancelled) {
@@ -437,6 +471,10 @@ export default function InlineVocabularyCaptureText({
   ]);
 
   async function addSelectedToVocabulary() {
+    if (!allowSaving) {
+      return;
+    }
+
     const itemText = selectionPopup?.itemText.trim() ?? "";
     if (!itemText) {
       return;
@@ -449,7 +487,9 @@ export default function InlineVocabularyCaptureText({
         itemText,
         itemType: selectionPopup?.itemType ?? "word",
         sourceType,
-        contextText: buildSnippet(contextSourceText, itemText),
+        contextText:
+          selectionPopup?.sourceSentence ??
+          buildContextSnippet(contextSourceText, itemText, selectionPopup?.itemStartOffset),
         preview: preview
           ? {
               plainEnglishMeaning: preview.plain_english_meaning,
@@ -485,6 +525,7 @@ export default function InlineVocabularyCaptureText({
             source: "lesson_quiz",
             source_type: sourceType,
             context: contextSourceText,
+            source_sentence: capturedItem.contextText,
             preview: capturedItem.preview ?? null,
           },
         }),
@@ -510,7 +551,11 @@ export default function InlineVocabularyCaptureText({
   }
 
   function renderTokens() {
+    let cursor = 0;
+
     return tokenize(text).map((token, index) => {
+      const tokenStart = cursor;
+      cursor += token.length;
       const normalized = normalizeWord(token);
 
       if (!normalized) {
@@ -540,7 +585,7 @@ export default function InlineVocabularyCaptureText({
           }}
           onTouchStart={(event) => {
             const touch = event.touches[0];
-            startLongPress(token, touch?.clientX, touch?.clientY);
+            startLongPress(token, touch?.clientX, touch?.clientY, tokenStart);
           }}
           onTouchEnd={clearLongPress}
           onTouchMove={clearLongPress}
@@ -602,20 +647,26 @@ export default function InlineVocabularyCaptureText({
                       </>
                     ) : previewError ? (
                       <div className="token-text-muted">
-                        Meaning preview is not ready, but you can still save it.
+                        {process.env.NODE_ENV === "development"
+                          ? `Preview failed: ${previewError}`
+                          : allowSaving
+                            ? "Meaning preview is not ready, but you can still save it."
+                            : "Meaning preview is not ready right now."}
                       </div>
                     ) : null}
                   </div>
                 ) : null}
 
-                <button
-                  type="button"
-                  onClick={() => void addSelectedToVocabulary()}
-                  disabled={saving}
-                  className="primary-button mt-3 min-h-12 w-full disabled:opacity-50"
-                >
-                  {saving ? "Saving..." : "Add to Vocabulary"}
-                </button>
+                {allowSaving ? (
+                  <button
+                    type="button"
+                    onClick={() => void addSelectedToVocabulary()}
+                    disabled={saving}
+                    className="primary-button mt-3 min-h-12 w-full disabled:opacity-50"
+                  >
+                    {saving ? "Saving..." : "Add to Vocabulary"}
+                  </button>
+                ) : null}
 
                 {!preview && !previewLoading && !previewError ? (
                   <button

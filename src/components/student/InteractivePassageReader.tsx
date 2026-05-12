@@ -10,6 +10,10 @@ import {
   getEffectiveVocabularyDefinition,
   getEffectiveVocabularyTranslation,
 } from "@/services/vocabulary/vocabulary-item-overrides";
+import {
+  buildContextSnippet,
+  extractSourceSentence,
+} from "@/services/vocabulary/source-sentence";
 import type { CapturedVocabularyItem } from "./PassageVocabularyCapture";
 
 type KnownWord = {
@@ -68,6 +72,8 @@ type SelectionPopupState = {
   y: number;
   itemText: string;
   itemType: "word" | "phrase";
+  itemStartOffset?: number | null;
+  sourceSentence?: string | null;
 } | null;
 
 type TouchPoint = {
@@ -106,20 +112,6 @@ function getWordCandidates(word: string) {
   }
 
   return Array.from(candidates);
-}
-
-function buildSnippet(fullText: string, itemText: string) {
-  const lowerText = fullText.toLowerCase();
-  const lowerItem = itemText.toLowerCase();
-  const index = lowerText.indexOf(lowerItem);
-
-  if (index === -1) {
-    return null;
-  }
-
-  const start = Math.max(0, index - 28);
-  const end = Math.min(fullText.length, index + itemText.length + 28);
-  return fullText.slice(start, end).replace(/\s+/g, " ").trim();
 }
 
 function normalizePassageDisplayText(text: string) {
@@ -218,6 +210,7 @@ export default function InteractivePassageReader({
   const [hoverCard, setHoverCard] = useState<HoverCardState>(null);
   const [captureToast, setCaptureToast] = useState<string | null>(null);
   const longPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textRootRef = useRef<HTMLDivElement | null>(null);
   const displayPassageText = useMemo(
     () => normalizePassageDisplayText(passageText),
     [passageText]
@@ -238,6 +231,28 @@ export default function InteractivePassageReader({
   );
   const canPreviewKnownWords = mode !== "reference";
 
+  function getRangeStartOffset(range: Range) {
+    const root = textRootRef.current;
+    if (!root) {
+      return null;
+    }
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let offset = 0;
+    let node = walker.nextNode();
+
+    while (node) {
+      if (node === range.startContainer) {
+        return offset + range.startOffset;
+      }
+
+      offset += node.textContent?.length ?? 0;
+      node = walker.nextNode();
+    }
+
+    return null;
+  }
+
   function handleMouseUp() {
     if (mode !== "capture" && mode !== "audio_review") {
       return;
@@ -256,6 +271,12 @@ export default function InteractivePassageReader({
     const rect = range?.getBoundingClientRect();
 
     if (rect) {
+      const itemStartOffset = getRangeStartOffset(range);
+      const sourceSentence = extractSourceSentence({
+        sourceText: displayPassageText,
+        itemText: text,
+        itemStartOffset,
+      })?.sentence ?? null;
       const position = clampPopupPosition(
         rect.left + rect.width / 2 - 76,
         rect.top - 52
@@ -269,6 +290,8 @@ export default function InteractivePassageReader({
         y: position.y,
         itemText: text,
         itemType: text.includes(" ") ? "phrase" : "word",
+        itemStartOffset,
+        sourceSentence,
       });
     }
   }
@@ -359,7 +382,8 @@ export default function InteractivePassageReader({
         const payload = await response.json().catch(() => null);
 
         if (!response.ok) {
-          throw new Error(payload?.error ?? "Preview unavailable");
+          const reason = payload?.error ?? response.statusText ?? "Preview unavailable";
+          throw new Error(`${response.status}: ${reason}`);
         }
 
         if (!cancelled) {
@@ -399,7 +423,9 @@ export default function InteractivePassageReader({
       itemText,
       itemType: itemText.includes(" ") ? "phrase" : "word",
       sourceType: "passage",
-      contextText: buildSnippet(displayPassageText, itemText),
+      contextText:
+        selectionPopup?.sourceSentence ??
+        buildContextSnippet(displayPassageText, itemText, selectionPopup?.itemStartOffset),
       preview: preview
         ? {
             plainEnglishMeaning: preview.plain_english_meaning,
@@ -441,8 +467,13 @@ export default function InteractivePassageReader({
           itemText,
           itemType: itemText.includes(" ") ? "phrase" : "word",
           sourceType: "passage",
-          contextText: buildSnippet(displayPassageText, itemText),
+          contextText:
+            selectionPopup?.sourceSentence ??
+            buildContextSnippet(displayPassageText, itemText, selectionPopup?.itemStartOffset),
           metadata: {
+            source_sentence:
+              selectionPopup?.sourceSentence ??
+              buildContextSnippet(displayPassageText, itemText, selectionPopup?.itemStartOffset),
             preview: preview
               ? {
                   plainEnglishMeaning: preview.plain_english_meaning,
@@ -495,7 +526,11 @@ export default function InteractivePassageReader({
     }
   }
 
-  function handleTokenLongPress(token: string, touch: TouchPoint | null = null) {
+  function handleTokenLongPress(
+    token: string,
+    touch: TouchPoint | null = null,
+    tokenStartOffset: number | null = null
+  ) {
     if (mode !== "capture" && mode !== "audio_review") {
       return;
     }
@@ -509,11 +544,18 @@ export default function InteractivePassageReader({
       (touch?.clientX ?? 96) - 74,
       (touch?.clientY ?? 96) - 60
     );
+    const sourceSentence = extractSourceSentence({
+      sourceText: displayPassageText,
+      itemText: normalized,
+      itemStartOffset: tokenStartOffset,
+    })?.sentence ?? null;
 
     setSelectionPopup({
       ...position,
       itemText: normalized,
       itemType: "word",
+      itemStartOffset: tokenStartOffset,
+      sourceSentence,
     });
     setPreview(null);
     setPreviewError(null);
@@ -522,14 +564,18 @@ export default function InteractivePassageReader({
     window.getSelection()?.removeAllRanges();
   }
 
-  function startLongPress(token: string, touch: TouchPoint | null = null) {
+  function startLongPress(
+    token: string,
+    touch: TouchPoint | null = null,
+    tokenStartOffset: number | null = null
+  ) {
     if (mode !== "capture" && mode !== "audio_review") {
       return;
     }
 
     clearLongPress();
     longPressTimeoutRef.current = setTimeout(() => {
-      handleTokenLongPress(token, touch);
+      handleTokenLongPress(token, touch, tokenStartOffset);
     }, 420);
   }
 
@@ -629,7 +675,7 @@ export default function InteractivePassageReader({
           <span
             key={tokenKey}
             className={isHighlighted ? "reading-focus-highlight" : undefined}
-            onTouchStart={(event) => startLongPress(token, event.touches[0] ?? null)}
+            onTouchStart={(event) => startLongPress(token, event.touches[0] ?? null, tokenStart)}
             onTouchEnd={clearLongPress}
             onTouchMove={clearLongPress}
             onTouchCancel={clearLongPress}
@@ -662,7 +708,7 @@ export default function InteractivePassageReader({
             e.preventDefault();
             openCard(e, known, true);
           }}
-          onTouchStart={(event) => startLongPress(token, event.touches[0] ?? null)}
+          onTouchStart={(event) => startLongPress(token, event.touches[0] ?? null, tokenStart)}
           onTouchEnd={clearLongPress}
           onTouchMove={clearLongPress}
           onTouchCancel={clearLongPress}
@@ -686,6 +732,7 @@ export default function InteractivePassageReader({
   return (
     <div className="relative space-y-3">
       <div
+        ref={textRootRef}
         className="reading-text"
         onMouseUp={handleMouseUp}
       >
@@ -720,7 +767,9 @@ export default function InteractivePassageReader({
                       </>
                     ) : previewError ? (
                       <div className="token-text-muted">
-                        Meaning preview is not ready, but you can still save it.
+                        {process.env.NODE_ENV === "development"
+                          ? `Preview failed: ${previewError}`
+                          : "Meaning preview is not ready, but you can still save it."}
                       </div>
                     ) : null}
                   </div>

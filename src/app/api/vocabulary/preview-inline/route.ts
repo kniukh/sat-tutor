@@ -8,6 +8,7 @@ import {
   touchVocabularyDictionaryCacheEntries,
   upsertVocabularyDictionaryCacheEntries,
 } from "@/services/vocabulary/vocabulary-dictionary-cache.service";
+import { hasPlaceholderVocabularyContent } from "@/services/vocabulary/vocabulary-placeholder-content";
 
 function getItemType(text: string): 'word' | 'phrase' {
   return text.trim().includes(' ') ? 'phrase' : 'word';
@@ -121,7 +122,15 @@ export async function POST(request: Request) {
       ],
     });
 
-    if (generatedCard) {
+    const shouldCacheGeneratedCard =
+      generatedCard &&
+      !hasPlaceholderVocabularyContent({
+        itemText: generatedCard.item_text,
+        englishExplanation: generatedCard.english_explanation,
+        translatedExplanation: generatedCard.translated_explanation,
+      });
+
+    if (generatedCard && shouldCacheGeneratedCard) {
       await upsertVocabularyDictionaryCacheEntries([
         {
           itemText: generatedCard.item_text,
@@ -152,9 +161,12 @@ export async function POST(request: Request) {
         };
 
     return NextResponse.json({ data: preview, source: "ai_fallback" });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
-      { error: error?.message ?? 'Preview generation failed' },
+      {
+        error:
+          error instanceof Error ? error.message : "Preview generation failed",
+      },
       { status: 500 },
     );
   }

@@ -16,6 +16,11 @@ import type {
   VocabularyDrillAnswerNormalization,
   VocabularyDrillAnswerSetMeta,
 } from "@/types/vocabulary-answer-sets";
+import {
+  dedupeNormalizedAnswerOptions,
+  normalizeAnswerOptionCompare,
+  normalizeAnswerOptionLabel,
+} from "@/services/vocabulary/answer-option-formatting";
 
 export type MeaningDrillItem = {
   wordProgressId: string;
@@ -315,6 +320,26 @@ function uniqueNonEmpty(items: Array<string | null | undefined>) {
   );
 }
 
+function buildNormalizedChoiceOptions(params: {
+  correctAnswer: string;
+  distractors: Array<string | null | undefined>;
+  optionPrefix: string;
+}) {
+  const correctLabel = normalizeAnswerOptionLabel(params.correctAnswer);
+  const correctCompareKey = normalizeAnswerOptionCompare(correctLabel);
+  const distractorLabels = dedupeNormalizedAnswerOptions(params.distractors)
+    .filter((label) => normalizeAnswerOptionCompare(label) !== correctCompareKey)
+    .slice(0, 3);
+
+  return shuffle([
+    { id: "correct", label: correctLabel },
+    ...distractorLabels.map((label, index) => ({
+      id: `${params.optionPrefix}-${index}`,
+      label,
+    })),
+  ]);
+}
+
 function getLexicalDistractorCandidates(
   item: MeaningDrillItem | ClozeDrillItem,
   allItems: Array<MeaningDrillItem | ClozeDrillItem>
@@ -463,13 +488,11 @@ function buildMeaningOptions(
   item: MeaningDrillItem | ClozeDrillItem,
   optionPrefix: string
 ) {
-  return shuffle([
-    { id: "correct", label: getPlainMeaning(item) },
-    ...uniqueNonEmpty(item.distractors ?? []).slice(0, 3).map((label, index) => ({
-      id: `${optionPrefix}-${index}`,
-      label,
-    })),
-  ]);
+  return buildNormalizedChoiceOptions({
+    correctAnswer: getPlainMeaning(item),
+    distractors: item.distractors ?? [],
+    optionPrefix,
+  });
 }
 
 function getStoredAnswerSet(
@@ -524,20 +547,18 @@ function hasDistinctVariantText(primary: string, candidate: string | null | unde
     return false;
   }
 
-  return candidate.trim().toLowerCase() !== primary.trim().toLowerCase();
+  return normalizeAnswerOptionCompare(candidate) !== normalizeAnswerOptionCompare(primary);
 }
 
 function buildStoredAnswerSetOptions(
   answerSet: VocabularyDrillAnswerSet,
   optionPrefix: string
 ) {
-  return shuffle([
-    { id: "correct", label: answerSet.drill_correct_answer },
-    ...uniqueNonEmpty(answerSet.distractors ?? []).slice(0, 3).map((label, index) => ({
-      id: `${optionPrefix}-${index}`,
-      label,
-    })),
-  ]);
+  return buildNormalizedChoiceOptions({
+    correctAnswer: answerSet.drill_correct_answer,
+    distractors: answerSet.distractors ?? [],
+    optionPrefix,
+  });
 }
 
 function buildRankedOptions(params: {
@@ -558,10 +579,10 @@ function buildRankedOptions(params: {
   );
 
   return shuffle([
-    { id: "correct", label: params.correctAnswer },
+    { id: "correct", label: normalizeAnswerOptionLabel(params.correctAnswer) },
     ...rankedCandidates.slice(0, 3).map((label, index) => ({
       id: `${params.optionPrefix}-${index}`,
-      label,
+      label: normalizeAnswerOptionLabel(label),
     })),
   ]);
 }
@@ -619,11 +640,18 @@ function rankCandidatesByNormalization(
   candidates: Array<string | null | undefined>,
   preferredNormalization?: VocabularyDrillAnswerNormalization | null
 ) {
-  const targetNormalization = preferredNormalization ?? inferNormalization(correctAnswer);
-  const targetScript = inferScriptProfile(correctAnswer);
+  const normalizedCorrectAnswer = normalizeAnswerOptionLabel(correctAnswer);
+  const targetNormalization =
+    preferredNormalization ?? inferNormalization(normalizedCorrectAnswer);
+  const targetScript = inferScriptProfile(normalizedCorrectAnswer);
+  const normalizedCorrectCompareKey =
+    normalizeAnswerOptionCompare(normalizedCorrectAnswer);
 
-  return uniqueNonEmpty(candidates)
-    .filter((candidate) => candidate.toLowerCase() !== correctAnswer.toLowerCase())
+  return dedupeNormalizedAnswerOptions(candidates)
+    .filter(
+      (candidate) =>
+        normalizeAnswerOptionCompare(candidate) !== normalizedCorrectCompareKey
+    )
     .map((candidate) => {
       const candidateNormalization = inferNormalization(candidate);
       const candidateScript = inferScriptProfile(candidate);
@@ -715,10 +743,10 @@ function buildListenAnswerOptions(params: {
   return {
     distractors,
     options: shuffle([
-      { id: "correct", label: params.correctAnswer },
+      { id: "correct", label: normalizeAnswerOptionLabel(params.correctAnswer) },
       ...distractors.map((label, index) => ({
         id: `${params.optionPrefix}-${index}`,
-        label,
+        label: normalizeAnswerOptionLabel(label),
       })),
     ]),
   };
@@ -803,14 +831,14 @@ function getListenPairRightLabel(
   variant: "english" | "meaning" | "translation"
 ) {
   if (variant === "translation") {
-    return getPreferredNativeTranslation(item) ?? "";
+    return normalizeAnswerOptionLabel(getPreferredNativeTranslation(item) ?? "");
   }
 
   if (variant === "english") {
-    return item.itemText;
+    return normalizeAnswerOptionLabel(item.itemText);
   }
 
-  return getFastMeaningLabel(item) ?? "";
+  return normalizeAnswerOptionLabel(getFastMeaningLabel(item) ?? "");
 }
 
 function dedupeListenPairItems(
@@ -846,13 +874,16 @@ function buildTranslationOptions(
   allItems: Array<MeaningDrillItem | ClozeDrillItem>,
   optionPrefix: string
 ) {
-  const correctTranslation = getPreferredNativeTranslation(item) ?? getPlainMeaning(item);
-  const translatedDistractors = uniqueNonEmpty(
+  const correctTranslation = normalizeAnswerOptionLabel(
+    getPreferredNativeTranslation(item) ?? getPlainMeaning(item)
+  );
+  const correctCompareKey = normalizeAnswerOptionCompare(correctTranslation);
+  const translatedDistractors = dedupeNormalizedAnswerOptions(
     allItems
       .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
       .map((candidate) => getPreferredNativeTranslation(candidate))
   )
-    .filter((candidate) => candidate.toLowerCase() !== correctTranslation.toLowerCase())
+    .filter((candidate) => normalizeAnswerOptionCompare(candidate) !== correctCompareKey)
     .slice(0, 3);
 
   return shuffle([
@@ -869,10 +900,16 @@ function buildLexicalOptions(
   allItems: Array<MeaningDrillItem | ClozeDrillItem>,
   optionPrefix: string
 ) {
-  const lexicalDistractors = getLexicalDistractorCandidates(item, allItems).slice(0, 3);
+  const correctLabel = normalizeAnswerOptionLabel(item.itemText);
+  const correctCompareKey = normalizeAnswerOptionCompare(correctLabel);
+  const lexicalDistractors = dedupeNormalizedAnswerOptions(
+    getLexicalDistractorCandidates(item, allItems)
+  )
+    .filter((candidate) => normalizeAnswerOptionCompare(candidate) !== correctCompareKey)
+    .slice(0, 3);
 
   return shuffle([
-    { id: "correct", label: item.itemText },
+    { id: "correct", label: correctLabel },
     ...lexicalDistractors.map((label, index) => ({
       id: `${optionPrefix}-${index}`,
       label,
@@ -947,7 +984,7 @@ type PairMatchEntry = {
 };
 
 function normalizePairSideText(text: string) {
-  return text.replace(/\s+/g, " ").trim().toLowerCase();
+  return normalizeAnswerOptionCompare(text);
 }
 
 function dedupePairEntries(entries: PairMatchEntry[]) {
@@ -1001,8 +1038,8 @@ function buildPairMatchExercise(params: {
 
   const pairRecords = pairEntries.map((entry, index) => ({
     id: `pair-${index + 1}`,
-    left: entry.left,
-    right: entry.right,
+    left: normalizeAnswerOptionLabel(entry.left),
+    right: normalizeAnswerOptionLabel(entry.right),
     left_id: `left-${index + 1}`,
     right_id: `right-${index + 1}`,
   }));
@@ -1621,7 +1658,7 @@ function buildListenPairMatchExercise(params: {
 
   const pairRecords = uniqueItems.map((item, index) => ({
     id: `pair-${index + 1}`,
-    left: item.itemText,
+    left: normalizeAnswerOptionLabel(item.itemText),
     right: getListenPairRightLabel(item, params.variant),
     left_id: `left-${index + 1}`,
     right_id: `right-${index + 1}`,

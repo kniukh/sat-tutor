@@ -2,19 +2,7 @@ import { NextResponse } from "next/server";
 import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createClient } from "@/lib/supabase/server";
 import { recordVocabularyCaptures } from "@/services/vocabulary/vocabulary-capture.service";
-
-function buildContextSnippet(fullText: string, itemText: string) {
-  const lowerText = fullText.toLowerCase();
-  const lowerItem = itemText.toLowerCase();
-  const index = lowerText.indexOf(lowerItem);
-
-  if (index === -1) return null;
-
-  const start = Math.max(0, index - 28);
-  const end = Math.min(fullText.length, index + itemText.length + 28);
-
-  return fullText.slice(start, end).replace(/\s+/g, " ").trim();
-}
+import { buildContextSnippet } from "@/services/vocabulary/source-sentence";
 
 export async function POST(request: Request) {
   try {

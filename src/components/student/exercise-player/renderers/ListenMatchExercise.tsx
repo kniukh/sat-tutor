@@ -393,7 +393,7 @@ export default function ListenMatchExercise({
                 type="button"
                 onClick={() => handleSelectRight(option.id)}
                 disabled={submitted || isMatched}
-                className={`min-h-16 rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-[0_2px_0_rgba(15,23,42,0.08)] transition-all duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7dd3fc] focus-visible:ring-offset-2 disabled:cursor-default ${getListenPairClassName(
+                className={`flex min-h-16 w-full items-center justify-center rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-[0_2px_0_rgba(15,23,42,0.08)] transition-all duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7dd3fc] focus-visible:ring-offset-2 disabled:cursor-default ${getListenPairClassName(
                   option.id,
                   "right",
                   isMatched

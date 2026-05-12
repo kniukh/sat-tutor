@@ -18,6 +18,7 @@ import {
   mergeVocabularySurfaceForms,
   resolveVocabularyLemma,
 } from "@/services/vocabulary/vocabulary-normalization.service";
+import { hasPlaceholderVocabularyContent } from "@/services/vocabulary/vocabulary-placeholder-content";
 import { resolveSafeVocabularyDrillContent } from "@/services/vocabulary/resolved-vocabulary-drill-content.service";
 
 type VocabularyItemRow = {
@@ -108,19 +109,11 @@ function isPlaceholderVocabularyItem(item: {
   english_explanation: string | null;
   translated_explanation: string | null;
 }) {
-  const itemKey = normalizeKey(item.item_text);
-  const english = item.english_explanation?.trim().toLowerCase() ?? "";
-  const translated = item.translated_explanation?.trim().toLowerCase() ?? "";
-
-  return (
-    !english ||
-    english === "meaning of this word in the passage." ||
-    english === "meaning of this phrase in the passage." ||
-    english === `meaning of "${itemKey}"` ||
-    english === `meaning of "${itemKey}" in the passage.` ||
-    translated === "" ||
-    translated === itemKey
-  );
+  return hasPlaceholderVocabularyContent({
+    itemText: item.item_text,
+    englishExplanation: item.english_explanation,
+    translatedExplanation: item.translated_explanation,
+  });
 }
 
 async function listVocabularyItems(params: {
@@ -317,7 +310,7 @@ export async function generateVocabularyItemsFromCaptures(params: {
         reusableEntry?.translatedExplanation ??
         existingItem?.translated_explanation ??
         capturePreview?.translation?.trim() ??
-        `Перевод: ${item.item_text}`;
+        null;
       const exampleText =
         reusableEntry?.exampleText ??
         existingItem?.example_text ??

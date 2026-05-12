@@ -15,6 +15,7 @@ import LessonPlayer from "./LessonPlayer";
 import InteractivePassageReader from "./InteractivePassageReader";
 import LessonVocabularyTray from "./LessonVocabularyTray";
 import { resolveVocabularyLemma } from "@/services/vocabulary/vocabulary-normalization.service";
+import { hasPlaceholderVocabularyContent } from "@/services/vocabulary/vocabulary-placeholder-content";
 import {
   deleteStudentVocabularyItem,
   regenerateStudentVocabularyMeaning,
@@ -229,16 +230,11 @@ function isPersistedVocabularyItemId(id: string) {
 }
 
 function isFallbackVocabularyItem(item: VocabItem) {
-  const english = item.english_explanation?.trim().toLowerCase() ?? "";
-  const translated = item.translated_explanation?.trim().toLowerCase() ?? "";
-
-  return (
-    !english ||
-    english.startsWith(`meaning of "${item.item_text.trim().toLowerCase()}"`) ||
-    english.startsWith("meaning of this word in the passage") ||
-    english.startsWith("meaning of this phrase in the passage") ||
-    translated === item.item_text.trim().toLowerCase()
-  );
+  return hasPlaceholderVocabularyContent({
+    itemText: item.item_text,
+    englishExplanation: item.english_explanation,
+    translatedExplanation: item.translated_explanation,
+  });
 }
 
 async function buildPreviewBackfilledVocabularyItems(params: {
@@ -608,6 +604,7 @@ export default function LessonStagePanel({
         const generatedItems = Array.isArray(payload?.items) ? payload.items : [];
 
         if (generatedItems.length > 0) {
+          requestedAudioSignatureRef.current = "";
           setLocalVocabItems((current) => mergeVocabularyItems(current, generatedItems));
           for (const item of generatedItems) {
             const key = item.item_text.trim().toLowerCase();
@@ -810,6 +807,46 @@ export default function LessonStagePanel({
 
     const audioRequestPromise = (async () => {
       try {
+        const targetedItemTexts = options?.itemTexts
+          ?.map((itemText) => itemText.trim())
+          .filter(Boolean);
+
+        if (targetedItemTexts?.length) {
+          try {
+            const materializeResponse = await fetch("/api/vocabulary/generate-from-captures", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                studentId,
+                lessonId,
+                itemTexts: targetedItemTexts,
+                limit: targetedItemTexts.length,
+              }),
+            });
+
+            const materializePayload = await materializeResponse.json().catch(() => null);
+
+            if (materializeResponse.ok) {
+              const materializedItems = Array.isArray(materializePayload?.items)
+                ? materializePayload.items
+                : [];
+
+              if (materializedItems.length > 0) {
+                requestedAudioSignatureRef.current = "";
+                setLocalVocabItems((current) => mergeVocabularyItems(current, materializedItems));
+              }
+            } else {
+              console.error(
+                "requestVocabularyAudio materialize error",
+                materializePayload?.error ?? "Failed to prepare vocabulary item for audio"
+              );
+            }
+          } catch (materializeError) {
+            console.error("requestVocabularyAudio materialize error", materializeError);
+          }
+        }
+
         const response = await fetch("/api/vocabulary/regenerate-audio", {
           method: "POST",
           credentials: "same-origin",
@@ -869,6 +906,7 @@ export default function LessonStagePanel({
 
     requestedAudioSignatureRef.current = "";
     setLocalVocabItems((current) => mergeVocabularyItems(current, fallbackItems));
+    const relevantMergeKeys = new Set(fallbackItems.map((item) => getVocabularyItemMergeKey(item)));
     try {
       const itemTexts = fallbackItems.map((item) => item.item_text);
       const response = await fetch("/api/vocabulary/generate-from-captures", {
@@ -892,8 +930,15 @@ export default function LessonStagePanel({
       const generatedItems = Array.isArray(payload?.items) ? payload.items : [];
 
       if (generatedItems.length > 0) {
-        setLocalVocabItems((current) => mergeVocabularyItems(current, generatedItems));
-        for (const item of generatedItems) {
+        const relevantGeneratedItems = generatedItems.filter((item) =>
+          relevantMergeKeys.has(getVocabularyItemMergeKey(item))
+        );
+
+        if (relevantGeneratedItems.length > 0) {
+          setLocalVocabItems((current) => mergeVocabularyItems(current, relevantGeneratedItems));
+        }
+
+        for (const item of relevantGeneratedItems) {
           const key = item.item_text.trim().toLowerCase();
           if (isFallbackVocabularyItem(item)) {
             hydratedVocabularyKeysRef.current.delete(key);
@@ -901,12 +946,59 @@ export default function LessonStagePanel({
             hydratedVocabularyKeysRef.current.add(key);
           }
         }
+
+        const remainingFallbackItems = relevantGeneratedItems.filter((item) =>
+          isFallbackVocabularyItem(item)
+        );
+
+        if (remainingFallbackItems.length > 0) {
+          await hydrateVisibleVocabularyItems(remainingFallbackItems);
+        }
       } else {
         await hydrateVisibleVocabularyItems(fallbackItems);
       }
     } catch (error) {
       console.error("prepareQuizVocabularyReview generate error", error);
       await hydrateVisibleVocabularyItems(fallbackItems);
+    }
+
+    try {
+      const prepareResponse = await fetch("/api/vocabulary/prepare-drills", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId,
+          lessonId,
+        }),
+      });
+
+      const preparePayload = await prepareResponse.json().catch(() => null);
+
+      if (!prepareResponse.ok) {
+        throw new Error(preparePayload?.error ?? "Failed to prepare quiz vocabulary drills");
+      }
+
+      const preparedItems = Array.isArray(preparePayload?.items)
+        ? preparePayload.items.filter((item: VocabItem) =>
+            relevantMergeKeys.has(getVocabularyItemMergeKey(item))
+          )
+        : [];
+
+      if (preparedItems.length > 0) {
+        requestedAudioSignatureRef.current = "";
+        setLocalVocabItems((current) => mergeVocabularyItems(current, preparedItems));
+        for (const item of preparedItems) {
+          const key = item.item_text.trim().toLowerCase();
+          if (isFallbackVocabularyItem(item)) {
+            hydratedVocabularyKeysRef.current.delete(key);
+          } else {
+            hydratedVocabularyKeysRef.current.add(key);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("prepareQuizVocabularyReview drill prep error", error);
     }
 
     await requestVocabularyAudio({

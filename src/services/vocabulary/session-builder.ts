@@ -514,6 +514,19 @@ function chooseExerciseForWordEntry(params: {
         score -= candidateFamily === "audio_form" ? 3 : 8;
       }
 
+      const recentChosen = chosen.slice(-4);
+      const recentTypeCount = recentChosen.filter((item) => item.type === candidate.type).length;
+      if (recentTypeCount > 0) {
+        score -= recentTypeCount * (mode === "learn_new_words" ? 5 : 3);
+      }
+
+      const recentFamilyCount = recentChosen.filter(
+        (item) => getLearningFamily(item) === candidateFamily
+      ).length;
+      if (recentFamilyCount >= 2) {
+        score -= (recentFamilyCount - 1) * (mode === "learn_new_words" ? 4 : 2);
+      }
+
       if (adaptiveDifficultyBand === "easy" && candidate.type === "meaning_match") {
         score += 4;
       }
@@ -526,6 +539,8 @@ function chooseExerciseForWordEntry(params: {
         adaptiveDifficultyBand === "hard" &&
         (
           candidate.type === "context_meaning" ||
+          candidate.type === "fill_blank" ||
+          candidate.type === "collocation" ||
           candidate.type === "sentence_builder" ||
           candidate.type === "error_detection"
         )
@@ -680,6 +695,8 @@ function scoreWordEntry(params: {
     mode !== "learn_new_words" &&
     (
       candidate.type === "context_meaning" ||
+      candidate.type === "fill_blank" ||
+      candidate.type === "collocation" ||
       candidate.type === "pair_match" ||
       candidate.type === "sentence_builder" ||
       candidate.type === "error_detection"
@@ -694,6 +711,8 @@ function scoreWordEntry(params: {
     index === total - 1 &&
     (
       candidate.type === "context_meaning" ||
+      candidate.type === "fill_blank" ||
+      candidate.type === "collocation" ||
       candidate.type === "pair_match" ||
       candidate.type === "sentence_builder" ||
       candidate.type === "error_detection"

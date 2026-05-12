@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { hasPlaceholderVocabularyContent } from "@/services/vocabulary/vocabulary-placeholder-content";
 
 type VocabItem = {
   id: string;
@@ -12,18 +13,13 @@ type VocabItem = {
 };
 
 function hasFallbackLikeVocabularyItems(items: VocabItem[]) {
-  return items.some((item) => {
-    const english = item.english_explanation?.trim().toLowerCase() ?? "";
-    const translated = item.translated_explanation?.trim().toLowerCase() ?? "";
-
-    return (
-      !english ||
-      english.startsWith(`meaning of "${item.item_text.trim().toLowerCase()}"`) ||
-      english.startsWith("meaning of this word in the passage") ||
-      english.startsWith("meaning of this phrase in the passage") ||
-      translated === item.item_text.trim().toLowerCase()
-    );
-  });
+  return items.some((item) =>
+    hasPlaceholderVocabularyContent({
+      itemText: item.item_text,
+      englishExplanation: item.english_explanation,
+      translatedExplanation: item.translated_explanation,
+    })
+  );
 }
 
 function buildFallbackSubmittedItems(items: CapturedVocabularyItem[], lessonId: string): VocabItem[] {

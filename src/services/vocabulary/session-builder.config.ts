@@ -51,7 +51,9 @@ export const SESSION_PREFERRED_TYPE_ORDER_BY_MODE: Record<
     "spelling_from_audio",
     "spelling_from_audio",
     "synonym",
+    "fill_blank",
     "context_meaning",
+    "collocation",
   ],
   weak_first: [
     "meaning_match",
@@ -62,7 +64,9 @@ export const SESSION_PREFERRED_TYPE_ORDER_BY_MODE: Record<
     "spelling_from_audio",
     "spelling_from_audio",
     "context_meaning",
+    "fill_blank",
     "synonym",
+    "error_detection",
   ],
   mixed: [
     "meaning_match",
@@ -73,7 +77,9 @@ export const SESSION_PREFERRED_TYPE_ORDER_BY_MODE: Record<
     "spelling_from_audio",
     "spelling_from_audio",
     "synonym",
+    "fill_blank",
     "context_meaning",
+    "collocation",
   ],
   learn_new_words: [
     "meaning_match",
@@ -84,7 +90,9 @@ export const SESSION_PREFERRED_TYPE_ORDER_BY_MODE: Record<
     "spelling_from_audio",
     "spelling_from_audio",
     "synonym",
+    "fill_blank",
     "context_meaning",
+    "sentence_builder",
   ],
   review_weak_words: [
     "meaning_match",
@@ -95,7 +103,9 @@ export const SESSION_PREFERRED_TYPE_ORDER_BY_MODE: Record<
     "spelling_from_audio",
     "spelling_from_audio",
     "context_meaning",
+    "fill_blank",
     "synonym",
+    "error_detection",
   ],
   mixed_practice: [
     "meaning_match",
@@ -106,7 +116,9 @@ export const SESSION_PREFERRED_TYPE_ORDER_BY_MODE: Record<
     "spelling_from_audio",
     "spelling_from_audio",
     "synonym",
+    "fill_blank",
     "context_meaning",
+    "collocation",
   ],
 };
 
@@ -231,10 +243,10 @@ export const SESSION_TOUCH_POLICY_BY_MODE: Record<
   learn_new_words: {
     anchorWordTarget: 6,
     reinforcementBudget: 8,
-    groupedSupportBudget: 2,
+    groupedSupportBudget: 1,
     primaryFamilyOrder: ["recognition", "audio_form", "context_semantic"],
-    reinforcementFamilyOrder: ["audio_form", "context_semantic", "recognition"],
-    maxSpellingTouches: 4,
+    reinforcementFamilyOrder: ["context_semantic", "audio_form", "recognition"],
+    maxSpellingTouches: 2,
   },
   review_weak_words: {
     anchorWordTarget: 8,
@@ -265,10 +277,20 @@ export function resolveSessionTouchPolicy(
   );
 
   if (mode === "learn_new_words") {
+    const reinforcementBudget =
+      resolvedAnchorTarget <= 2
+        ? resolvedAnchorTarget
+        : resolvedAnchorTarget <= 4
+          ? 2
+          : resolvedAnchorTarget <= 5
+            ? 3
+            : 4;
+
     return {
       ...basePolicy,
       anchorWordTarget: resolvedAnchorTarget,
-      reinforcementBudget: resolvedAnchorTarget + Math.min(2, resolvedAnchorTarget),
+      reinforcementBudget,
+      groupedSupportBudget: resolvedAnchorTarget >= 5 ? basePolicy.groupedSupportBudget : 0,
     };
   }
 
@@ -294,8 +316,10 @@ export const SESSION_PROGRESSION_RULES: Record<
       "pair_match",
       "listen_match",
       "context_meaning",
+      "fill_blank",
       "spelling_from_audio",
       "synonym",
+      "collocation",
       "listen_match",
       "spelling_from_audio",
     ],
@@ -309,8 +333,10 @@ export const SESSION_PROGRESSION_RULES: Record<
       "listen_match",
       "spelling_from_audio",
       "context_meaning",
+      "fill_blank",
       "spelling_from_audio",
       "synonym",
+      "sentence_builder",
     ],
   },
   weak_word_retry: {
@@ -323,7 +349,9 @@ export const SESSION_PROGRESSION_RULES: Record<
       "spelling_from_audio",
       "spelling_from_audio",
       "context_meaning",
+      "fill_blank",
       "synonym",
+      "error_detection",
     ],
   },
   learning_reinforcement: {
@@ -335,8 +363,10 @@ export const SESSION_PROGRESSION_RULES: Record<
       "listen_match",
       "spelling_from_audio",
       "synonym",
+      "fill_blank",
       "context_meaning",
       "meaning_match",
+      "collocation",
     ],
   },
   retention_check: {
@@ -349,7 +379,9 @@ export const SESSION_PROGRESSION_RULES: Record<
       "spelling_from_audio",
       "synonym",
       "context_meaning",
+      "fill_blank",
       "meaning_match",
+      "error_detection",
     ],
   },
 };
@@ -365,6 +397,7 @@ export const SESSION_TYPE_ORDER_BY_ADAPTIVE_DIFFICULTY: Record<
     "listen_match",
     "spelling_from_audio",
     "context_meaning",
+    "fill_blank",
     "synonym",
     "spelling_from_audio",
   ],
@@ -374,15 +407,19 @@ export const SESSION_TYPE_ORDER_BY_ADAPTIVE_DIFFICULTY: Record<
     "pair_match",
     "listen_match",
     "synonym",
+    "fill_blank",
     "context_meaning",
     "meaning_match",
     "spelling_from_audio",
   ],
   hard: [
     "context_meaning",
+    "fill_blank",
+    "collocation",
     "spelling_from_audio",
     "spelling_from_audio",
     "synonym",
+    "error_detection",
     "listen_match",
     "pair_match",
     "meaning_match",

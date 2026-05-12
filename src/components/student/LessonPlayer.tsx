@@ -516,6 +516,8 @@ export default function LessonPlayer({
   const requestedQuizAudioSignatureRef = useRef<string>("");
   const pendingAnswerSavePromisesRef = useRef<Promise<void>[]>([]);
   const autoAdvanceTimeoutRef = useRef<number | null>(null);
+  const latestMistakeItemsRef = useRef<RepairItem[]>([]);
+  const latestQuizVocabularyItemsRef = useRef<QuizVocabularyItem[]>(quizVocabularyItems);
   const { settings: feedbackSettings } = useFeedbackSettings();
 
   const question = questions[index];
@@ -605,6 +607,14 @@ export default function LessonPlayer({
       (item) =>
         repairedQuestionIdSet.has(item.question.id) || item.question.id === activeRepairItem?.question.id
     );
+
+  useEffect(() => {
+    latestMistakeItemsRef.current = mistakeItems;
+  }, [mistakeItems]);
+
+  useEffect(() => {
+    latestQuizVocabularyItemsRef.current = quizVocabularyItems;
+  }, [quizVocabularyItems]);
 
   useEffect(() => {
     questionStartedAtRef.current = Date.now();
@@ -995,7 +1005,12 @@ export default function LessonPlayer({
   }
 
   async function openQuizWordsOrRepair() {
-    if (quizVocabularyItems.length > 0) {
+    const latestQuizVocabularyItems = latestQuizVocabularyItemsRef.current;
+    const latestMistakeItems = latestMistakeItemsRef.current;
+
+    // Auto-advance after the final quiz answer must read the newest state,
+    // not the render snapshot from before the last answer was committed.
+    if (latestQuizVocabularyItems.length > 0) {
       setSaving(true);
       try {
         await onPrepareQuizVocabularyReview?.();
@@ -1009,7 +1024,7 @@ export default function LessonPlayer({
       return;
     }
 
-    if (mistakeItems.length > 0) {
+    if (latestMistakeItems.length > 0) {
       startQuizRepair();
       return;
     }
@@ -1018,7 +1033,7 @@ export default function LessonPlayer({
   }
 
   function continueAfterQuizWords() {
-    if (mistakeItems.length > 0) {
+    if (latestMistakeItemsRef.current.length > 0) {
       startQuizRepair();
       return;
     }

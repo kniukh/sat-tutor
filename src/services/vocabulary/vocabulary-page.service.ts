@@ -11,9 +11,13 @@ import {
 } from "@/services/vocabulary/adaptive-session-selection.service";
 import {
   adaptContextMeaningDrillsToExercises,
+  adaptClozeDrillsToExercises,
+  adaptCollocationDrillsToExercises,
+  adaptErrorDetectionDrillsToExercises,
   adaptListenMatchDrillsToExercises,
   adaptMeaningDrillsToExercises,
   adaptPairMatchDrillsToExercises,
+  adaptSentenceBuilderDrillsToExercises,
   adaptSpellingFromAudioDrillsToExercises,
   adaptSynonymDrillsToExercises,
 } from "@/services/vocabulary/exercise-adapters";
@@ -31,7 +35,6 @@ import {
   type VocabSessionMode,
 } from "@/services/vocabulary/session-builder";
 import {
-  hasReadyVocabularyDrillAnswerSets,
   parseVocabularyDrillAnswerSets,
 } from "@/services/vocabulary/drill-answer-sets.service";
 import { hydrateVocabularyDetailsWithGlobalContent } from "@/services/vocabulary/drill-content-engine.service";
@@ -298,21 +301,21 @@ function inferSourceType(lessonType: string | null | undefined): VocabExerciseSo
   return "other";
 }
 
+function hasPracticeReadyVocabularyDetail(detail: any) {
+  if (!detail?.id) return false;
+  if (detail.is_understood === true) return false;
+  if (!detail.english_explanation) return false;
+  if (!Array.isArray(detail.distractors) || detail.distractors.length < 3) return false;
+  return true;
+}
+
 function toDrillItem(
   detail: any,
   wordProgressId: string,
   lessonMetaMap?: Map<string, { lessonName: string; lessonType: string | null }>,
   sourceCaptureMap?: Map<string, SourceCaptureMeta>
 ): DrillItem | null {
-  if (
-    !detail ||
-    !detail.id ||
-    !detail.item_text ||
-    !detail.english_explanation ||
-    !Array.isArray(detail.distractors) ||
-    detail.distractors.length < 3 ||
-    !hasReadyVocabularyDrillAnswerSets(detail.drill_answer_sets)
-  ) {
+  if (!detail || !detail.item_text || !hasPracticeReadyVocabularyDetail(detail)) {
     return null;
   }
 
@@ -552,7 +555,7 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
     synonymDrills,
     collocationDrills,
     pairMatchDrills,
-    sentenceBuilderDrills: [],
+    sentenceBuilderDrills: contextMeaningDrills,
     errorDetectionDrills,
     listenMatchDrills,
     spellingFromAudioDrills,
@@ -561,8 +564,12 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
       ...adaptMeaningDrillsToExercises(phraseDrills),
       ...adaptListenMatchDrillsToExercises(listenMatchDrills),
       ...adaptSpellingFromAudioDrillsToExercises(spellingFromAudioDrills),
+      ...adaptClozeDrillsToExercises(contextMeaningDrills),
+      ...adaptSentenceBuilderDrillsToExercises(contextMeaningDrills),
+      ...adaptErrorDetectionDrillsToExercises(errorDetectionDrills),
       ...adaptContextMeaningDrillsToExercises(contextMeaningDrills),
       ...adaptSynonymDrillsToExercises(synonymDrills),
+      ...adaptCollocationDrillsToExercises(collocationDrills),
       ...adaptPairMatchDrillsToExercises(pairMatchDrills),
     ],
   };
@@ -806,17 +813,6 @@ export async function getStudentVocabularyPageData(
     details: (allVocabDetails.data ?? []) as any[],
     translationLanguage,
   });
-  const hasAnyReadyVocabularyItems = vocabularyDetailRows.some((detail: any) => {
-    if (!detail?.id || detail.is_understood === true || !detail.english_explanation) {
-      return false;
-    }
-
-    if (!Array.isArray(detail.distractors) || detail.distractors.length < 3) {
-      return false;
-    }
-
-    return hasReadyVocabularyDrillAnswerSets(detail.drill_answer_sets);
-  });
 
   const now = new Date();
   const bucketCounts = activeQueueCandidates.reduce<QueueBucketCounts>((acc, candidate) => {
@@ -828,23 +824,18 @@ export async function getStudentVocabularyPageData(
   const queueWordIds = Array.from(
     new Set(activeQueueCandidates.map((candidate) => candidate.word_id).filter(Boolean))
   );
-  const allReadyVocabularyDetails = vocabularyDetailRows.filter((detail: any) => {
-    if (!detail?.id) return false;
-    if (detail.is_understood === true) return false;
-    if (!detail.english_explanation) return false;
-    if (!Array.isArray(detail.distractors) || detail.distractors.length < 3) return false;
-    if (!hasReadyVocabularyDrillAnswerSets(detail.drill_answer_sets)) return false;
-    return true;
-  });
-  const allReadyWordIds = Array.from(
-    new Set(allReadyVocabularyDetails.map((detail: any) => detail.id).filter(Boolean))
+  const allPracticeReadyVocabularyDetails = vocabularyDetailRows.filter((detail: any) =>
+    hasPracticeReadyVocabularyDetail(detail)
+  );
+  const allPracticeReadyWordIds = Array.from(
+    new Set(allPracticeReadyVocabularyDetails.map((detail: any) => detail.id).filter(Boolean))
   );
 
   const { data: wordProgressRows, error: wordProgressError } = await supabase
     .from("word_progress")
     .select("*")
     .eq("student_id", studentData.id)
-    .in("word_id", allReadyWordIds.length > 0 ? allReadyWordIds : [EMPTY_UUID]);
+    .in("word_id", allPracticeReadyWordIds.length > 0 ? allPracticeReadyWordIds : [EMPTY_UUID]);
 
   if (wordProgressError) {
     throw wordProgressError;
@@ -878,16 +869,19 @@ export async function getStudentVocabularyPageData(
   );
   const activeQueueWordIdSet = new Set(queueWordIds);
 
-  const recentNewWordDetails = allReadyVocabularyDetails.filter((detail: any) => {
+  const recentNewWordDetails = allPracticeReadyVocabularyDetails.filter((detail: any) => {
     if (!detail?.id) return false;
     if (activeQueueWordIdSet.has(detail.id)) return false;
     if (attemptedWordIdSet.has(detail.id)) return false;
     return true;
   });
-  const continuationReadyDetails = allReadyVocabularyDetails.filter((detail: any) => {
+  const recentNewWordIdSet = new Set(
+    recentNewWordDetails.map((detail: any) => detail.id).filter(Boolean)
+  );
+  const continuationReadyDetails = allPracticeReadyVocabularyDetails.filter((detail: any) => {
     if (!detail?.id) return false;
     if (activeQueueWordIdSet.has(detail.id)) return false;
-    if (recentNewWordDetails.some((candidate) => candidate.id === detail.id)) return false;
+    if (recentNewWordIdSet.has(detail.id)) return false;
     return Boolean(wordProgressMap.get(detail.id));
   });
 

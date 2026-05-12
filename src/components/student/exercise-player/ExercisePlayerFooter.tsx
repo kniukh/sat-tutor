@@ -135,31 +135,25 @@ export default function ExercisePlayerFooter({
       {focused && submitted && feedback && hasFocusedFeedbackContent ? (
         <div
           aria-live="polite"
-          className={`mb-3 rounded-[1.35rem] border px-4 py-3 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] ${
-            feedback.isCorrect
-              ? "border-emerald-200 bg-emerald-50"
-              : "border-rose-200 bg-rose-50"
-          }`}
+          className={`mb-3 rounded-[1.35rem] border px-4 py-3 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)] ${toneClass}`}
         >
           <div
-            className={`mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
-              feedback.isCorrect ? "text-emerald-700" : "text-rose-700"
-            }`}
+            className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-current/70"
           >
             {feedback.isCorrect ? "Translation" : "Correct Spelling"}
           </div>
           {!feedback.isCorrect && feedback.correctAnswer ? (
-            <div className="token-text-primary text-base font-semibold leading-6 sm:text-[1.05rem]">
-              <span className="font-semibold text-rose-700">Correct Spelling:</span>{" "}
-              {feedback.correctAnswer}
+            <div className="text-base font-semibold leading-6 text-current sm:text-[1.05rem]">
+              <span className="font-semibold text-current/80">Correct Spelling:</span>{" "}
+              <span className="text-current">{feedback.correctAnswer}</span>
             </div>
           ) : null}
           {feedback.isCorrect && feedback.translationText ? (
-            <div className="token-text-primary text-base font-semibold leading-6 sm:text-[1.05rem]">
-              <span className="font-semibold text-emerald-700">
+            <div className="text-base font-semibold leading-6 text-current sm:text-[1.05rem]">
+              <span className="font-semibold text-current/80">
                 {feedback.translationLabel ?? "Translation"}:
               </span>{" "}
-              {feedback.translationText}
+              <span className="text-current">{feedback.translationText}</span>
             </div>
           ) : null}
         </div>
