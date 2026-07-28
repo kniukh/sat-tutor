@@ -31,17 +31,6 @@ export default function CollocationExercise({
               })
             : stemText}
         </div>
-        {contextText ? (
-          <div className={`${focused ? "" : "mt-2"} text-sm leading-6 text-slate-600`}>
-            {renderCaptureText
-              ? renderCaptureText({
-                  text: contextText,
-                  contextText,
-                  as: "div",
-                })
-              : contextText}
-          </div>
-        ) : null}
       </div>
 
       <ExerciseOptionList

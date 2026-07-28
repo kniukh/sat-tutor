@@ -63,6 +63,26 @@ AI-detected structural boundaries and chapter metadata.
 ### `source_document_clean_text`
 Canonical clean chapter text used for chunking.
 
+Audiobook fields:
+- `audio_url`
+- `audio_status`
+- `audio_duration_ms`
+- `audio_alignment_method`
+- `audio_aligned_at`
+
+### `source_chapter_audio_sentences`
+Sentence-level chapter text/audio alignment.
+
+Important fields:
+- `source_document_id`
+- `chapter_index`
+- `sentence_index`
+- `sentence_text`
+- `char_start`, `char_end`
+- `audio_start_ms`, `audio_end_ms`
+- `confidence`
+- `alignment_method`
+
 ### `generated_passages`
 Bridge between source material and lessons.
 
@@ -77,10 +97,12 @@ Important fields:
 - `status`
 - analyzer metadata such as `difficulty_level`, `text_mode`, `vocab_density`
 - cached AI metadata such as `chunk_fingerprint`, passage analysis cache, and generated lesson package cache
+- optional audiobook window fields such as `audio_url`, `audio_start_ms`, `audio_end_ms`, sentence range metadata, and `audio_sentence_timings`
 
 Important product use:
 - `generated_passages.lesson_id + generated_passages.source_document_id` link lessons back to books
 - `chapter_index` and `chapter_title` drive the chapter-grouped Books UI
+- chapter audio alignment is created before chunking, then each generated passage inherits the audio window for its sentence range
 - chunk regeneration normalizes prose line breaks, preserves paragraph boundaries, avoids sentence splits around common abbreviations, and can reuse chunk-level AI caches when the fingerprint is unchanged
 
 ### `lessons`
@@ -97,6 +119,16 @@ Important fields:
 
 ### `lesson_passages`
 Final lesson passage text shown in the runtime lesson.
+
+Optional audiobook fields mirror generated passage audio windows:
+- `audio_url`
+- `audio_start_ms`
+- `audio_end_ms`
+- `audio_sentence_start_index`
+- `audio_sentence_end_index`
+- `audio_sentence_timings`
+- `audio_alignment_confidence`
+- `audio_alignment_method`
 
 ### `question_bank`
 Lesson questions.
@@ -561,6 +593,7 @@ These same sources now also feed:
 -> `source_document_pages`
 -> `source_document_structure`
 -> `source_document_clean_text`
+-> `source_chapter_audio_sentences` (optional audiobook alignment)
 -> `generated_passages`
 -> `lessons`
 -> `lesson_passages`

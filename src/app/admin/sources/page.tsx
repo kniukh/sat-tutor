@@ -24,7 +24,19 @@ export default async function AdminSourcesPage() {
       subtitle="Create books, articles, and poems, then run the existing chunking and AI lesson review flow."
     >
       <div className="grid gap-6">
-        <CreateSourceForm />
+        <CreateSourceForm
+          books={(sources ?? [])
+            .filter((source) => source.source_type === 'book')
+            .map((source) => ({
+              id: source.id,
+              title: source.title,
+              author: source.author,
+              chapterCount:
+                typeof source.metadata?.chapter_count === 'number'
+                  ? source.metadata.chapter_count
+                  : 0,
+            }))}
+        />
       </div>
 
       <SourcesTable sources={(sources ?? []) as any} />

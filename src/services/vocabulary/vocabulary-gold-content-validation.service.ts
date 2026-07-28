@@ -199,12 +199,12 @@ export function validateVocabularyGoldContent(
   }
 
   const translationWordTokens = tokenCount(content.translation_word);
-  if (content.translation_word && translationWordTokens > 4) {
+  if (content.translation_word && translationWordTokens > 3) {
     addIssue(issues, {
       field: "translation_word",
       code: "translation_word_too_long",
-      severity: translationWordTokens > 6 ? "error" : "warning",
-      message: "translation_word should usually be 1-3 words.",
+      severity: "error",
+      message: "translation_word must be a concise lexical translation: ideally 1 word, maximum 2-3 words.",
       repairable: true,
     });
   }

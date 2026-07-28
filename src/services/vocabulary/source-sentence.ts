@@ -27,6 +27,26 @@ function normalizeWhitespace(text: string) {
   return text.replace(/\s+/g, " ").trim();
 }
 
+function isSentenceOpeningChar(char: string | undefined) {
+  return Boolean(char && /[A-ZА-ЯЁ]/.test(char));
+}
+
+function findCapitalizedSentenceOpening(text: string, sentenceStart: number, anchor: number) {
+  const safeAnchor = Math.min(Math.max(anchor, sentenceStart), text.length);
+
+  for (let index = sentenceStart; index < safeAnchor; index += 1) {
+    if (isSentenceOpeningChar(text[index])) {
+      return index;
+    }
+
+    if (/[.!?]/.test(text[index])) {
+      return sentenceStart;
+    }
+  }
+
+  return sentenceStart;
+}
+
 function isSentenceBoundary(text: string, index: number) {
   const char = text[index];
   if (char === "?" || char === "!") {
@@ -87,6 +107,29 @@ function findSentenceEnd(text: string, anchor: number) {
   return text.length;
 }
 
+function trimToCompleteSentence(params: {
+  sourceText: string;
+  sentenceStart: number;
+  sentenceEnd: number;
+  anchor: number;
+}) {
+  const capitalizedStart = findCapitalizedSentenceOpening(
+    params.sourceText,
+    params.sentenceStart,
+    params.anchor
+  );
+  let sentenceEnd = params.sentenceEnd;
+
+  if (!/[.!?]["'”’)\]]*$/.test(params.sourceText.slice(capitalizedStart, sentenceEnd).trim())) {
+    sentenceEnd = findSentenceEnd(params.sourceText, sentenceEnd);
+  }
+
+  return {
+    sentenceStart: capitalizedStart,
+    sentenceEnd,
+  };
+}
+
 function findItemOffset(sourceText: string, itemText: string, preferredOffset?: number | null) {
   const normalizedItem = itemText.trim().toLowerCase();
   if (!normalizedItem) {
@@ -121,8 +164,14 @@ export function extractSourceSentence(params: {
 
   const itemStart = findItemOffset(sourceText, itemText, params.itemStartOffset);
   const anchor = itemStart >= 0 ? itemStart : Math.min(sourceText.length - 1, Math.max(0, params.itemStartOffset ?? 0));
-  const sentenceStart = findSentenceStart(sourceText, anchor);
-  const sentenceEnd = findSentenceEnd(sourceText, itemStart >= 0 ? itemStart + itemText.length : anchor);
+  const roughSentenceStart = findSentenceStart(sourceText, anchor);
+  const roughSentenceEnd = findSentenceEnd(sourceText, itemStart >= 0 ? itemStart + itemText.length : anchor);
+  const { sentenceStart, sentenceEnd } = trimToCompleteSentence({
+    sourceText,
+    sentenceStart: roughSentenceStart,
+    sentenceEnd: roughSentenceEnd,
+    anchor,
+  });
   const sentence = normalizeWhitespace(sourceText.slice(sentenceStart, sentenceEnd));
 
   if (!sentence) {

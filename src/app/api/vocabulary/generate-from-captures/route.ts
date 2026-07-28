@@ -16,6 +16,11 @@ type ExistingVocabularyItemRow = {
   last_captured_at?: string | null;
   english_explanation: string | null;
   translated_explanation: string | null;
+  core_meaning?: string | null;
+  definition?: string | null;
+  translation_word?: string | null;
+  translation_meaning?: string | null;
+  synonyms?: string[] | null;
   example_text: string | null;
   context_sentence: string | null;
   audio_status?: string | null;
@@ -39,6 +44,9 @@ function getExistingItemCanonicalKey(item: ExistingVocabularyItemRow) {
   }).canonicalLemma;
 }
 
+const VOCABULARY_ITEM_CARD_SELECT =
+  "id, item_text, item_type, canonical_lemma, captured_surface_forms, capture_count, first_captured_at, last_captured_at, english_explanation, translated_explanation, core_meaning, definition, translation_word, translation_meaning, synonyms, example_text, context_sentence, audio_status, audio_url";
+
 async function buildDegradedVocabularyItems(params: {
   studentId: string;
   lessonId: string;
@@ -56,7 +64,7 @@ async function buildDegradedVocabularyItems(params: {
 
   const { data: existingRows, error: existingError } = await supabase
     .from("vocabulary_item_details")
-    .select("id, item_text, item_type, canonical_lemma, captured_surface_forms, capture_count, first_captured_at, last_captured_at, english_explanation, translated_explanation, example_text, context_sentence, audio_status, audio_url")
+    .select(VOCABULARY_ITEM_CARD_SELECT)
     .eq("student_id", params.studentId)
     .eq("lesson_id", params.lessonId)
     .order("created_at", { ascending: true });
@@ -132,7 +140,7 @@ async function buildDegradedVocabularyItems(params: {
     } else {
       const { data: refreshedRows, error: refreshedError } = await supabase
         .from("vocabulary_item_details")
-        .select("id, item_text, item_type, canonical_lemma, captured_surface_forms, capture_count, first_captured_at, last_captured_at, english_explanation, translated_explanation, example_text, context_sentence, audio_status, audio_url")
+        .select(VOCABULARY_ITEM_CARD_SELECT)
         .eq("student_id", params.studentId)
         .eq("lesson_id", params.lessonId)
         .order("created_at", { ascending: true });

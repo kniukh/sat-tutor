@@ -36,7 +36,7 @@ Return strict JSON only:
 {"items":[{"word":"string","part_of_speech":"noun|verb|adjective|adverb|phrase|unknown","core_meaning":"3-8 word English gloss","definition":"fuller student-friendly English definition","translation_word":"short natural translation of the word itself","translation_meaning":"translation of the English definition/meaning","synonyms":["short synonym"],"antonyms":["short antonym"],"example_sentence":"natural SAT-level English sentence using the word","example_translation":"translation of example_sentence","audio_text":"exact text to pronounce"}]}
 
 Critical distinctions:
-- translation_word is a short lexical translation of the vocabulary word itself.
+- translation_word is a very short lexical translation of the vocabulary word itself: ideally 1 word, maximum 2-3 words only when needed.
 - translation_meaning is a translation of the definition/meaning. It can be longer.
 - core_meaning is short. Do not copy a long definition into core_meaning.
 - definition can be a fuller explanation, but still concise.
@@ -56,7 +56,8 @@ Good: translation_word="драка на кулаках", core_meaning="fight usi
 
 Rules:
 - Preserve word exactly in the word field.
-- Keep translation_word ideally 1-3 words.
+- Keep translation_word to 1 word whenever possible. Use 2-3 words only when a natural single-word translation does not exist.
+- Never put a definition, explanation, or full phrase meaning in translation_word; put that in translation_meaning instead.
 - translation_word and translation_meaning should not be identical unless truly unavoidable.
 - example_sentence must contain the word or a clear inflected form.
 - synonyms must not include the target word.
@@ -73,7 +74,7 @@ Rules:
 - Only include requested failing fields.
 - Preserve the word exactly.
 - Keep repaired values concise.
-- translation_word is a short lexical translation of the word itself.
+- translation_word is a very short lexical translation of the word itself: ideally 1 word, maximum 2-3 words only when needed.
 - translation_meaning is a translation of the definition.
 - example_sentence must contain the target word or a valid inflected form.
 - audio_text should default to the word if no special pronunciation text is needed.

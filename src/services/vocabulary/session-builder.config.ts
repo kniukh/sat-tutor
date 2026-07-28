@@ -66,7 +66,6 @@ export const SESSION_PREFERRED_TYPE_ORDER_BY_MODE: Record<
     "context_meaning",
     "fill_blank",
     "synonym",
-    "error_detection",
   ],
   mixed: [
     "meaning_match",
@@ -105,7 +104,6 @@ export const SESSION_PREFERRED_TYPE_ORDER_BY_MODE: Record<
     "context_meaning",
     "fill_blank",
     "synonym",
-    "error_detection",
   ],
   mixed_practice: [
     "meaning_match",
@@ -351,7 +349,6 @@ export const SESSION_PROGRESSION_RULES: Record<
       "context_meaning",
       "fill_blank",
       "synonym",
-      "error_detection",
     ],
   },
   learning_reinforcement: {
@@ -381,7 +378,6 @@ export const SESSION_PROGRESSION_RULES: Record<
       "context_meaning",
       "fill_blank",
       "meaning_match",
-      "error_detection",
     ],
   },
 };
@@ -419,7 +415,6 @@ export const SESSION_TYPE_ORDER_BY_ADAPTIVE_DIFFICULTY: Record<
     "spelling_from_audio",
     "spelling_from_audio",
     "synonym",
-    "error_detection",
     "listen_match",
     "pair_match",
     "meaning_match",

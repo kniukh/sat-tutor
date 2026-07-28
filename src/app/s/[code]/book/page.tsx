@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { studentBookDetailPath, studentLessonPath } from "@/lib/routes/student";
 import { getBooksPageData } from "@/services/reading/books-page.service";
+import { SelectBookButton } from "@/components/student/SelectBookButton";
 
 function ProgressBar({ value }: { value: number }) {
   return (
@@ -192,6 +193,11 @@ export default async function StudentBookPage({
                 </div>
 
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                  <SelectBookButton
+                    studentId={data.student.id}
+                    sourceDocumentId={book.sourceDocumentId}
+                    isCurrent={book.isCurrent}
+                  />
                   {book.currentLessonId ? (
                     <Link
                       href={studentLessonPath(book.currentLessonId)}

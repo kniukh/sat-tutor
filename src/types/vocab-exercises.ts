@@ -51,6 +51,8 @@ export type VocabExercisePair = {
   rightId?: string;
   left_audio_url?: string | null;
   leftAudioUrl?: string | null;
+  left_feedback_label?: string | null;
+  leftFeedbackLabel?: string | null;
   left_kind?: "text" | "audio";
   leftKind?: "text" | "audio";
 };

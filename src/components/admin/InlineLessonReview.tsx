@@ -36,6 +36,22 @@ type Props = {
   questions: QuestionItem[];
 };
 
+const QUESTION_TYPE_OPTIONS = [
+  'main_idea',
+  'central_claim',
+  'detail',
+  'inference',
+  'command_of_evidence',
+  'function',
+  'text_structure',
+  'tone',
+  'cause_effect',
+  'summary',
+  'vocabulary_in_context',
+  'vocabulary_definition',
+  'vocabulary_translation',
+];
+
 function formatLabel(value: string) {
   return value.replace(/_/g, ' ');
 }
@@ -255,11 +271,11 @@ function InlineQuestionCard({ question }: { question: QuestionItem }) {
               }
               className="surface-panel token-text-primary w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-sm"
             >
-              <option value="main_idea">main_idea</option>
-              <option value="detail">detail</option>
-              <option value="inference">inference</option>
-              <option value="vocabulary">vocabulary</option>
-              <option value="tone">tone</option>
+              {QUESTION_TYPE_OPTIONS.map((questionTypeOption) => (
+                <option key={questionTypeOption} value={questionTypeOption}>
+                  {questionTypeOption}
+                </option>
+              ))}
             </select>
 
             <textarea

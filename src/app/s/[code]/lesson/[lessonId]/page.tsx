@@ -7,6 +7,53 @@ import { getOrCreateLessonState } from "@/services/lesson-state/lesson-state.ser
 import { classifyReviewQueueCandidate } from "@/services/vocabulary/review-queue.service";
 import Link from "next/link";
 import { studentDashboardPath } from "@/lib/routes/student";
+import type { PassageAudioSentenceTiming } from "@/components/student/PassageAudioControls";
+
+function parsePassageAudioSentenceTimings(value: unknown): PassageAudioSentenceTiming[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item): PassageAudioSentenceTiming | null => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const row = item as Record<string, unknown>;
+      const sentenceText = String(row.sentenceText ?? row.sentence_text ?? "").trim();
+      if (!sentenceText) {
+        return null;
+      }
+
+      return {
+        sentenceIndex:
+          typeof row.sentenceIndex === "number"
+            ? row.sentenceIndex
+            : typeof row.sentence_index === "number"
+              ? row.sentence_index
+              : null,
+        sentenceText,
+        audioStartMs:
+          typeof row.audioStartMs === "number"
+            ? row.audioStartMs
+            : typeof row.audio_start_ms === "number"
+              ? row.audio_start_ms
+              : null,
+        audioEndMs:
+          typeof row.audioEndMs === "number"
+            ? row.audioEndMs
+            : typeof row.audio_end_ms === "number"
+              ? row.audio_end_ms
+              : null,
+        confidence:
+          typeof row.confidence === "number"
+            ? row.confidence
+            : null,
+      };
+    })
+    .filter(Boolean) as PassageAudioSentenceTiming[];
+}
 
 export default async function StudentLessonPage({
   params,
@@ -43,6 +90,9 @@ export default async function StudentLessonPage({
   );
 
   const mainPassage = passages[0] ?? null;
+  const passageAudioSentenceTimings = parsePassageAudioSentenceTimings(
+    mainPassage?.audio_sentence_timings
+  );
 
   const questions = (lesson.question_bank ?? []).sort(
     (a: { display_order: number }, b: { display_order: number }) =>
@@ -141,6 +191,11 @@ export default async function StudentLessonPage({
           nextLessonId={lessonSequence.nextLesson?.id ?? null}
           passageId={mainPassage?.id}
           passageText={mainPassage?.passage_text ?? ""}
+          passageAudioUrl={mainPassage?.audio_url ?? null}
+          passageAudioStartMs={mainPassage?.audio_start_ms ?? null}
+          passageAudioEndMs={mainPassage?.audio_end_ms ?? null}
+          passageAudioSentenceTimings={passageAudioSentenceTimings}
+          passageAudioAlignmentConfidence={mainPassage?.audio_alignment_confidence ?? null}
           state={{ stage: lessonState.stage }}
           questions={(questions ?? []) as any}
           vocabItems={enrichedVocabItems as any}

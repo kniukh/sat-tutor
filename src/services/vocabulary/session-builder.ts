@@ -57,6 +57,8 @@ export type VocabExerciseSession = {
     total_interactions: number;
     reinforcement_budget: number;
     grouped_support_budget: number;
+    rotation_recipe: "recognition_audio" | "context_sat" | "production_precision";
+    forced_type_slots: SupportedVocabExerciseType[];
     dominant_bucket: VocabExerciseQueueBucket | null;
     session_phase: VocabularySessionPhase;
     extended_practice_mode: boolean;
@@ -249,6 +251,84 @@ function getRepeatedWordBonus(mode: VocabSessionMode) {
 
 function makeSessionId(mode: VocabSessionMode, seed: string) {
   return `vocab-session:${mode}:${hashString(seed).toString(36)}`;
+}
+
+type SessionRotationRecipeId =
+  | "recognition_audio"
+  | "context_sat"
+  | "production_precision";
+
+type SessionRotationRecipe = {
+  id: SessionRotationRecipeId;
+  anchorTypeSlots: SupportedVocabExerciseType[];
+  reinforcementTypeSlots: SupportedVocabExerciseType[];
+};
+
+const SESSION_ROTATION_RECIPES: SessionRotationRecipe[] = [
+  {
+    id: "recognition_audio",
+    anchorTypeSlots: [
+      "meaning_match",
+      "translation_match",
+      "listen_match",
+      "spelling_from_audio",
+      "context_meaning",
+      "fill_blank",
+      "synonym",
+      "collocation",
+    ],
+    reinforcementTypeSlots: [
+      "context_meaning",
+      "spelling_from_audio",
+      "synonym",
+      "fill_blank",
+    ],
+  },
+  {
+    id: "context_sat",
+    anchorTypeSlots: [
+      "context_meaning",
+      "fill_blank",
+      "synonym",
+      "collocation",
+      "spelling_from_audio",
+      "translation_match",
+      "listen_match",
+    ],
+    reinforcementTypeSlots: [
+      "sentence_builder",
+      "collocation",
+      "synonym",
+    ],
+  },
+  {
+    id: "production_precision",
+    anchorTypeSlots: [
+      "sentence_builder",
+      "fill_blank",
+      "collocation",
+      "listen_match",
+      "synonym",
+      "spelling_from_audio",
+      "context_meaning",
+    ],
+    reinforcementTypeSlots: [
+      "sentence_builder",
+      "spelling_from_audio",
+      "context_meaning",
+    ],
+  },
+];
+
+function resolveSessionRotationRecipe(seed: string) {
+  return SESSION_ROTATION_RECIPES[hashString(seed) % SESSION_ROTATION_RECIPES.length];
+}
+
+function getRequiredTypeSlot(
+  slots: SupportedVocabExerciseType[],
+  index: number
+) {
+  return slots[index % Math.max(1, slots.length)] ?? null;
 }
 
 function getSelectionBucket(exercise: SupportedVocabExercise) {
@@ -541,8 +621,7 @@ function chooseExerciseForWordEntry(params: {
           candidate.type === "context_meaning" ||
           candidate.type === "fill_blank" ||
           candidate.type === "collocation" ||
-          candidate.type === "sentence_builder" ||
-          candidate.type === "error_detection"
+          candidate.type === "sentence_builder"
         )
       ) {
         score += 4;
@@ -698,8 +777,7 @@ function scoreWordEntry(params: {
       candidate.type === "fill_blank" ||
       candidate.type === "collocation" ||
       candidate.type === "pair_match" ||
-      candidate.type === "sentence_builder" ||
-      candidate.type === "error_detection"
+      candidate.type === "sentence_builder"
     ) &&
     index >= 2
   ) {
@@ -714,8 +792,7 @@ function scoreWordEntry(params: {
       candidate.type === "fill_blank" ||
       candidate.type === "collocation" ||
       candidate.type === "pair_match" ||
-      candidate.type === "sentence_builder" ||
-      candidate.type === "error_detection"
+      candidate.type === "sentence_builder"
     )
   ) {
     score += 4;
@@ -868,15 +945,30 @@ function withSessionCaps(params: {
   entry: WordExerciseEntry;
   chosen: SupportedVocabExercise[];
   maxSpellingTouches: number;
+  requiredType?: SupportedVocabExerciseType;
 }) {
   const spellingCount = countChosenType(params.chosen, "spelling_from_audio");
+  const meaningCount = countChosenType(params.chosen, "meaning_match");
+  const translationCount = countChosenType(params.chosen, "translation_match");
   return {
     ...params.entry,
     exercises: params.entry.exercises.filter((exercise) => {
+      if (params.requiredType && exercise.type !== params.requiredType) {
+        return true;
+      }
+
       if (
         exercise.type === "spelling_from_audio" &&
         spellingCount >= params.maxSpellingTouches
       ) {
+        return false;
+      }
+
+      if (exercise.type === "meaning_match" && meaningCount >= 1) {
+        return false;
+      }
+
+      if (exercise.type === "translation_match" && translationCount >= 1) {
         return false;
       }
 
@@ -892,6 +984,7 @@ function scoreEntryForSelection(params: {
   index: number;
   total: number;
   seed: string;
+  requiredType?: SupportedVocabExerciseType;
   requiredFamily?: VocabularyLearningFamily;
   excludedExerciseIds: Set<string>;
   maxSpellingTouches: number;
@@ -901,6 +994,7 @@ function scoreEntryForSelection(params: {
     entry: params.entry,
     chosen: params.chosen,
     maxSpellingTouches: params.maxSpellingTouches,
+    requiredType: params.requiredType,
   });
 
   if (cappedEntry.exercises.length === 0) {
@@ -914,6 +1008,7 @@ function scoreEntryForSelection(params: {
     index: params.index,
     total: params.total,
     seed: params.seed,
+    requiredType: params.requiredType,
     requiredFamily: params.requiredFamily,
     excludedExerciseIds: params.excludedExerciseIds,
     allowGroupedSupport: params.allowGroupedSupport,
@@ -932,8 +1027,27 @@ function chooseBestScoredEntry(params: {
   familyOrder: VocabularyLearningFamily[];
   excludedExerciseIds: Set<string>;
   maxSpellingTouches: number;
+  requiredType?: SupportedVocabExerciseType | null;
   allowGroupedSupportFallback?: boolean;
 }) {
+  if (params.requiredType) {
+    const scored = params.entries
+      .map((entry) =>
+        scoreEntryForSelection({
+          ...params,
+          entry,
+          requiredType: params.requiredType ?? undefined,
+          allowGroupedSupport: params.requiredType === "pair_match",
+        })
+      )
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((left, right) => right.next.score - left.next.score);
+
+    if (scored[0]) {
+      return scored[0];
+    }
+  }
+
   for (const family of params.familyOrder) {
     const scored = params.entries
       .map((entry) =>
@@ -1145,6 +1259,7 @@ export function buildVocabExerciseSession({
     touchPolicy.anchorWordTarget +
     touchPolicy.reinforcementBudget +
     touchPolicy.groupedSupportBudget;
+  const rotationRecipe = resolveSessionRotationRecipe(seed);
   const chosen: SupportedVocabExercise[] = [];
   const sequenceDebug: VocabExerciseSession["metadata"]["sequence_debug"] = [];
   const touchCounts = new Map<string, number>();
@@ -1165,6 +1280,7 @@ export function buildVocabExerciseSession({
       index: chosen.length,
       total: requestedSize,
       seed: `${seed}:anchor-primary:${index}`,
+      requiredType: getRequiredTypeSlot(rotationRecipe.anchorTypeSlots, index),
       familyOrder: touchPolicy.primaryFamilyOrder,
       excludedExerciseIds,
       maxSpellingTouches: touchPolicy.maxSpellingTouches,
@@ -1214,6 +1330,10 @@ export function buildVocabExerciseSession({
       index: chosen.length,
       total: requestedSize,
       seed: `${seed}:anchor-reinforcement:${entry.wordId}`,
+      requiredType: getRequiredTypeSlot(
+        rotationRecipe.reinforcementTypeSlots,
+        touchPolicy.reinforcementBudget - reinforcementBudgetRemaining
+      ),
       familyOrder: getReinforcementFamilyOrder({
         entry,
         chosen,
@@ -1257,6 +1377,10 @@ export function buildVocabExerciseSession({
         index: chosen.length,
         total: requestedSize,
         seed: `${seed}:anchor-risk:${entry.wordId}`,
+        requiredType: getRequiredTypeSlot(
+          rotationRecipe.reinforcementTypeSlots,
+          touchPolicy.reinforcementBudget - reinforcementBudgetRemaining
+        ),
         familyOrder: getReinforcementFamilyOrder({
           entry,
           chosen,
@@ -1377,6 +1501,8 @@ export function buildVocabExerciseSession({
       total_interactions: totalInteractions,
       reinforcement_budget: touchPolicy.reinforcementBudget,
       grouped_support_budget: touchPolicy.groupedSupportBudget,
+      rotation_recipe: rotationRecipe.id,
+      forced_type_slots: rotationRecipe.anchorTypeSlots,
       dominant_bucket: dominantBucket(chosen),
       session_phase: phase,
       extended_practice_mode: phase === "endless_continuation",

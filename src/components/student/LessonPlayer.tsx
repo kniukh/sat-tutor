@@ -7,6 +7,9 @@ import MascotCat from "./MascotCat";
 import FeedbackSettingsButton from "./FeedbackSettingsButton";
 import InlineVocabularyCaptureText from "./InlineVocabularyCaptureText";
 import VocabularyReviewCards from "./VocabularyReviewCards";
+import PassageAudioControls, {
+  type PassageAudioSentenceTiming,
+} from "./PassageAudioControls";
 import type { CapturedVocabularyItem } from "./PassageVocabularyCapture";
 import {
   getAnswerFeedbackCue,
@@ -142,6 +145,11 @@ type Props = {
   passageId?: string;
   questions: Question[];
   passageText?: string;
+  passageAudioUrl?: string | null;
+  passageAudioStartMs?: number | null;
+  passageAudioEndMs?: number | null;
+  passageAudioSentenceTimings?: PassageAudioSentenceTiming[];
+  passageAudioAlignmentConfidence?: number | null;
   knownWords?: KnownWord[];
   quizVocabularyItems?: QuizVocabularyItem[];
   isQuizVocabularyHydrating?: boolean;
@@ -330,6 +338,69 @@ function findRelevantSentence(params: {
   return ranked[0]?.sentence ?? sentences[0] ?? null;
 }
 
+function buildAnsweredQuestions(params: {
+  questions: Question[];
+  answerMap: Record<string, OptionKey>;
+}) {
+  return params.questions.flatMap((item) => {
+    const selectedOption = params.answerMap[item.id];
+    const correctOption = item.correct_option;
+
+    if (!selectedOption || !correctOption) {
+      return [];
+    }
+
+    const options = getQuestionOptions(item);
+    const selectedText =
+      options.find((option) => option.key === selectedOption)?.text ?? "";
+    const correctText =
+      options.find((option) => option.key === correctOption)?.text ?? "";
+
+    return [
+      {
+        question: item,
+        selectedOption,
+        selectedText,
+        correctOption,
+        correctText,
+        isCorrect: selectedOption === correctOption,
+      },
+    ];
+  });
+}
+
+function buildMistakeItems(params: {
+  questions: Question[];
+  answerMap: Record<string, OptionKey>;
+  passageText?: string | null;
+}): RepairItem[] {
+  return buildAnsweredQuestions({
+    questions: params.questions,
+    answerMap: params.answerMap,
+  })
+    .filter((item) => !item.isCorrect)
+    .map((item) => {
+      const relevantSentence = params.passageText
+        ? findRelevantSentence({
+            passageText: params.passageText,
+            questionText: item.question.question_text,
+            correctText: item.correctText,
+            selectedText: item.selectedText,
+          })
+        : null;
+
+      return {
+        question: item.question,
+        selectedOption: item.selectedOption,
+        selectedText: item.selectedText,
+        correctOption: item.correctOption,
+        correctText: item.correctText,
+        relevantSentence,
+        microTask: buildRepairMicroTask(item.question, relevantSentence),
+      };
+    });
+}
+
 function getRepairHint(questionType: string) {
   switch (questionType) {
     case "vocabulary_in_context":
@@ -447,6 +518,11 @@ export default function LessonPlayer({
   passageId,
   questions,
   passageText,
+  passageAudioUrl,
+  passageAudioStartMs,
+  passageAudioEndMs,
+  passageAudioSentenceTimings = [],
+  passageAudioAlignmentConfidence,
   knownWords = [],
   quizVocabularyItems = [],
   isQuizVocabularyHydrating = false,
@@ -480,6 +556,7 @@ export default function LessonPlayer({
   const [quizPhase, setQuizPhase] = useState<QuizPhase>("quiz");
   const [showPassage, setShowPassage] = useState(false);
   const [passageHighlightText, setPassageHighlightText] = useState<string | null>(null);
+  const [activeAudioSentenceText, setActiveAudioSentenceText] = useState<string | null>(null);
   const [explanationQuestionId, setExplanationQuestionId] = useState<string | null>(null);
   const [explanationCache, setExplanationCache] = useState<
     Record<string, QuestionReasoningExplanation | undefined>
@@ -514,7 +591,7 @@ export default function LessonPlayer({
   const questionStartedAtRef = useRef<number>(Date.now());
   const completionCuePlayedRef = useRef<string | null>(null);
   const requestedQuizAudioSignatureRef = useRef<string>("");
-  const pendingAnswerSavePromisesRef = useRef<Promise<void>[]>([]);
+  const pendingQuestionProgressPromisesRef = useRef<Promise<void>[]>([]);
   const autoAdvanceTimeoutRef = useRef<number | null>(null);
   const latestMistakeItemsRef = useRef<RepairItem[]>([]);
   const latestQuizVocabularyItemsRef = useRef<QuizVocabularyItem[]>(quizVocabularyItems);
@@ -526,33 +603,10 @@ export default function LessonPlayer({
     return new Map(questions.map((item) => [item.id, item]));
   }, [questions]);
 
-  const answeredQuestions = useMemo(() => {
-    return questions.flatMap((item) => {
-      const selectedOption = answerMap[item.id];
-      const correctOption = item.correct_option;
-
-      if (!selectedOption || !correctOption) {
-        return [];
-      }
-
-      const options = getQuestionOptions(item);
-      const selectedText =
-        options.find((option) => option.key === selectedOption)?.text ?? "";
-      const correctText =
-        options.find((option) => option.key === correctOption)?.text ?? "";
-
-      return [
-        {
-          question: item,
-          selectedOption,
-          selectedText,
-          correctOption,
-          correctText,
-          isCorrect: selectedOption === correctOption,
-        },
-      ];
-    });
-  }, [answerMap, questions]);
+  const answeredQuestions = useMemo(
+    () => buildAnsweredQuestions({ questions, answerMap }),
+    [answerMap, questions]
+  );
 
   const correctCount = answeredQuestions.filter((item) => item.isCorrect).length;
   const currentCorrectStreak = useMemo(() => {
@@ -568,30 +622,10 @@ export default function LessonPlayer({
 
     return streak;
   }, [answeredQuestions]);
-  const mistakeItems = useMemo<RepairItem[]>(() => {
-    return answeredQuestions
-      .filter((item) => !item.isCorrect)
-      .map((item) => {
-        const relevantSentence = passageText
-          ? findRelevantSentence({
-              passageText,
-              questionText: item.question.question_text,
-              correctText: item.correctText,
-              selectedText: item.selectedText,
-            })
-          : null;
-
-        return {
-          question: item.question,
-          selectedOption: item.selectedOption,
-          selectedText: item.selectedText,
-          correctOption: item.correctOption,
-          correctText: item.correctText,
-          relevantSentence,
-          microTask: buildRepairMicroTask(item.question, relevantSentence),
-        };
-      });
-  }, [answeredQuestions, passageText]);
+  const mistakeItems = useMemo<RepairItem[]>(
+    () => buildMistakeItems({ questions, answerMap, passageText }),
+    [answerMap, passageText, questions]
+  );
 
   const activeRepairItem = mistakeItems[repairIndex] ?? null;
   const repairedQuestionIdSet = useMemo(() => new Set(repairedQuestionIds), [repairedQuestionIds]);
@@ -636,6 +670,7 @@ export default function LessonPlayer({
   useEffect(() => {
     setShowPassage(false);
     setPassageHighlightText(null);
+    setActiveAudioSentenceText(null);
     setExplanationQuestionId(null);
   }, [index, quizPhase, repairIndex]);
 
@@ -691,21 +726,21 @@ export default function LessonPlayer({
     };
   }, []);
 
-  function trackPendingAnswerSave(promise: Promise<void>) {
-    pendingAnswerSavePromisesRef.current = [
-      ...pendingAnswerSavePromisesRef.current,
+  function trackPendingQuestionProgress(promise: Promise<void>) {
+    pendingQuestionProgressPromisesRef.current = [
+      ...pendingQuestionProgressPromisesRef.current,
       promise,
     ];
 
     void promise.finally(() => {
-      pendingAnswerSavePromisesRef.current = pendingAnswerSavePromisesRef.current.filter(
+      pendingQuestionProgressPromisesRef.current = pendingQuestionProgressPromisesRef.current.filter(
         (entry) => entry !== promise
       );
     });
   }
 
-  async function flushPendingAnswerSaves() {
-    const pending = [...pendingAnswerSavePromisesRef.current];
+  async function flushPendingQuestionProgress() {
+    const pending = [...pendingQuestionProgressPromisesRef.current];
     if (pending.length === 0) {
       return;
     }
@@ -809,7 +844,7 @@ export default function LessonPlayer({
     setSaving(true);
 
     try {
-      await flushPendingAnswerSaves();
+      await flushPendingQuestionProgress();
 
       if (onBeforeComplete) {
         await onBeforeComplete();
@@ -881,10 +916,17 @@ export default function LessonPlayer({
     const localIsCorrect = selectedOption === correctOption;
     const localComboAfter = localIsCorrect ? comboCount + 1 : 0;
 
-    setAnswerMap((current) => ({
-      ...current,
+    const nextAnswerMap = {
+      ...answerMap,
       [questionId]: selectedOption,
-    }));
+    };
+    latestMistakeItemsRef.current = buildMistakeItems({
+      questions,
+      answerMap: nextAnswerMap,
+      passageText,
+    });
+
+    setAnswerMap(nextAnswerMap);
     setSubmitted(true);
     triggerFeedbackCue(
       getAnswerFeedbackCue({
@@ -898,40 +940,46 @@ export default function LessonPlayer({
       answeredQuestions: Math.max(prev.answeredQuestions, currentIndex + 1),
     }));
 
-    const persistPromise = (async () => {
+    const progressPromise = (async () => {
       try {
-        const [progressResponse, attemptResponse] = await Promise.all([
-          fetch("/api/lesson/save-question-progress", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              studentId,
-              lessonId,
-              questionId,
-              selectedOption,
-              skill: questionType,
-            }),
+        const progressResponse = await fetch("/api/lesson/save-question-progress", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId,
+            lessonId,
+            questionId,
+            selectedOption,
+            skill: questionType,
           }),
-          fetch("/api/question-attempt", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              studentId,
-              lessonId,
-              questionId,
-              selectedOption,
-              durationSec,
-            }),
-          }),
-        ]);
+        });
 
         if (!progressResponse.ok) {
           const progressPayload = await progressResponse.json().catch(() => null);
           throw new Error(progressPayload?.error ?? "Failed to save question progress");
         }
+      } catch (error) {
+        console.error("save question progress error", error);
+      }
+    })();
 
+    trackPendingQuestionProgress(progressPromise);
+
+    void (async () => {
+      try {
+        const attemptResponse = await fetch("/api/question-attempt", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId,
+            lessonId,
+            questionId,
+            selectedOption,
+            durationSec,
+          }),
+        });
         const attemptPayload = await attemptResponse.json().catch(() => null);
 
         if (!attemptResponse.ok) {
@@ -973,8 +1021,6 @@ export default function LessonPlayer({
         console.error("submit answer error", error);
       }
     })();
-
-    trackPendingAnswerSave(persistPromise);
 
     if (autoAdvanceTimeoutRef.current) {
       clearTimeout(autoAdvanceTimeoutRef.current);
@@ -1029,7 +1075,7 @@ export default function LessonPlayer({
       return;
     }
 
-    void completeLesson();
+    setQuizPhase("results");
   }
 
   function continueAfterQuizWords() {
@@ -1291,12 +1337,25 @@ export default function LessonPlayer({
 
             <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
               <div className="reading-surface px-5 py-7 sm:px-8 sm:py-9">
+                <div className="mb-4">
+                  <PassageAudioControls
+                    audioUrl={passageAudioUrl}
+                    startMs={passageAudioStartMs}
+                    endMs={passageAudioEndMs}
+                    passageText={passageText}
+                    sentenceTimings={passageAudioSentenceTimings}
+                    alignmentConfidence={passageAudioAlignmentConfidence}
+                    onActiveSentenceChange={setActiveAudioSentenceText}
+                    compact
+                  />
+                </div>
                 <InteractivePassageReader
                   studentId={studentId}
                   lessonId={lessonId}
                   passageId={passageId}
                   passageText={passageText || "Passage unavailable for this question."}
                   highlightText={passageHighlightText}
+                  audioHighlightText={activeAudioSentenceText}
                   knownWords={knownWords}
                   mode="capture"
                 />

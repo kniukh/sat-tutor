@@ -39,6 +39,9 @@ Rules:
 - context = important for story continuity, but only 1-2 light questions
 - bridge = should usually have no questions
 - dialogue-heavy or low-analytic passages often become context or bridge
+- recommended_question_types can include:
+  main_idea, central_claim, detail, inference, command_of_evidence, function,
+  text_structure, tone, cause_effect, summary, vocabulary_in_context
 
 Passage title:
 ${input.title ?? 'Untitled'}

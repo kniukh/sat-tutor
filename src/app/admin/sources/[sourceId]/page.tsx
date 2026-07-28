@@ -6,6 +6,7 @@ import BuildCleanTextButton from '@/components/admin/BuildCleanTextButton';
 import GeneratePassagesFromCleanTextButton from '@/components/admin/GeneratePassagesFromCleanTextButton';
 import GenerateLessonsFromSourceButton from '@/components/admin/GenerateLessonsFromSourceButton';
 import RefreshCoverButton from '@/components/admin/RefreshCoverButton';
+import ChapterAudioUploadButton from '@/components/admin/ChapterAudioUploadButton';
 import ContentPipelineBatchActions from '@/components/admin/ContentPipelineBatchActions';
 import SourceChunkReview from '@/components/admin/SourceChunkReview';
 
@@ -50,6 +51,11 @@ export default async function AdminSourceDetailPage({
     .select('*')
     .eq('source_document_id', sourceId)
     .order('chapter_index', { ascending: true });
+
+  const { data: audioSentences } = await supabase
+    .from('source_chapter_audio_sentences')
+    .select('chapter_index, sentence_index')
+    .eq('source_document_id', sourceId);
 
   const { data: passages, error: passagesError } = await supabase
     .from('generated_passages')
@@ -117,6 +123,17 @@ export default async function AdminSourceDetailPage({
   const coverImagePath =
     typeof metadata.cover_image_path === 'string' ? metadata.cover_image_path : null;
   const hasCleanRows = Boolean(cleanTextRows && cleanTextRows.length > 0);
+  const audioSentenceCountByChapter = new Map<number, number>();
+  for (const sentence of audioSentences ?? []) {
+    const chapterIndex = Number((sentence as any).chapter_index);
+    if (!Number.isFinite(chapterIndex)) {
+      continue;
+    }
+    audioSentenceCountByChapter.set(
+      chapterIndex,
+      (audioSentenceCountByChapter.get(chapterIndex) ?? 0) + 1
+    );
+  }
   const hasUnlinkedPassages = Boolean((passages ?? []).some((passage: any) => !passage.lesson_id));
   const linkedLessonsCount = (passages ?? []).filter((passage: any) => Boolean(passage.lesson_id)).length;
 
@@ -244,6 +261,35 @@ export default async function AdminSourceDetailPage({
           >
             Open uploaded PDF
           </a>
+        </section>
+      ) : null}
+
+      {hasCleanRows && source.source_type === 'book' ? (
+        <section className="surface-panel space-y-4 p-6">
+          <div>
+            <div className="app-kicker">Audiobook Alignment</div>
+            <h2 className="mt-1 text-xl font-semibold token-text-primary">
+              Chapter audio
+            </h2>
+            <p className="mt-2 text-sm leading-6 token-text-secondary">
+              Upload the audio for a full chapter before chunking. The system marks chapter
+              sentences and gives each generated chunk an audio start and end window.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {(cleanTextRows ?? []).map((chapter: any) => (
+              <ChapterAudioUploadButton
+                key={`${chapter.chapter_index}-${chapter.chapter_title ?? ''}`}
+                sourceDocumentId={source.id}
+                chapterIndex={chapter.chapter_index}
+                chapterTitle={chapter.chapter_title ?? null}
+                audioUrl={chapter.audio_url ?? null}
+                audioStatus={chapter.audio_status ?? null}
+                sentenceCount={audioSentenceCountByChapter.get(Number(chapter.chapter_index)) ?? 0}
+              />
+            ))}
+          </div>
         </section>
       ) : null}
 

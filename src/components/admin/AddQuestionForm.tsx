@@ -3,6 +3,22 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
+const QUESTION_TYPE_OPTIONS = [
+  'main_idea',
+  'central_claim',
+  'detail',
+  'inference',
+  'command_of_evidence',
+  'function',
+  'text_structure',
+  'tone',
+  'cause_effect',
+  'summary',
+  'vocabulary_in_context',
+  'vocabulary_definition',
+  'vocabulary_translation',
+];
+
 export function AddQuestionForm({ lessonId }: { lessonId: string }) {
   const router = useRouter();
   const [questionType, setQuestionType] = useState('main_idea');
@@ -64,10 +80,11 @@ export function AddQuestionForm({ lessonId }: { lessonId: string }) {
         onChange={(e) => setQuestionType(e.target.value)}
         className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       >
-        <option value="main_idea">main_idea</option>
-        <option value="detail">detail</option>
-        <option value="inference">inference</option>
-        <option value="vocabulary">vocabulary</option>
+        {QUESTION_TYPE_OPTIONS.map((questionTypeOption) => (
+          <option key={questionTypeOption} value={questionTypeOption}>
+            {questionTypeOption}
+          </option>
+        ))}
       </select>
 
       <textarea

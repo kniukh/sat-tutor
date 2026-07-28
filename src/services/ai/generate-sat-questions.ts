@@ -6,10 +6,16 @@ import { shuffleQuestionOptions } from '@/services/ai/shuffle-question-options';
 type GeneratedQuestion = {
   question_type:
     | 'main_idea'
+    | 'central_claim'
     | 'detail'
     | 'inference'
+    | 'command_of_evidence'
+    | 'function'
+    | 'text_structure'
     | 'vocabulary'
     | 'tone'
+    | 'cause_effect'
+    | 'summary'
     | 'vocabulary_in_context'
     | 'vocabulary_definition'
     | 'vocabulary_translation';
@@ -108,7 +114,7 @@ These should feel like a proper assessment set.
   const typeInstructions =
     types.length > 0
       ? `Preferred question types: ${types.join(', ')}. Follow these as closely as possible.`
-      : `Use a balanced mix of main_idea, detail, inference, vocabulary, and tone when appropriate.`;
+      : `Use a balanced mix of main_idea, central_claim, detail, inference, command_of_evidence, function, text_structure, tone, cause_effect, summary, and vocabulary_in_context when appropriate.`;
 
   const prompt = `
 You are an elite SAT Reading curriculum designer.
@@ -118,7 +124,21 @@ Generate questions for the passage.
 
 Unified prompt router:
 ${renderAdminQuestionPromptRouter({
-  routeIds: types.length > 0 ? types : ['main_idea', 'detail', 'inference', 'tone'],
+  routeIds:
+    types.length > 0
+      ? types
+      : [
+          'main_idea',
+          'central_claim',
+          'detail',
+          'inference',
+          'command_of_evidence',
+          'function',
+          'text_structure',
+          'tone',
+          'cause_effect',
+          'summary',
+        ],
 })}
 
 Requirements:

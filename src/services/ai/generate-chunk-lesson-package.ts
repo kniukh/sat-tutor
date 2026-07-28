@@ -76,8 +76,32 @@ function normalizeInferencePointArray(value: unknown, fallback: string) {
 function normalizeSatQuestionType(value: string) {
   const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
 
+  if (normalized.includes("central") || normalized.includes("claim")) {
+    return "central_claim";
+  }
+
   if (normalized.includes("main")) {
     return "main_idea";
+  }
+
+  if (normalized.includes("evidence")) {
+    return "command_of_evidence";
+  }
+
+  if (normalized.includes("function") || normalized.includes("rhetorical") || normalized.includes("role")) {
+    return "function";
+  }
+
+  if (normalized.includes("structure") || normalized.includes("organization")) {
+    return "text_structure";
+  }
+
+  if (normalized.includes("cause") || normalized.includes("effect")) {
+    return "cause_effect";
+  }
+
+  if (normalized.includes("summary") || normalized.includes("summar")) {
+    return "summary";
   }
 
   if (normalized.includes("detail")) {
@@ -196,12 +220,12 @@ function validatePackageShape(pkg: ChunkLessonPackage) {
     throw new Error("Invalid phrase_density");
   }
 
-  if (!Array.isArray(pkg.sat_questions) || pkg.sat_questions.length < 2) {
-    throw new Error("Expected 2 SAT questions");
+  if (!Array.isArray(pkg.sat_questions) || pkg.sat_questions.length < 3) {
+    throw new Error("Expected 3 SAT questions");
   }
 
-  if (!Array.isArray(pkg.vocab_questions) || pkg.vocab_questions.length < 2) {
-    throw new Error("Expected 2 vocabulary questions");
+  if (!Array.isArray(pkg.vocab_questions) || pkg.vocab_questions.length < 1) {
+    throw new Error("Expected 1 vocabulary question");
   }
 }
 
@@ -222,14 +246,18 @@ export async function generateChunkLessonPackage(input: {
 For SAT questions, keep them literary:
 - focus on interpretation, meaning, tone, and imagery
 - avoid trivial factual questions
-- still map question_type to one of: main_idea, detail, inference, tone
+- map question_type to the most fitting route from the reading type set
 `
       : `
 For SAT questions, use classic passage-based reading skills:
-- main idea
+- main idea / central claim
 - detail
 - inference
+- command of evidence
+- function / rhetorical role
+- text structure
 - tone when it fits naturally
+- cause/effect or summary when the passage supports it
 `;
 
   const cachedAnalysisBlock = input.cachedAnalysis
@@ -264,8 +292,8 @@ You are an expert SAT curriculum designer building a lesson package from one cle
 Task:
 In ONE pass, analyze the chunk and generate:
 - analysis metadata
-- exactly 2 SAT-style reading questions
-- exactly 2 vocabulary questions
+- exactly 3 SAT-style reading questions
+- exactly 1 vocabulary question
 
 The chunk text is already clean and approved by a human editor.
 Do not ask for more cleanup.
@@ -274,9 +302,15 @@ Unified prompt router:
 ${renderAdminQuestionPromptRouter({
   routeIds: [
     "main_idea",
+    "central_claim",
     "detail",
     "inference",
     "tone",
+    "command_of_evidence",
+    "function",
+    "text_structure",
+    "cause_effect",
+    "summary",
     "vocabulary_in_context",
     "definition",
     "translation",
@@ -331,18 +365,31 @@ Analysis rules:
 
 SAT question rules:
 ${literaryGuidance}
-- Generate exactly 2 SAT questions.
-- Use only question_type values: main_idea, detail, inference, tone.
+- Generate exactly 3 SAT questions.
+- Use only question_type values:
+  - main_idea
+  - central_claim
+  - detail
+  - inference
+  - command_of_evidence
+  - function
+  - text_structure
+  - tone
+  - cause_effect
+  - summary
+- For every chunk, include:
+  - one global question: main_idea or central_claim
+  - one reasoning question: inference or detail
+  - one craft/evidence question: command_of_evidence, function, text_structure, tone, cause_effect, or summary
 - For each SAT question_type you choose, follow the matching route from the unified prompt router.
 - Make the correct answer require real understanding, not keyword spotting.
 - Wrong answers should reflect realistic student traps such as too broad, too narrow, misinterpretation, or keyword trap when they fit.
 - Prefer questions that require weighing the best answer rather than recalling a phrase.
 
 Vocabulary question rules:
-- Generate exactly 2 vocabulary questions.
+- Generate exactly 1 vocabulary question.
 - Choose useful non-trivial words or short phrases that appear in the chunk.
-- One question must test meaning in context.
-- The second must test definition or translation.
+- The question must test meaning in context unless the chunk has no useful target.
 - Use question_type values:
   - vocabulary_in_context
   - vocabulary_definition
@@ -357,7 +404,7 @@ JSON shape:
   "passage_role": "assessment",
   "question_strategy": "full_set",
   "recommended_question_count": 4,
-  "recommended_question_types": ["main_idea", "detail", "inference", "vocabulary_in_context"],
+  "recommended_question_types": ["main_idea", "inference", "function", "vocabulary_in_context"],
   "analyzer_reason": "string",
   "analysis_main_idea": "string",
   "analysis_structure": "string",
@@ -367,7 +414,7 @@ JSON shape:
   "vocab_density": "medium",
   "phrase_density": "low",
   "writing_prompt_worthy": false,
-  "recommended_vocab_questions_count": 2,
+  "recommended_vocab_questions_count": 1,
   "recommended_vocab_target_words": ["string"],
   "recommended_vocab_target_phrases": ["string"],
   "sat_questions": [
@@ -453,16 +500,16 @@ ${input.passageText}
     writing_prompt_worthy: input.cachedAnalysis?.writing_prompt_worthy ?? parsed.writing_prompt_worthy,
     recommended_vocab_questions_count: input.cachedAnalysis
       ? input.cachedAnalysis.recommended_vocab_questions_count
-      : Math.max(0, Math.round(Number(parsed.recommended_vocab_questions_count ?? 2))),
+      : Math.max(0, Math.round(Number(parsed.recommended_vocab_questions_count ?? 1))),
     recommended_vocab_target_words: input.cachedAnalysis
       ? input.cachedAnalysis.recommended_vocab_target_words
       : normalizeStringArray(parsed.recommended_vocab_target_words),
     recommended_vocab_target_phrases: input.cachedAnalysis
       ? input.cachedAnalysis.recommended_vocab_target_phrases
       : normalizeStringArray(parsed.recommended_vocab_target_phrases),
-    sat_questions: parsed.sat_questions.slice(0, 2).map((item) => normalizeQuestion(item as Record<string, unknown>, "sat")),
+    sat_questions: parsed.sat_questions.slice(0, 3).map((item) => normalizeQuestion(item as Record<string, unknown>, "sat")),
     vocab_questions: parsed.vocab_questions
-      .slice(0, 2)
+      .slice(0, 1)
       .map((item) => normalizeQuestion(item as Record<string, unknown>, "vocab")),
   } satisfies ChunkLessonPackage;
 }

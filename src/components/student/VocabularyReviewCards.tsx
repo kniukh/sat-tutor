@@ -12,6 +12,11 @@ type VocabItem = {
   item_text: string;
   english_explanation?: string | null;
   translated_explanation?: string | null;
+  core_meaning?: string | null;
+  definition?: string | null;
+  translation_word?: string | null;
+  translation_meaning?: string | null;
+  synonyms?: string[] | null;
   example_text?: string | null;
   context_sentence?: string | null;
   audio_url?: string | null;
@@ -59,6 +64,46 @@ function getAudioItemKey(itemText: string) {
 
 function getAudioLemmaKey(item: Pick<VocabItem, "item_text" | "canonical_lemma">) {
   return item.canonical_lemma?.trim().toLowerCase() || getAudioItemKey(item.item_text);
+}
+
+function normalizeText(value: string | null | undefined) {
+  return value?.trim().replace(/\s+/g, " ") || null;
+}
+
+function tokenCount(value: string | null | undefined) {
+  return normalizeText(value)?.split(/\s+/).filter(Boolean).length ?? 0;
+}
+
+function getEnglishMeaning(item: VocabItem) {
+  return (
+    normalizeText(item.core_meaning) ||
+    normalizeText(item.definition) ||
+    normalizeText(getEffectiveVocabularyDefinition(item)) ||
+    null
+  );
+}
+
+function getNativeTranslation(item: VocabItem) {
+  const shortFallbacks = [
+    normalizeText(item.translation_meaning),
+    normalizeText(getEffectiveVocabularyTranslation(item)),
+  ].filter(
+    (value): value is string => Boolean(value) && tokenCount(value) <= 3
+  );
+
+  return (
+    normalizeText(item.translation_word) ||
+    shortFallbacks[0] ||
+    null
+  );
+}
+
+function getSynonymLine(item: VocabItem) {
+  const synonyms = Array.isArray(item.synonyms)
+    ? item.synonyms.map(normalizeText).filter((value): value is string => Boolean(value))
+    : [];
+
+  return Array.from(new Set(synonyms)).slice(0, 5).join(", ");
 }
 
 function createSilentWavUrl() {
@@ -543,8 +588,9 @@ export default function VocabularyReviewCards({
       <div className="mt-5 grid gap-3 pb-6 sm:grid-cols-2">
         {visibleItems.map((item) => {
           const itemKey = getAudioItemKey(item.item_text);
-          const effectiveDefinition = getEffectiveVocabularyDefinition(item);
-          const effectiveTranslation = getEffectiveVocabularyTranslation(item);
+          const englishMeaning = getEnglishMeaning(item);
+          const nativeTranslation = getNativeTranslation(item);
+          const synonymLine = getSynonymLine(item);
           const canRegenerateItem = Boolean(onRegenerateItem) && isPersistedVocabularyItemId(item.id);
           const isDeleting = pendingDeleteIds.includes(item.id);
           const isRegenerating = pendingRegenerateIds.includes(item.id);
@@ -569,12 +615,26 @@ export default function VocabularyReviewCards({
                   </div>
                 </div>
 
-                <div className="token-text-secondary text-sm leading-6">
-                  {effectiveDefinition || effectiveTranslation || "Meaning will appear soon."}
+                <div className="space-y-2 text-sm leading-6">
+                  <div>
+                    <div className="app-kicker token-text-muted">Meaning in English</div>
+                    <div className="token-text-secondary">
+                      {englishMeaning || "Meaning will appear soon."}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="app-kicker token-text-muted">Translation</div>
+                    <div className="token-text-secondary">
+                      {nativeTranslation || "Translation will appear soon."}
+                    </div>
+                  </div>
+                  {synonymLine ? (
+                    <div>
+                      <div className="app-kicker token-text-muted">Synonyms</div>
+                      <div className="token-text-secondary">{synonymLine}</div>
+                    </div>
+                  ) : null}
                 </div>
-                {effectiveTranslation && effectiveTranslation !== effectiveDefinition ? (
-                  <div className="token-text-muted text-sm leading-6">{effectiveTranslation}</div>
-                ) : null}
               </div>
 
               {actionErrors[item.id] ? (

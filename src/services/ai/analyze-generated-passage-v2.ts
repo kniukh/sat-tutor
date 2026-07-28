@@ -52,14 +52,14 @@ Return ONLY valid JSON object with:
 - recommended_vocab_target_phrases: string[]
 
 Rules:
-- assessment = rich enough for 3-6 meaningful SAT-style questions
+- assessment = rich enough for 3 reading questions plus 1 vocabulary-in-context question
 - context = useful for continuity, but only 1-3 light questions
 - bridge = should usually have no reading questions
-- if vocabulary is rich, increase recommended_vocab_questions_count
+- recommended_vocab_questions_count should usually be 1
 - target words/phrases must come from or clearly fit the passage
-- prefer more vocabulary questions when lexical richness is high
 - question types can include:
-  main_idea, detail, inference, tone, vocab_in_context, phrase_meaning, contextual_paraphrase
+  main_idea, central_claim, detail, inference, command_of_evidence, function,
+  text_structure, tone, cause_effect, summary, vocabulary_in_context
 
 Chapter:
 ${input.chapterTitle ?? 'Unknown chapter'}

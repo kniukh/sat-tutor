@@ -263,19 +263,19 @@ function getStoredNativeTranslation(item: MeaningDrillItem | ClozeDrillItem) {
 function getPreferredNativeTranslation(item: MeaningDrillItem | ClozeDrillItem) {
   const candidates = [
     scoreNativeTranslationCandidate(item.translationWord, item, {
-      maxTokens: 4,
+      maxTokens: 3,
       scoreBoost: 20,
     }),
     scoreNativeTranslationCandidate(getStoredNativeTranslation(item), item, {
-      maxTokens: 4,
+      maxTokens: 3,
       scoreBoost: 8,
     }),
     scoreNativeTranslationCandidate(item.translationMeaning, item, {
-      maxTokens: 6,
+      maxTokens: 3,
       scoreBoost: 2,
     }),
     scoreNativeTranslationCandidate(getTranslatedMeaning(item), item, {
-      maxTokens: 6,
+      maxTokens: 3,
     }),
   ]
     .filter((candidate): candidate is { value: string; score: number } => Boolean(candidate))
@@ -935,46 +935,41 @@ function chunkItems<T>(items: T[], chunkSize: number, minimumSize = 3) {
 }
 
 function chunkItemsBalanced<T>(items: T[], preferredSize = 6, maxSize = 8, minimumSize = 4) {
-  if (items.length <= maxSize) {
-    return items.length > 0 ? [items] : [];
+  if (items.length < minimumSize) {
+    return [];
   }
 
+  if (items.length <= maxSize) {
+    return [items];
+  }
+
+  const preferredChunkCount = Math.max(1, Math.ceil(items.length / preferredSize));
+  const maxChunkCount = Math.max(1, Math.ceil(items.length / maxSize));
+  let chunkCount = Math.min(preferredChunkCount, maxChunkCount);
+
+  while (chunkCount > 1 && Math.floor(items.length / chunkCount) < minimumSize) {
+    chunkCount -= 1;
+  }
+
+  if (chunkCount <= 1) {
+    return [items.slice(0, maxSize)];
+  }
+
+  const baseSize = Math.floor(items.length / chunkCount);
+  const extraCount = items.length % chunkCount;
   const chunks: T[][] = [];
   let index = 0;
 
-  while (index < items.length) {
-    const remaining = items.length - index;
-
-    if (remaining <= maxSize) {
-      chunks.push(items.slice(index));
-      break;
-    }
-
-    let nextSize = preferredSize;
-    const tailAfterPreferred = remaining - preferredSize;
-
-    if (tailAfterPreferred > 0 && tailAfterPreferred < minimumSize) {
-      nextSize = Math.min(maxSize, remaining - minimumSize);
-    }
-
-    chunks.push(items.slice(index, index + nextSize));
-    index += nextSize;
+  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+    const size = Math.min(
+      maxSize,
+      baseSize + (chunkIndex < extraCount ? 1 : 0)
+    );
+    chunks.push(items.slice(index, index + size));
+    index += size;
   }
 
-  if (chunks.length >= 2) {
-    const lastChunk = chunks[chunks.length - 1];
-    const previousChunk = chunks[chunks.length - 2];
-
-    if (
-      lastChunk.length < minimumSize &&
-      previousChunk.length + lastChunk.length <= maxSize
-    ) {
-      chunks[chunks.length - 2] = [...previousChunk, ...lastChunk];
-      chunks.pop();
-    }
-  }
-
-  return chunks;
+  return chunks.filter((chunk) => chunk.length >= minimumSize);
 }
 
 type PairMatchEntry = {
@@ -1358,7 +1353,7 @@ export function adaptPairMatchDrillsToExercises(
       }))
       .filter((entry) => Boolean(entry.right))
   );
-  const definitionGroups = chunkItemsBalanced(definitionEntries, 6, 8, 4);
+  const definitionGroups = chunkItemsBalanced(definitionEntries, 5, 6, 4);
 
   exercises.push(
     ...definitionGroups
@@ -1391,7 +1386,7 @@ export function adaptPairMatchDrillsToExercises(
       }))
       .filter((entry) => Boolean(entry.right))
   );
-  const translationGroups = chunkItemsBalanced(translationEntries, 6, 8, 4);
+  const translationGroups = chunkItemsBalanced(translationEntries, 5, 6, 4);
 
   exercises.push(
     ...translationGroups
@@ -1663,6 +1658,7 @@ function buildListenPairMatchExercise(params: {
     left_id: `left-${index + 1}`,
     right_id: `right-${index + 1}`,
     left_audio_url: item.audioUrl ?? null,
+    left_feedback_label: getFeedbackNativeTranslation(item),
     left_kind: "audio" as const,
   }));
 
@@ -1778,23 +1774,23 @@ export function adaptListenMatchDrillsToExercises(
   );
   const englishGroups = chunkItemsBalanced(
     dedupeListenPairItems(audioReadyItems, "english"),
-    8,
-    10,
+    5,
+    6,
     4
   );
   const meaningGroups = chunkItemsBalanced(
     dedupeListenPairItems(audioReadyItems, "meaning"),
-    8,
-    10,
+    5,
+    6,
     4
   );
   const translationGroups = chunkItemsBalanced(
     dedupeListenPairItems(
-      audioReadyItems.filter((item) => Boolean(getTranslatedMeaning(item))),
+      audioReadyItems.filter((item) => hasUsableNativeTranslation(item)),
       "translation"
     ),
-    8,
-    10,
+    5,
+    6,
     4
   );
 

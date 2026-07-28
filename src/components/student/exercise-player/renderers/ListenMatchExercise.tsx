@@ -338,6 +338,8 @@ export default function ListenMatchExercise({
             const showWord =
               isMatched ||
               (pairFeedback?.status === "correct" && pairFeedback.leftId === option.id);
+            const feedbackLabel =
+              pair?.leftFeedbackLabel ?? pair?.left_feedback_label ?? option.label;
 
             return (
               <button
@@ -358,7 +360,7 @@ export default function ListenMatchExercise({
                       isMatched ? "text-slate-400" : "text-emerald-700"
                     }`}
                   >
-                    {option.label}
+                    {feedbackLabel}
                   </span>
                 ) : (
                   <ListenWaveIcon active={isPlaying} />

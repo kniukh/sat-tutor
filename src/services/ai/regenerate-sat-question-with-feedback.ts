@@ -10,10 +10,16 @@ import { shuffleQuestionOptions } from '@/services/ai/shuffle-question-options';
 type GeneratedQuestion = {
   question_type:
     | 'main_idea'
+    | 'central_claim'
     | 'detail'
     | 'inference'
+    | 'command_of_evidence'
+    | 'function'
+    | 'text_structure'
     | 'vocabulary'
     | 'tone'
+    | 'cause_effect'
+    | 'summary'
     | 'vocabulary_in_context'
     | 'vocabulary_definition'
     | 'vocabulary_translation';

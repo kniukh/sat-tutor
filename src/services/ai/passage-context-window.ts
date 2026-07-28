@@ -90,11 +90,21 @@ function scoreSentence(sentence: string, queryTokens: string[], correctText?: st
 }
 
 function getSentenceWindowRadius(questionType: string) {
-  if (questionType.includes("main")) {
+  if (
+    questionType.includes("main") ||
+    questionType.includes("central") ||
+    questionType.includes("summary") ||
+    questionType.includes("structure")
+  ) {
     return 2;
   }
 
-  if (questionType.includes("inference")) {
+  if (
+    questionType.includes("inference") ||
+    questionType.includes("evidence") ||
+    questionType.includes("function") ||
+    questionType.includes("cause")
+  ) {
     return 2;
   }
 

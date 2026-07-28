@@ -14,6 +14,9 @@ import VocabularyReviewCards from "./VocabularyReviewCards";
 import LessonPlayer from "./LessonPlayer";
 import InteractivePassageReader from "./InteractivePassageReader";
 import LessonVocabularyTray from "./LessonVocabularyTray";
+import PassageAudioControls, {
+  type PassageAudioSentenceTiming,
+} from "./PassageAudioControls";
 import { resolveVocabularyLemma } from "@/services/vocabulary/vocabulary-normalization.service";
 import { hasPlaceholderVocabularyContent } from "@/services/vocabulary/vocabulary-placeholder-content";
 import {
@@ -39,6 +42,11 @@ type VocabItem = {
   canonical_lemma?: string | null;
   english_explanation?: string | null;
   translated_explanation?: string | null;
+  core_meaning?: string | null;
+  definition?: string | null;
+  translation_word?: string | null;
+  translation_meaning?: string | null;
+  synonyms?: string[] | null;
   student_definition_override?: string | null;
   student_translation_override?: string | null;
   definition_override_generated_from_context?: boolean | null;
@@ -83,6 +91,11 @@ type Props = {
   nextLessonId?: string | null;
   passageId?: string;
   passageText: string;
+  passageAudioUrl?: string | null;
+  passageAudioStartMs?: number | null;
+  passageAudioEndMs?: number | null;
+  passageAudioSentenceTimings?: PassageAudioSentenceTiming[];
+  passageAudioAlignmentConfidence?: number | null;
   state: {
     stage: "first_read" | "vocab_review" | "second_read" | "questions" | "completed";
   };
@@ -123,6 +136,11 @@ function mergeVocabularyItems(
         item.english_explanation ?? existing?.english_explanation ?? null,
       translated_explanation:
         item.translated_explanation ?? existing?.translated_explanation ?? null,
+      core_meaning: item.core_meaning ?? existing?.core_meaning ?? null,
+      definition: item.definition ?? existing?.definition ?? null,
+      translation_word: item.translation_word ?? existing?.translation_word ?? null,
+      translation_meaning: item.translation_meaning ?? existing?.translation_meaning ?? null,
+      synonyms: item.synonyms ?? existing?.synonyms ?? null,
       student_definition_override:
         item.student_definition_override ?? existing?.student_definition_override ?? null,
       student_translation_override:
@@ -327,12 +345,18 @@ export default function LessonStagePanel({
   nextLessonId = null,
   passageId,
   passageText,
+  passageAudioUrl,
+  passageAudioStartMs,
+  passageAudioEndMs,
+  passageAudioSentenceTimings = [],
+  passageAudioAlignmentConfidence,
   state,
   questions,
   vocabItems,
 }: Props) {
   const [stage, setStage] = useState(state.stage);
   const [readingView, setReadingView] = useState<"text" | "words">("text");
+  const [activeAudioSentenceText, setActiveAudioSentenceText] = useState<string | null>(null);
   const [capturedItems, setCapturedItems] = useState<CapturedVocabularyItem[]>([]);
   const [localVocabItems, setLocalVocabItems] = useState<VocabItem[]>(vocabItems ?? []);
   const [isVocabularyHydrating, setIsVocabularyHydrating] = useState(false);
@@ -347,6 +371,10 @@ export default function LessonStagePanel({
   useEffect(() => {
     setReadingView("text");
   }, [stage]);
+
+  useEffect(() => {
+    setActiveAudioSentenceText(null);
+  }, [stage, readingView]);
 
   useEffect(() => {
     if (stage === "first_read" || stage === "second_read") {
@@ -1095,22 +1123,42 @@ export default function LessonStagePanel({
     const stageKey = stage === "completed" ? "questions" : stage;
     const stageIndex = Math.max(STAGE_ORDER.indexOf(stageKey), 0);
     const progressPercent = ((stageIndex + 1) / STAGE_ORDER.length) * 100;
+    const showAudioControls =
+      readingView === "text" &&
+      Boolean(passageAudioUrl) &&
+      (stage === "first_read" || stage === "second_read");
 
     return (
       <div className="reading-topbar">
         <div className="mx-auto w-full max-w-3xl px-4 py-3 sm:px-6">
-          <div className="token-text-muted mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.18em]">
-            <span>Reading</span>
-            <span>
-              {stageIndex + 1}/{STAGE_ORDER.length}
-            </span>
-          </div>
-          <div className="progress-track">
-            <div
-              className="progress-fill"
-              style={{ width: `${progressPercent}%` }}
+          {showAudioControls ? (
+            <PassageAudioControls
+              audioUrl={passageAudioUrl}
+              startMs={passageAudioStartMs}
+              endMs={passageAudioEndMs}
+              passageText={passageText}
+              sentenceTimings={passageAudioSentenceTimings}
+              alignmentConfidence={passageAudioAlignmentConfidence}
+              onActiveSentenceChange={setActiveAudioSentenceText}
+              compact
+              variant="topbar"
             />
-          </div>
+          ) : (
+            <>
+              <div className="token-text-muted mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.18em]">
+                <span>Reading</span>
+                <span>
+                  {stageIndex + 1}/{STAGE_ORDER.length}
+                </span>
+              </div>
+              <div className="progress-track">
+                <div
+                  className="progress-fill"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -1240,6 +1288,11 @@ export default function LessonStagePanel({
             nextLessonId={nextLessonId}
             questions={questions}
             passageText={passageText}
+            passageAudioUrl={passageAudioUrl}
+            passageAudioStartMs={passageAudioStartMs}
+            passageAudioEndMs={passageAudioEndMs}
+            passageAudioSentenceTimings={passageAudioSentenceTimings}
+            passageAudioAlignmentConfidence={passageAudioAlignmentConfidence}
             passageId={passageId}
             knownWords={localVocabItems}
             quizVocabularyItems={quizVocabularyItems}
@@ -1319,6 +1372,7 @@ export default function LessonStagePanel({
                   lessonId={lessonId}
                   passageId={passageId}
                   passageText={passageText}
+                  audioHighlightText={activeAudioSentenceText}
                   knownWords={localVocabItems}
                   onCaptured={handleCaptured}
                   mode="review"
@@ -1381,6 +1435,7 @@ export default function LessonStagePanel({
               lessonId={lessonId}
               passageId={passageId}
               passageText={passageText}
+              audioHighlightText={activeAudioSentenceText}
               knownWords={localVocabItems}
               onCaptured={handleCaptured}
               mode="capture"

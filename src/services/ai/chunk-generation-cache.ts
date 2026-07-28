@@ -7,7 +7,7 @@ import type {
   ChunkLessonPackage,
 } from "@/services/ai/generate-chunk-lesson-package";
 
-export const CHUNK_PACKAGE_CACHE_VERSION = "2026-04-01-package-cache-v1";
+export const CHUNK_PACKAGE_CACHE_VERSION = "2026-05-12-question-mix-v2";
 
 export type StoredChunkPackageCache = {
   version: string;
@@ -123,7 +123,7 @@ export function extractCachedChunkAnalysis(
         ? source.phrase_density
         : "low",
     writing_prompt_worthy: Boolean(source.writing_prompt_worthy),
-    recommended_vocab_questions_count: Math.max(0, Number(source.recommended_vocab_questions_count ?? 2)),
+    recommended_vocab_questions_count: Math.max(0, Number(source.recommended_vocab_questions_count ?? 1)),
     recommended_vocab_target_words: Array.isArray(source.recommended_vocab_target_words)
       ? source.recommended_vocab_target_words.map((item) => String(item ?? "").trim()).filter(Boolean)
       : [],

@@ -181,6 +181,7 @@ export async function POST(request: Request) {
     let coverMode = 'none';
     let coverFile: File | null = null;
     let chapters: ChapterPayload[] = [];
+    let sourceId = '';
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
@@ -192,6 +193,7 @@ export async function POST(request: Request) {
       coverFile = formData.get('coverFile') instanceof File ? (formData.get('coverFile') as File) : null;
       const chaptersJson = String(formData.get('chaptersJson') || '[]');
       chapters = JSON.parse(chaptersJson);
+      sourceId = String(formData.get('sourceId') || '').trim();
     } else {
       const body = await request.json();
       title = String(body.title || '').trim();
@@ -200,6 +202,81 @@ export async function POST(request: Request) {
       rawText = String(body.rawText || '');
       coverMode = String(body.coverMode || 'none').trim();
       chapters = Array.isArray(body.chapters) ? body.chapters : [];
+      sourceId = String(body.sourceId || '').trim();
+    }
+
+    if (sourceId) {
+      const { data: existingSource, error: sourceError } = await supabase
+        .from('source_documents')
+        .select('id, source_type, raw_text, metadata')
+        .eq('id', sourceId)
+        .single();
+
+      if (sourceError || !existingSource) {
+        return NextResponse.json({ error: sourceError?.message ?? 'Book not found' }, { status: 404 });
+      }
+      if (existingSource.source_type !== 'book') {
+        return NextResponse.json({ error: 'Chapters can only be appended to a book' }, { status: 400 });
+      }
+
+      const cleanRows = normalizeManualRows({ sourceType: 'book', title: '', rawText: '', chapters });
+      if (cleanRows.length === 0) {
+        return NextResponse.json({ error: 'Chapter text is required' }, { status: 400 });
+      }
+
+      const { data: existingChapters, error: chaptersError } = await supabase
+        .from('source_document_clean_text')
+        .select('chapter_index')
+        .eq('source_document_id', sourceId)
+        .order('chapter_index', { ascending: false });
+
+      if (chaptersError) {
+        return NextResponse.json({ error: chaptersError.message }, { status: 500 });
+      }
+
+      const lastChapterIndex = Math.max(
+        0,
+        ...(existingChapters ?? []).map((row) => Number(row.chapter_index) || 0),
+      );
+      const rows = cleanRows.map((row, index) => ({
+        source_document_id: sourceId,
+        chapter_index: lastChapterIndex + index + 1,
+        chapter_title: row.chapter_title,
+        clean_text: row.clean_text,
+      }));
+      const { error: insertError } = await supabase.from('source_document_clean_text').insert(rows);
+      if (insertError) {
+        return NextResponse.json({ error: insertError.message }, { status: 500 });
+      }
+
+      const metadata =
+        existingSource.metadata && typeof existingSource.metadata === 'object' && !Array.isArray(existingSource.metadata)
+          ? existingSource.metadata
+          : {};
+      const appendedText = cleanRows.map((row) => row.clean_text).join('\n\n');
+      const { data: updatedSource, error: updateError } = await supabase
+        .from('source_documents')
+        .update({
+          raw_text: [String(existingSource.raw_text ?? '').trim(), appendedText].filter(Boolean).join('\n\n'),
+          metadata: {
+            ...metadata,
+            chapter_count: lastChapterIndex + cleanRows.length,
+          },
+        })
+        .eq('id', sourceId)
+        .select()
+        .single();
+
+      if (updateError || !updatedSource) {
+        await supabase
+          .from('source_document_clean_text')
+          .delete()
+          .eq('source_document_id', sourceId)
+          .gt('chapter_index', lastChapterIndex);
+        return NextResponse.json({ error: updateError?.message ?? 'Failed to update book' }, { status: 500 });
+      }
+
+      return NextResponse.json({ data: updatedSource, appendedChapters: rows.length });
     }
 
     if (!title) {

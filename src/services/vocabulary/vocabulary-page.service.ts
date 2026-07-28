@@ -13,7 +13,6 @@ import {
   adaptContextMeaningDrillsToExercises,
   adaptClozeDrillsToExercises,
   adaptCollocationDrillsToExercises,
-  adaptErrorDetectionDrillsToExercises,
   adaptListenMatchDrillsToExercises,
   adaptMeaningDrillsToExercises,
   adaptPairMatchDrillsToExercises,
@@ -539,9 +538,6 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
   const pairMatchDrills = drillItems.filter(
     (item) => item.itemType === "word" || Boolean(item.exampleText || item.contextSentence)
   );
-  const errorDetectionDrills = drillItems.filter(
-    (item) => Boolean(item.exampleText || item.contextSentence)
-  );
   const listenMatchDrills = drillItems.filter(
     (item) => Boolean(item.audioUrl) && item.audioStatus !== "failed" && item.audioStatus !== "missing"
   );
@@ -556,7 +552,7 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
     collocationDrills,
     pairMatchDrills,
     sentenceBuilderDrills: contextMeaningDrills,
-    errorDetectionDrills,
+    errorDetectionDrills: [],
     listenMatchDrills,
     spellingFromAudioDrills,
     exercises: [
@@ -566,7 +562,6 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
       ...adaptSpellingFromAudioDrillsToExercises(spellingFromAudioDrills),
       ...adaptClozeDrillsToExercises(contextMeaningDrills),
       ...adaptSentenceBuilderDrillsToExercises(contextMeaningDrills),
-      ...adaptErrorDetectionDrillsToExercises(errorDetectionDrills),
       ...adaptContextMeaningDrillsToExercises(contextMeaningDrills),
       ...adaptSynonymDrillsToExercises(synonymDrills),
       ...adaptCollocationDrillsToExercises(collocationDrills),

@@ -17,8 +17,17 @@ function createEmptyChapter(index: number): ChapterItem {
   };
 }
 
-export function CreateSourceForm() {
+type ExistingBook = {
+  id: string;
+  title: string;
+  author: string | null;
+  chapterCount: number;
+};
+
+export function CreateSourceForm({ books }: { books: ExistingBook[] }) {
   const router = useRouter();
+  const [bookMode, setBookMode] = useState<'new' | 'existing'>('new');
+  const [existingBookId, setExistingBookId] = useState('');
   const [contentType, setContentType] = useState<'book' | 'article' | 'poem'>('book');
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -31,6 +40,10 @@ export function CreateSourceForm() {
 
   const isBook = contentType === 'book';
   const submitDisabled = useMemo(() => {
+    if (isBook && bookMode === 'existing') {
+      return !existingBookId || chapters.every((chapter) => !chapter.text.trim());
+    }
+
     if (!title.trim()) {
       return true;
     }
@@ -40,7 +53,9 @@ export function CreateSourceForm() {
     }
 
     return !rawText.trim();
-  }, [chapters, isBook, rawText, title]);
+  }, [bookMode, chapters, existingBookId, isBook, rawText, title]);
+
+  const selectedBook = books.find((book) => book.id === existingBookId) ?? null;
 
   function updateChapter(index: number, next: Partial<ChapterItem>) {
     setChapters((current) =>
@@ -78,6 +93,9 @@ export function CreateSourceForm() {
       formData.append('rawText', rawText);
       formData.append('coverMode', coverMode);
       formData.append('chaptersJson', JSON.stringify(chapters));
+      if (isBook && bookMode === 'existing') {
+        formData.append('sourceId', existingBookId);
+      }
 
       if (coverFile) {
         formData.append('coverFile', coverFile);
@@ -135,6 +153,60 @@ export function CreateSourceForm() {
         ))}
       </div>
 
+      {isBook && books.length > 0 ? (
+        <div className="space-y-3 rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+          <div className="app-kicker">Book destination</div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setBookMode('new')}
+              className={`rounded-[1rem] border px-4 py-3 text-sm font-semibold ${
+                bookMode === 'new'
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-[var(--color-border)] bg-white text-slate-900'
+              }`}
+            >
+              Create a new book
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBookMode('existing');
+                setExistingBookId((current) => current || books[0]?.id || '');
+              }}
+              className={`rounded-[1rem] border px-4 py-3 text-sm font-semibold ${
+                bookMode === 'existing'
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-[var(--color-border)] bg-white text-slate-900'
+              }`}
+            >
+              Add chapters to a saved book
+            </button>
+          </div>
+          {bookMode === 'existing' ? (
+            <select
+              value={existingBookId}
+              onChange={(event) => setExistingBookId(event.target.value)}
+              className="w-full rounded-[1rem] border border-[var(--color-border)] bg-white px-3 py-2 text-slate-900"
+            >
+              {books.map((book) => (
+                <option key={book.id} value={book.id}>
+                  {book.title}{book.author ? ` — ${book.author}` : ''}
+                </option>
+              ))}
+            </select>
+          ) : null}
+        </div>
+      ) : null}
+
+      {isBook && bookMode === 'existing' && selectedBook ? (
+        <div className="rounded-[1rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          New chapters will be appended to “{selectedBook.title}”. It currently has {selectedBook.chapterCount} chapter(s).
+        </div>
+      ) : null}
+
+      {bookMode === 'new' || !isBook ? (
+        <>
       <input
         value={title}
         onChange={(event) => setTitle(event.target.value)}
@@ -148,8 +220,10 @@ export function CreateSourceForm() {
         placeholder={contentType === 'article' ? 'Author or source (optional)' : 'Author'}
         className="w-full rounded-[1rem] border border-[var(--color-border)] px-3 py-2 text-slate-900"
       />
+        </>
+      ) : null}
 
-      {isBook ? (
+      {isBook && bookMode === 'new' ? (
         <div className="space-y-3 rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
           <div className="app-kicker text-slate-500">Cover</div>
 
@@ -260,7 +334,13 @@ export function CreateSourceForm() {
         disabled={isPending || submitDisabled}
         className="primary-button disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {isPending ? 'Creating...' : 'Create Content'}
+        {isPending
+          ? bookMode === 'existing'
+            ? 'Adding chapters...'
+            : 'Creating...'
+          : bookMode === 'existing'
+            ? 'Add Chapters to Book'
+            : 'Create Content'}
       </button>
     </form>
   );

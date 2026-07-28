@@ -109,7 +109,7 @@ function getStrongStoredTranslationWord(input: ResolveSafeVocabularyDrillContent
     return null;
   }
 
-  if (countTokens(candidate) > 6) {
+  if (countTokens(candidate) > 3) {
     return null;
   }
 
@@ -149,7 +149,7 @@ function deriveTranslationWord(input: ResolveSafeVocabularyDrillContentInput) {
   return (
     sanitizeTextArray(
       [
-        input.translationWord,
+        countTokens(input.translationWord) <= 3 ? input.translationWord : null,
         getStrongStoredTranslationWord(input),
       ],
       1

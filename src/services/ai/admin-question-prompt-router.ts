@@ -1,8 +1,14 @@
 export type AdminQuestionPromptRouteId =
   | "main_idea"
+  | "central_claim"
   | "detail"
   | "inference"
+  | "command_of_evidence"
+  | "function"
+  | "text_structure"
   | "tone"
+  | "cause_effect"
+  | "summary"
   | "vocabulary_in_context"
   | "meaning_in_context"
   | "translation"
@@ -58,6 +64,39 @@ export const QUESTION_PROMPT_MAP: Record<AdminQuestionPromptRouteId, QuestionPro
     ],
     outputHint:
       "When possible, keep one distractor in each of these exact trap buckets: too_broad, too_narrow, misinterpretation.",
+  },
+  central_claim: {
+    id: "central_claim",
+    category: "reading",
+    canonicalQuestionType: "central_claim",
+    goal: "Test the author's central claim or controlling idea, distinct from the broader purpose of the passage.",
+    reasoningFocus: [
+      "Make the student identify what the passage actually argues or establishes.",
+      "Keep the correct answer narrower than a main-purpose answer but broader than a detail.",
+      "Force attention to the author's claim, not merely the passage topic.",
+    ],
+    answerRules: [
+      "All options must be plausible claims about the passage's subject.",
+      "The correct answer must state the best-supported central claim.",
+      "Avoid options that are only themes, topics, or isolated facts.",
+    ],
+    distractorPatterns: [
+      "topic_only: names the subject but not the claim",
+      "too_narrow: turns one detail into the main claim",
+      "distorted_claim: sounds argumentative but reverses or warps the passage's point",
+    ],
+    requiredDistractorTypes: ["topic_only", "too_narrow", "distorted_claim"],
+    styleNormalization: [
+      "Keep all options claim-like and parallel in abstraction.",
+      "Avoid making the correct answer the only option with a clear verb or thesis shape.",
+    ],
+    validationRules: [
+      "At least two distractors should sound like possible claims until the passage logic is checked.",
+      "Reject options that can be eliminated only because they are not grammatically claim-like.",
+      "If the correct answer is just a main idea paraphrase, sharpen it into a claim.",
+    ],
+    outputHint:
+      "Use this when the passage argues, evaluates, or establishes a position rather than merely describing a topic.",
   },
   detail: {
     id: "detail",
@@ -124,6 +163,105 @@ export const QUESTION_PROMPT_MAP: Record<AdminQuestionPromptRouteId, QuestionPro
     outputHint:
       "Keep all options plausible for a student who half-understands the evidence trail.",
   },
+  command_of_evidence: {
+    id: "command_of_evidence",
+    category: "reading",
+    canonicalQuestionType: "command_of_evidence",
+    goal: "Test which piece of textual evidence best supports a claim or inference.",
+    reasoningFocus: [
+      "Make the student connect an answer to the strongest supporting evidence.",
+      "Use short quoted or paraphrased evidence snippets from the passage as answer choices.",
+      "The best answer should support the specific claim in the question, not just relate to the topic.",
+    ],
+    answerRules: [
+      "All options must be evidence-like and grounded in the passage.",
+      "The correct answer must directly support the asked claim or inference.",
+      "Distractors should be true or text-adjacent but support a different point.",
+    ],
+    distractorPatterns: [
+      "true_but_wrong_claim: accurate evidence that supports another idea",
+      "nearby_context: adjacent text that does not prove the claim",
+      "keyword_trap: repeats key words without supporting the reasoning",
+    ],
+    requiredDistractorTypes: ["true_but_wrong_claim", "nearby_context", "keyword_trap"],
+    styleNormalization: [
+      "Keep evidence choices similar in length and form.",
+      "Avoid one option being the only direct quote if the others are paraphrases, or vice versa.",
+    ],
+    validationRules: [
+      "At least two evidence choices should feel relevant before careful reasoning.",
+      "Reject answer sets where the correct evidence is the only option from the relevant paragraph.",
+      "The explanation must name why the evidence proves the claim.",
+    ],
+    outputHint:
+      "Phrase the question as evidence selection, for example: Which choice best supports the conclusion that...?",
+  },
+  function: {
+    id: "function",
+    category: "reading",
+    canonicalQuestionType: "function",
+    goal: "Test the rhetorical role of a sentence, detail, example, or paragraph.",
+    reasoningFocus: [
+      "Make the student explain why the author included a specific element.",
+      "Tie the correct answer to the passage's structure or argument.",
+      "Avoid asking what the element says; ask what it does.",
+    ],
+    answerRules: [
+      "All options must describe rhetorical functions, not content summaries.",
+      "The correct answer must explain the role of the referenced element in context.",
+      "Distractors should describe plausible functions that do not match this passage.",
+    ],
+    distractorPatterns: [
+      "content_summary: states what the line says instead of what it does",
+      "wrong_function: plausible rhetorical role but not the actual one",
+      "scope_shift: describes the role of a larger or smaller section",
+    ],
+    requiredDistractorTypes: ["content_summary", "wrong_function", "scope_shift"],
+    styleNormalization: [
+      "Start options with parallel function verbs when possible.",
+      "Keep all options at the same level of abstraction.",
+    ],
+    validationRules: [
+      "Reject any option set where only the correct answer is phrased as a function.",
+      "At least two distractors should sound rhetorically plausible.",
+      "The explanation must connect the element to surrounding passage logic.",
+    ],
+    outputHint:
+      "Use wording like: The sentence primarily serves to... or The example is included mainly to...",
+  },
+  text_structure: {
+    id: "text_structure",
+    category: "reading",
+    canonicalQuestionType: "text_structure",
+    goal: "Test how the passage or a section is organized.",
+    reasoningFocus: [
+      "Make the student track progression, contrast, cause/effect, problem/solution, or claim/evidence.",
+      "The correct answer should describe the movement of ideas, not just the topic.",
+      "Distractors should capture partial structure but miss the whole development.",
+    ],
+    answerRules: [
+      "All options must describe organizational patterns.",
+      "The correct answer must match the order and relationship of ideas in the passage.",
+      "Avoid one option that is much more complete or nuanced than all others.",
+    ],
+    distractorPatterns: [
+      "partial_structure: describes only one section",
+      "reversed_order: gets the relationship but reverses the sequence",
+      "wrong_relationship: substitutes contrast, cause, example, or claim/evidence incorrectly",
+    ],
+    requiredDistractorTypes: ["partial_structure", "reversed_order", "wrong_relationship"],
+    styleNormalization: [
+      "Keep all options as structural descriptions.",
+      "Use parallel verbs such as introduces, contrasts, explains, illustrates, challenges.",
+    ],
+    validationRules: [
+      "At least two options should feel possible without rereading the whole passage.",
+      "Reject any set where the correct answer is the only two-part structure.",
+      "The explanation must mention the actual sequence of ideas.",
+    ],
+    outputHint:
+      "Use when a passage has clear development across paragraphs or sentence groups.",
+  },
   tone: {
     id: "tone",
     category: "reading",
@@ -154,6 +292,72 @@ export const QUESTION_PROMPT_MAP: Record<AdminQuestionPromptRouteId, QuestionPro
     ],
     outputHint:
       "Make tone distractors subtle, not cartoonish, so they feel genuinely arguable at first glance.",
+  },
+  cause_effect: {
+    id: "cause_effect",
+    category: "reading",
+    canonicalQuestionType: "cause_effect",
+    goal: "Test causal or consequential relationships stated or strongly implied by the passage.",
+    reasoningFocus: [
+      "Make the student identify why something happened or what resulted from it.",
+      "Tie the correct answer to passage logic, not outside knowledge.",
+      "Distractors should confuse sequence, correlation, and causation.",
+    ],
+    answerRules: [
+      "All options must be plausible causes or effects.",
+      "The correct answer must reflect the passage's causal logic.",
+      "Avoid options that merely repeat events without explaining the relationship.",
+    ],
+    distractorPatterns: [
+      "sequence_not_cause: happened nearby but did not cause the result",
+      "reversed_causality: swaps cause and effect",
+      "outside_reasoning: plausible from background knowledge but unsupported by the passage",
+    ],
+    requiredDistractorTypes: ["sequence_not_cause", "reversed_causality", "outside_reasoning"],
+    styleNormalization: [
+      "Keep all options causally phrased.",
+      "Avoid one option having a uniquely explicit because/therefore structure.",
+    ],
+    validationRules: [
+      "At least two distractors should be tempting causal explanations.",
+      "Reject any answer set where the correct answer is the only option mentioned in the passage.",
+      "The explanation must identify the causal link in the text.",
+    ],
+    outputHint:
+      "Use wording like: The passage suggests that X occurred primarily because...",
+  },
+  summary: {
+    id: "summary",
+    category: "reading",
+    canonicalQuestionType: "summary",
+    goal: "Test whether the student can compress the passage or section into the best concise summary.",
+    reasoningFocus: [
+      "Make the student include the central point and key development while excluding minor detail.",
+      "The correct answer should be concise but complete.",
+      "Distractors should be too narrow, too broad, or misweighted.",
+    ],
+    answerRules: [
+      "All options must read like summaries.",
+      "The correct answer must capture the central idea and major development.",
+      "Avoid one option being obviously longer or more polished.",
+    ],
+    distractorPatterns: [
+      "too_narrow: summarizes only one detail or section",
+      "too_broad: makes a general statement beyond the passage",
+      "misweighted: emphasizes a secondary point as if it were central",
+    ],
+    requiredDistractorTypes: ["too_narrow", "too_broad", "misweighted"],
+    styleNormalization: [
+      "Keep all summaries similar in length and abstraction.",
+      "Avoid quoting passage wording in only one option.",
+    ],
+    validationRules: [
+      "At least two summaries should sound viable until scope is checked.",
+      "Reject any option that introduces outside information.",
+      "The explanation must mention why the correct summary has the right scope.",
+    ],
+    outputHint:
+      "Use for passages with enough development to summarize meaningfully.",
   },
   vocabulary_in_context: {
     id: "vocabulary_in_context",
@@ -351,9 +555,15 @@ export type UnifiedPromptRouter = {
 
 const DEFAULT_PROMPT_ROUTES = [
   "main_idea",
+  "central_claim",
   "detail",
   "inference",
+  "command_of_evidence",
+  "function",
+  "text_structure",
   "tone",
+  "cause_effect",
+  "summary",
   "vocabulary_in_context",
   "definition",
   "translation",
@@ -367,6 +577,30 @@ export function getPromptRoute(value: string | null | undefined): AdminQuestionP
 
   if (normalized.includes("main")) {
     return "main_idea";
+  }
+
+  if (normalized.includes("central") || normalized.includes("claim")) {
+    return "central_claim";
+  }
+
+  if (normalized.includes("evidence")) {
+    return "command_of_evidence";
+  }
+
+  if (normalized.includes("function") || normalized.includes("rhetorical") || normalized.includes("role")) {
+    return "function";
+  }
+
+  if (normalized.includes("structure") || normalized.includes("organization")) {
+    return "text_structure";
+  }
+
+  if (normalized.includes("cause") || normalized.includes("effect")) {
+    return "cause_effect";
+  }
+
+  if (normalized.includes("summary") || normalized.includes("summar")) {
+    return "summary";
   }
 
   if (normalized.includes("detail")) {
