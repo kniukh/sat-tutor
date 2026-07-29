@@ -3,6 +3,7 @@ import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/st
 import {
   getOrCreateStudentLessonState,
   updateStudentLessonStage,
+  isLessonFlowError,
   type LessonStage,
 } from '@/services/lesson-state/lesson-state.service';
 
@@ -48,13 +49,16 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ data });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (isLessonFlowError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
 
     return NextResponse.json(
-      { error: error?.message ?? 'Stage update failed' },
+      { error: error instanceof Error ? error.message : 'Stage update failed' },
       { status: 500 },
     );
   }

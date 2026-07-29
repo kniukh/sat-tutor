@@ -131,7 +131,8 @@ function normalizeVocabQuestionType(value: string) {
 
 function normalizeQuestion(
   item: Record<string, unknown>,
-  bucket: "sat" | "vocab"
+  bucket: "sat" | "vocab",
+  desiredCorrectKey: "A" | "B" | "C" | "D"
 ): LessonGenerationQuestion {
   const question_type =
     bucket === "sat"
@@ -188,7 +189,7 @@ function normalizeQuestion(
 
   return shuffleQuestionOptions({
     ...normalizedQuestion,
-  });
+  }, desiredCorrectKey);
 }
 
 function validatePackageShape(pkg: ChunkLessonPackage) {
@@ -224,6 +225,13 @@ function validatePackageShape(pkg: ChunkLessonPackage) {
     throw new Error("Expected 3 SAT questions");
   }
 
+  const selectedQuestionTypes = pkg.sat_questions
+    .slice(0, 3)
+    .map((question) => normalizeSatQuestionType(String(question.question_type ?? "")));
+  if (new Set(selectedQuestionTypes).size !== 3) {
+    throw new Error("Expected 3 distinct SAT question types");
+  }
+
   if (!Array.isArray(pkg.vocab_questions) || pkg.vocab_questions.length < 1) {
     throw new Error("Expected 1 vocabulary question");
   }
@@ -235,6 +243,7 @@ export async function generateChunkLessonPackage(input: {
   passageText: string;
   sourceType?: string | null;
   cachedAnalysis?: ChunkLessonAnalysis | null;
+  recentQuestionTypes?: string[];
 }) {
   const sourceType = (input.sourceType ?? "book").toLowerCase();
   const contentMode =
@@ -286,6 +295,19 @@ Keep these analysis fields unchanged in the final JSON unless a field would othe
 `
     : "";
 
+  const recentQuestionTypesBlock =
+    input.recentQuestionTypes && input.recentQuestionTypes.length > 0
+      ? `
+Recent question types in this chapter:
+${input.recentQuestionTypes.join(", ")}
+
+Use these only as a diversity signal:
+- prefer an equally suitable underused type over a recently repeated type
+- never choose a weak or unsupported type merely to increase variety
+- passage fit remains the primary criterion
+`
+      : "";
+
   const prompt = `
 You are an expert SAT curriculum designer building a lesson package from one clean reading chunk.
 
@@ -318,6 +340,7 @@ ${renderAdminQuestionPromptRouter({
 })} 
 
 ${cachedAnalysisBlock}
+${recentQuestionTypesBlock}
 
 Global rules:
 - Return ONLY valid JSON object.
@@ -344,6 +367,10 @@ Use that analysis to decide what to ask. Do not write recall-only questions.`
   - no obvious elimination by tone or length
   - at least 2 answer choices should remain plausible on a careful read
   - if an answer can be chosen by keyword matching alone, rewrite the question
+- Before choosing question types, score every eligible type internally for passage fit.
+- Rank recommended_question_types from strongest to weakest fit.
+- Do not automatically include main_idea or central_claim.
+- Use only types supported by specific features of this chunk.
 
 Analysis rules:
 - passage_role: assessment | context | bridge
@@ -377,14 +404,22 @@ ${literaryGuidance}
   - tone
   - cause_effect
   - summary
-- For every chunk, include:
-  - one global question: main_idea or central_claim
-  - one reasoning question: inference or detail
-  - one craft/evidence question: command_of_evidence, function, text_structure, tone, cause_effect, or summary
+- Choose the 3 strongest distinct question types for this specific chunk.
+- The three questions do not need to represent fixed buckets.
+- Prefer relevance over mechanical balance, while avoiding unnecessary repetition of recent chapter types.
+- Official SAT skill mapping:
+  - Central Ideas and Details: main_idea, central_claim, detail, summary
+  - Inferences: inference, cause_effect
+  - Command of Evidence: command_of_evidence
+  - Text Structure and Purpose: function, text_structure, tone
+- Tone is an internal subtype of Text Structure and Purpose, not a separate official SAT skill.
+- Cross-Text Connections are not eligible because this package receives only one chunk.
 - For each SAT question_type you choose, follow the matching route from the unified prompt router.
 - Make the correct answer require real understanding, not keyword spotting.
 - Wrong answers should reflect realistic student traps such as too broad, too narrow, misinterpretation, or keyword trap when they fit.
 - Prefer questions that require weighing the best answer rather than recalling a phrase.
+- In explanations, refer to answer choices as option A, option B, option C, or option D.
+- Never use a bare answer letter as an English article or abbreviation in an explanation.
 
 Vocabulary question rules:
 - Generate exactly 1 vocabulary question.
@@ -398,6 +433,7 @@ Vocabulary question rules:
 - Base the correct answer on this context, not just a generic dictionary meaning.
 - Do not use random or obviously wrong distractors.
 - Make answer choices close enough that the student must really understand the contextual meaning.
+- In explanations, refer to answer choices as option A, option B, option C, or option D.
 
 JSON shape:
 {
@@ -507,9 +543,17 @@ ${input.passageText}
     recommended_vocab_target_phrases: input.cachedAnalysis
       ? input.cachedAnalysis.recommended_vocab_target_phrases
       : normalizeStringArray(parsed.recommended_vocab_target_phrases),
-    sat_questions: parsed.sat_questions.slice(0, 3).map((item) => normalizeQuestion(item as Record<string, unknown>, "sat")),
+    sat_questions: parsed.sat_questions
+      .slice(0, 3)
+      .map((item, index) =>
+        normalizeQuestion(
+          item as Record<string, unknown>,
+          "sat",
+          (["A", "B", "C"] as const)[index]
+        )
+      ),
     vocab_questions: parsed.vocab_questions
       .slice(0, 1)
-      .map((item) => normalizeQuestion(item as Record<string, unknown>, "vocab")),
+      .map((item) => normalizeQuestion(item as Record<string, unknown>, "vocab", "D")),
   } satisfies ChunkLessonPackage;
 }

@@ -249,8 +249,12 @@ function getRepeatedWordBonus(mode: VocabSessionMode) {
   return -4;
 }
 
-function makeSessionId(mode: VocabSessionMode, seed: string) {
-  return `vocab-session:${mode}:${hashString(seed).toString(36)}`;
+function makeSessionId(mode: VocabSessionMode) {
+  const instanceId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `vocab-session:${mode}:${instanceId}`;
 }
 
 type SessionRotationRecipeId =
@@ -295,16 +299,11 @@ const SESSION_ROTATION_RECIPES: SessionRotationRecipe[] = [
       "translation_match",
       "listen_match",
     ],
-    reinforcementTypeSlots: [
-      "sentence_builder",
-      "collocation",
-      "synonym",
-    ],
+    reinforcementTypeSlots: ["collocation", "synonym"],
   },
   {
     id: "production_precision",
     anchorTypeSlots: [
-      "sentence_builder",
       "fill_blank",
       "collocation",
       "listen_match",
@@ -312,11 +311,7 @@ const SESSION_ROTATION_RECIPES: SessionRotationRecipe[] = [
       "spelling_from_audio",
       "context_meaning",
     ],
-    reinforcementTypeSlots: [
-      "sentence_builder",
-      "spelling_from_audio",
-      "context_meaning",
-    ],
+    reinforcementTypeSlots: ["spelling_from_audio", "context_meaning"],
   },
 ];
 
@@ -620,8 +615,7 @@ function chooseExerciseForWordEntry(params: {
         (
           candidate.type === "context_meaning" ||
           candidate.type === "fill_blank" ||
-          candidate.type === "collocation" ||
-          candidate.type === "sentence_builder"
+          candidate.type === "collocation"
         )
       ) {
         score += 4;
@@ -776,8 +770,7 @@ function scoreWordEntry(params: {
       candidate.type === "context_meaning" ||
       candidate.type === "fill_blank" ||
       candidate.type === "collocation" ||
-      candidate.type === "pair_match" ||
-      candidate.type === "sentence_builder"
+      candidate.type === "pair_match"
     ) &&
     index >= 2
   ) {
@@ -791,8 +784,7 @@ function scoreWordEntry(params: {
       candidate.type === "context_meaning" ||
       candidate.type === "fill_blank" ||
       candidate.type === "collocation" ||
-      candidate.type === "pair_match" ||
-      candidate.type === "sentence_builder"
+      candidate.type === "pair_match"
     )
   ) {
     score += 4;
@@ -1475,10 +1467,7 @@ export function buildVocabExerciseSession({
   );
 
   return {
-    session_id: makeSessionId(
-      mode,
-      `${seed}:${touchPolicy.anchorWordTarget}:${requestedSize}:${uniquePool.length}`
-    ),
+    session_id: makeSessionId(mode),
     mode,
     exercise_ids: chosen.map((item) => item.id),
     ordered_exercises: chosen,

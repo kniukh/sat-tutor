@@ -32,16 +32,29 @@ Return ONLY valid JSON object with:
 - question_strategy: full_set | light_check | none
 - recommended_question_count: integer
 - recommended_question_types: array of strings
-- analyzer_reason: short explanation
+- analyzer_reason: short explanation of why the selected types fit this passage
 
 Rules:
 - assessment = rich enough for 3-5 meaningful SAT-style questions
 - context = important for story continuity, but only 1-2 light questions
 - bridge = should usually have no questions
 - dialogue-heavy or low-analytic passages often become context or bridge
-- recommended_question_types can include:
+- Evaluate every eligible reading skill before choosing.
+- Rank recommended_question_types from strongest to weakest fit.
+- Recommend only types that the passage can support with one clearly best answer.
+- Do not include main_idea or central_claim automatically.
+- Prefer 2-3 distinct reading types for assessment passages and 1-2 for context passages.
+- Eligible reading types:
   main_idea, central_claim, detail, inference, command_of_evidence, function,
-  text_structure, tone, cause_effect, summary, vocabulary_in_context
+  text_structure, tone, cause_effect, summary
+- vocabulary_in_context may be added only when context determines a useful, non-trivial word or phrase.
+- SAT skill mapping:
+  - Central Ideas and Details: main_idea, central_claim, detail, summary
+  - Inferences: inference, cause_effect
+  - Command of Evidence: command_of_evidence
+  - Text Structure and Purpose: function, text_structure, tone
+  - Words in Context: vocabulary_in_context
+- Do not recommend Cross-Text Connections unless two separate passages are provided.
 
 Passage title:
 ${input.title ?? 'Untitled'}

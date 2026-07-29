@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ExercisePlayer,
@@ -52,11 +52,27 @@ export default function VocabSessionPlayer({
   const [currentCombo, setCurrentCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [floatingReward, setFloatingReward] = useState<FloatingReward | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isRetryingSave, setIsRetryingSave] = useState(false);
   const pendingAttemptSavesRef = useRef<Set<Promise<void>>>(new Set());
+  const failedAttemptResultsRef = useRef<Map<string, ExerciseResult>>(new Map());
   const captureLessonId =
     typeof (session.metadata as Record<string, unknown>)?.lesson_id === "string"
       ? ((session.metadata as Record<string, unknown>).lesson_id as string)
       : null;
+
+  useEffect(() => {
+    if (!isFinalizingReward && pendingAttemptSavesRef.current.size === 0) {
+      return;
+    }
+
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [isFinalizingReward, completedResults.length]);
 
   function isAlreadyKnownResult(result: ExerciseResult) {
     return Boolean(result.metadata?.already_known);
@@ -101,6 +117,8 @@ export default function VocabSessionPlayer({
             sameSessionCreditCapped: false,
           },
         ]);
+        failedAttemptResultsRef.current.delete(result.client_attempt_id);
+        setSaveError(null);
 
         return;
       }
@@ -113,6 +131,8 @@ export default function VocabSessionPlayer({
 
       const saved = persisted.attempt;
       if (saved) {
+        failedAttemptResultsRef.current.delete(result.client_attempt_id);
+        setSaveError(null);
         setProgressSignals((prev) => [
           ...prev,
           {
@@ -163,20 +183,104 @@ export default function VocabSessionPlayer({
           });
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to persist vocab exercise attempt', error);
+      failedAttemptResultsRef.current.set(result.client_attempt_id, result);
+      setSaveError(error instanceof Error ? error.message : 'Progress was not saved.');
+      throw error;
     }
+  }
+
+  async function retryFailedSaves() {
+    const failedResults = Array.from(failedAttemptResultsRef.current.values());
+    setIsRetryingSave(true);
+    try {
+      if (failedResults.length > 0) {
+        await Promise.all(failedResults.map((result) => submitExerciseAttempt(result)));
+      }
+      if (done && completedResults.length > 0) {
+        await Promise.all(
+          completedResults.map((result) => submitExerciseAttempt(result))
+        );
+      }
+      if (failedAttemptResultsRef.current.size === 0) {
+        setSaveError(null);
+        if (done) {
+          const pendingSaves = Array.from(pendingAttemptSavesRef.current);
+          if (pendingSaves.length > 0) {
+            await Promise.allSettled(pendingSaves);
+          }
+          const scoredResults = completedResults.filter(
+            (result) => !isAlreadyKnownResult(result)
+          );
+          const correctCount = scoredResults.filter((result) => result.is_correct).length;
+          const reward = await finalizeCheckpoint({
+            completedCount: scoredResults.length,
+            correctCount,
+            accuracy:
+              scoredResults.length > 0
+                ? Math.round((correctCount / scoredResults.length) * 100)
+                : 0,
+          });
+          setRewardCredit(reward);
+          setSessionXpEarned((prev) => prev + Math.max(0, Number(reward?.xp?.totalXp ?? 0)));
+        }
+      }
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Checkpoint was not saved.");
+    } finally {
+      setIsRetryingSave(false);
+    }
+  }
+
+  async function finalizeCheckpoint(params: {
+    completedCount: number;
+    correctCount: number;
+    accuracy: number;
+  }) {
+    const retryDelaysMs = [0, 350, 900, 1_800];
+    let lastError: unknown = null;
+
+    for (const delayMs of retryDelaysMs) {
+      if (delayMs > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+      }
+
+      try {
+        return await finalizeVocabularySession({
+          studentId,
+          sessionId: session.session_id,
+          sessionMode: session.mode,
+          ...params,
+        });
+      } catch (error) {
+        lastError = error;
+        const isAttemptSaveRace =
+          error instanceof Error &&
+          error.message.includes("attempts are still being saved");
+        if (!isAttemptSaveRace) {
+          throw error;
+        }
+      }
+    }
+
+    throw lastError;
   }
 
   function handleExerciseComplete(result: ExerciseResult) {
     const pendingSave = submitExerciseAttempt(result);
     pendingAttemptSavesRef.current.add(pendingSave);
-    pendingSave.finally(() => {
-      pendingAttemptSavesRef.current.delete(pendingSave);
-    });
+    void pendingSave.then(
+      () => pendingAttemptSavesRef.current.delete(pendingSave),
+      () => pendingAttemptSavesRef.current.delete(pendingSave)
+    );
 
     startTransition(async () => {
-      await pendingSave;
+      try {
+        await pendingSave;
+      } catch {
+        // submitExerciseAttempt already exposes a persistent retry state in the UI.
+      }
     });
   }
 
@@ -195,11 +299,16 @@ export default function VocabSessionPlayer({
         if (pendingSaves.length > 0) {
           await Promise.allSettled(pendingSaves);
         }
+        // Reconcile the complete client result set before finalization. Attempt
+        // writes are idempotent by client_attempt_id, so this also closes races
+        // caused by fast navigation through the final feedback screen.
+        await Promise.all(results.map((result) => submitExerciseAttempt(result)));
+        if (failedAttemptResultsRef.current.size > 0) {
+          setSaveError('Some answers were not saved. Retry before finishing the session.');
+          return;
+        }
 
-        const reward = await finalizeVocabularySession({
-          studentId,
-          sessionId: session.session_id,
-          sessionMode: session.mode,
+        const reward = await finalizeCheckpoint({
           completedCount,
           correctCount,
           accuracy,
@@ -208,6 +317,7 @@ export default function VocabSessionPlayer({
         setSessionXpEarned((prev) => prev + Math.max(0, Number(reward?.xp?.totalXp ?? 0)));
       } catch (error) {
         console.error('Failed to finalize vocabulary session reward', error);
+        setSaveError(error instanceof Error ? error.message : 'Checkpoint was not saved.');
       } finally {
         router.refresh();
       }
@@ -236,6 +346,19 @@ export default function VocabSessionPlayer({
 
     return (
       <div className="space-y-4">
+        {saveError ? (
+          <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+            <p>{saveError}</p>
+            <button
+              type="button"
+              onClick={retryFailedSaves}
+              disabled={isRetryingSave}
+              className="mt-3 rounded-xl bg-rose-700 px-3 py-2 font-semibold text-white disabled:opacity-60"
+            >
+              {isRetryingSave ? 'Saving…' : 'Retry saving progress'}
+            </button>
+          </div>
+        ) : null}
         <VocabularySessionResults
           session={session}
           results={completedResults}
@@ -244,7 +367,8 @@ export default function VocabSessionPlayer({
           progressSignals={progressSignals}
           rewardCredit={rewardCredit}
           sessionGamification={sessionGamification}
-          isRewardPending={isFinalizingReward}
+          isRewardPending={isFinalizingReward || isRetryingSave}
+          isCompletionBlocked={isFinalizingReward || isRetryingSave || Boolean(saveError)}
           focused={focused}
         />
       </div>
@@ -253,6 +377,22 @@ export default function VocabSessionPlayer({
 
   return (
     <div>
+      {saveError ? (
+        <div
+          role="alert"
+          className="fixed inset-x-4 top-3 z-50 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm text-rose-800 shadow-lg"
+        >
+          <span>{saveError}</span>
+          <button
+            type="button"
+            onClick={retryFailedSaves}
+            disabled={isRetryingSave}
+            className="shrink-0 rounded-xl bg-rose-700 px-3 py-2 font-semibold text-white disabled:opacity-60"
+          >
+            {isRetryingSave ? 'Saving…' : 'Retry'}
+          </button>
+        </div>
+      ) : null}
       <ExercisePlayer
         exercises={session.ordered_exercises}
         sessionId={session.session_id}

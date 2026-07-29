@@ -1,32 +1,14 @@
 import Link from "next/link";
 import { studentBookLibraryPath, studentDashboardPath } from "@/lib/routes/student";
 import { getBookDetailData } from "@/services/reading/book-detail.service";
+import ReadingCoachBrand from "@/components/student/ReadingCoachBrand";
 
-function getStatusClasses(status: "completed" | "current" | "available") {
-  if (status === "current") {
-    return {
-      card: "border-slate-900 bg-slate-900 text-white",
-      badge: "bg-white text-slate-950",
-      meta: "text-white/70",
-      button: "secondary-button bg-white text-slate-950",
-    };
-  }
-
-  if (status === "completed") {
-    return {
-      card: "border-[var(--color-border)] bg-[var(--color-surface-muted)] text-slate-950",
-      badge: "bg-slate-900 text-white",
-      meta: "text-slate-600",
-      button: "secondary-button",
-    };
-  }
-
-  return {
-    card: "border-[var(--color-border)] bg-white text-slate-950",
-    badge: "bg-slate-100 text-slate-700",
-    meta: "text-slate-600",
-    button: "primary-button",
-  };
+function BookGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" aria-hidden="true">
+      <path d="M3.5 5.5c3.5-1.2 6.3-.5 8.5 1.7v12c-2.2-2.2-5-2.9-8.5-1.7v-12Zm17 0c-3.5-1.2-6.3-.5-8.5 1.7v12c2.2-2.2 5-2.9 8.5-1.7v-12Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+    </svg>
+  );
 }
 
 export default async function StudentBookDetailPage({
@@ -36,141 +18,85 @@ export default async function StudentBookDetailPage({
 }) {
   const { code, sourceDocumentId } = await params;
   const data = await getBookDetailData({ accessCode: code, sourceDocumentId });
-  const progressPercent = Math.round(data.progress?.progressPercent ?? 0);
+  const progress = Math.round(data.progress?.progressPercent ?? 0);
 
   return (
-    <div className="content-shell max-w-5xl space-y-5">
-      <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-        <Link href={studentDashboardPath()} className="underline underline-offset-4">
-          Dashboard
-        </Link>
-        <span>/</span>
-        <Link href={studentBookLibraryPath()} className="underline underline-offset-4">
-          Books
-        </Link>
-      </div>
+    <div className="content-shell max-w-4xl pb-32">
+      <header className="coach-topbar">
+        <ReadingCoachBrand compact />
+        <Link href={studentBookLibraryPath()} className="coach-secondary-button">Library</Link>
+      </header>
 
-      <section className="card-surface p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="surface-soft-panel flex h-28 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem]">
-              {data.book.coverImagePath ? (
-                <img
-                  src={data.book.coverImagePath}
-                  alt={`${data.book.title} cover`}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="app-kicker token-text-muted text-center">Cover</div>
-              )}
-            </div>
-
-            <div className="min-w-0">
-              <div className="app-kicker">Book</div>
-              <h1 className="app-heading-lg mt-1">{data.book.title}</h1>
-              <p className="app-copy mt-1">{data.book.author ?? "Unknown author"}</p>
-            </div>
-          </div>
-
-          <div className="app-chip">{progressPercent}%</div>
+      <section className="coach-book-hero">
+        <Link href={studentDashboardPath()} className="coach-back-button" aria-label="Back to dashboard">←</Link>
+        <div className="coach-book-cover">
+          {data.book.coverImagePath ? (
+            <img src={data.book.coverImagePath} alt={`${data.book.title} cover`} />
+          ) : (
+            <div className="coach-cover-fallback"><BookGlyph /></div>
+          )}
         </div>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="app-card-soft p-4">
-            <div className="app-kicker token-text-muted">Progress</div>
-            <div className="token-text-primary mt-2 text-2xl font-semibold">{progressPercent}%</div>
+        <div className="min-w-0 flex-1">
+          <div className="coach-eyebrow"><BookGlyph /> Book</div>
+          <h1 className="coach-page-title !text-[clamp(1.7rem,6vw,2.7rem)]">{data.book.title}</h1>
+          <p className="coach-page-copy">{data.book.author ?? "Unknown author"}</p>
+          <div className="mt-5 flex items-center justify-between gap-3 text-sm font-bold">
+            <span>{progress}% complete</span>
+            <span className="text-slate-500">{data.progress?.completedLessonsCount ?? 0}/{data.progress?.totalLessonsCount ?? 0}</span>
           </div>
-          <div className="app-card-soft p-4">
-            <div className="app-kicker token-text-muted">Completed</div>
-            <div className="token-text-primary mt-2 text-2xl font-semibold">
-              {data.progress?.completedLessonsCount ?? 0}
-            </div>
-          </div>
-          <div className="app-card-soft p-4">
-            <div className="app-kicker token-text-muted">Lessons</div>
-            <div className="token-text-primary mt-2 text-2xl font-semibold">
-              {data.progress?.totalLessonsCount ?? 0}
-            </div>
-          </div>
+          <div className="coach-progress mt-2"><span style={{ width: `${progress}%` }} /></div>
         </div>
-
-        <div className="mt-4 progress-track">
-          <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
-        </div>
-
-        {data.continueLessonHref ? (
-          <div className="mt-5">
-            <Link href={data.continueLessonHref} className="primary-button w-full sm:w-auto">
-              Continue Reading
-            </Link>
-          </div>
-        ) : null}
       </section>
 
-      <section className="card-surface p-5 sm:p-6">
-        <div>
-          <div className="app-kicker">Reading Path</div>
-          <h2 className="app-heading-md mt-1">Lessons by chapter</h2>
+      <main className="coach-path">
+        {data.chapters.map((chapter, chapterIndex) => (
+          <section key={`${chapter.chapterIndex}-${chapter.chapterTitle}`} className="coach-chapter">
+            <header className="coach-chapter-header">
+              <span className="text-blue-600"><BookGlyph /></span>
+              <div>
+                <h2>Chapter {chapter.chapterIndex ?? chapterIndex + 1}</h2>
+                <p>{chapter.chapterTitle.replace(/^Chapter\s*\d+\s*[—:-]?\s*/i, "") || "Reading journey"}</p>
+              </div>
+            </header>
+
+            <div className="coach-path-list">
+              {chapter.lessons.map((lesson, index) => {
+                const locked = lesson.status === "locked";
+                const node = (
+                  <span className={`coach-path-node coach-path-node--${lesson.status}`}>
+                    {lesson.status === "completed" ? "✓" : locked ? "🔒" : index + 1}
+                  </span>
+                );
+                return (
+                  <div key={lesson.lessonId} className={`coach-path-step coach-path-step--${index % 2 ? "right" : "left"}`}>
+                    {locked ? node : <Link href={lesson.href} aria-label={`${lesson.status}: ${lesson.name}`}>{node}</Link>}
+                    <div className={`coach-path-label coach-path-label--${lesson.status}`}>
+                      <strong>{lesson.name.replace(/^Chapter\s*\d+\s*[—:-]\s*/i, "")}</strong>
+                      <span>
+                        {lesson.status === "completed" ? "Completed · Replay anytime" :
+                          lesson.status === "current" ? "You’re here · Continue reading" :
+                          lesson.status === "locked" ? "Complete the previous part to unlock" : "Available"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="coach-checkpoint">
+                <div className="coach-checkpoint-icon">🏆</div>
+                <div><strong>Chapter checkpoint</strong><span>Complete the chapter and celebrate your progress.</span></div>
+              </div>
+            </div>
+          </section>
+        ))}
+      </main>
+
+      {data.continueLessonHref ? (
+        <div className="coach-sticky-action">
+          <Link href={data.continueLessonHref} className="coach-primary-button">
+            <BookGlyph /> Continue reading <span>›</span>
+          </Link>
         </div>
-
-        {data.chapters.length === 0 ? (
-          <div className="mt-5 app-card-soft p-5">
-            <div className="app-copy">No lessons are available for this book yet.</div>
-          </div>
-        ) : (
-          <div className="mt-5 space-y-6">
-            {data.chapters.map((chapter) => (
-              <section
-                key={`${chapter.chapterIndex ?? "none"}-${chapter.chapterTitle}`}
-                className="space-y-3"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-px flex-1 bg-[var(--color-border)]" />
-                  <div className="app-chip">{chapter.chapterTitle}</div>
-                  <div className="h-px flex-1 bg-[var(--color-border)]" />
-                </div>
-
-                <div className="space-y-3">
-                  {chapter.lessons.map((lesson) => {
-                    const styles = getStatusClasses(lesson.status);
-
-                    return (
-                      <article
-                        key={lesson.lessonId}
-                        className={`rounded-[1.5rem] border p-4 ${styles.card}`}
-                      >
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${styles.badge}`}>
-                                {lesson.status === "completed"
-                                  ? "Completed"
-                                  : lesson.status === "current"
-                                    ? "Current"
-                                    : "Available"}
-                              </span>
-                            </div>
-
-                            <h3 className="mt-3 text-lg font-semibold">{lesson.name}</h3>
-                            <p className={`mt-1 text-sm ${styles.meta}`}>
-                              {chapter.chapterTitle}
-                              {lesson.displayOrder !== null ? ` · Lesson ${lesson.displayOrder}` : ""}
-                            </p>
-                          </div>
-
-                          <Link href={lesson.href} className={styles.button}>
-                            {lesson.status === "current" ? "Continue" : "Open Lesson"}
-                          </Link>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
-      </section>
+      ) : null}
     </div>
   );
 }

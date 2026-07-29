@@ -91,7 +91,6 @@ export const SESSION_PREFERRED_TYPE_ORDER_BY_MODE: Record<
     "synonym",
     "fill_blank",
     "context_meaning",
-    "sentence_builder",
   ],
   review_weak_words: [
     "meaning_match",
@@ -334,7 +333,6 @@ export const SESSION_PROGRESSION_RULES: Record<
       "fill_blank",
       "spelling_from_audio",
       "synonym",
-      "sentence_builder",
     ],
   },
   weak_word_retry: {
@@ -431,7 +429,7 @@ export const SESSION_DEFAULT_DIFFICULTY_BY_TYPE: Record<
   listen_match: 1,
   spelling_from_audio: 3,
   fill_blank: 2,
-  sentence_builder: 3,
+  sentence_builder: 0,
   error_detection: 3,
   context_meaning: 3,
   synonym: 2,

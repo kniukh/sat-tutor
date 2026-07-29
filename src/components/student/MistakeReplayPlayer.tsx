@@ -5,7 +5,6 @@ import Link from "next/link";
 import { studentMistakeBrainPath, studentVocabularyPath } from "@/lib/routes/student";
 import { persistExerciseAttempt } from "@/services/vocabulary/exercise-attempt-client.service";
 import type {
-  MistakeReplayItem,
   MistakeReplaySessionData,
   MistakeReplayVocabularyItem,
 } from "@/services/analytics/mistake-replay.service";
@@ -193,6 +192,10 @@ export default function MistakeReplayPlayer({
           studentId: data.student.id,
           exercise,
           result: {
+            client_attempt_id:
+              typeof crypto !== "undefined" && "randomUUID" in crypto
+                ? crypto.randomUUID()
+                : `${item.retry.sessionId}:${item.retry.exerciseId}:${Date.now()}`,
             response_time_ms: Math.max(400, Date.now() - retryStartedAtRef.current),
             session_id: item.retry.sessionId,
             exercise_id: item.retry.exerciseId,

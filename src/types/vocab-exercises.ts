@@ -290,6 +290,7 @@ export type VocabExercise =
 export type VocabExerciseAttemptMetadata = Record<string, unknown>;
 
 export type VocabExerciseResult = {
+  client_attempt_id: string;
   response_time_ms: number;
   session_id: string;
   exercise_id: string;

@@ -3,10 +3,133 @@ import type { ExerciseAttemptRow } from "@/types/vocab-tracking";
 import type { ExerciseResult } from "@/components/student/exercise-player/types";
 import {
   getExerciseAcceptableAnswers,
+  getExerciseCorrectAnswer,
+  getExerciseCorrectSequence,
   getExerciseDifficultyBand,
   getExerciseModality,
+  getExercisePairLeftId,
+  getExercisePairRightId,
+  getExercisePairs,
   type SupportedVocabExercise,
 } from "@/types/vocab-exercises";
+
+function sorted(values: string[]) {
+  return [...values].sort((a, b) => a.localeCompare(b));
+}
+
+function resolveSnapshotExercise(
+  exercises: SupportedVocabExercise[],
+  result: ExerciseResult
+) {
+  const metadata = result.metadata ?? {};
+  const candidates = [
+    result.exercise_id,
+    typeof metadata.retry_followup_exercise_id === "string"
+      ? metadata.retry_followup_exercise_id
+      : null,
+    typeof metadata.retry_source_exercise_id === "string"
+      ? metadata.retry_source_exercise_id
+      : null,
+    result.exercise_id.split(":retry")[0],
+  ].filter((value): value is string => Boolean(value));
+
+  return exercises.find((exercise) => candidates.includes(exercise.id)) ?? null;
+}
+
+function verifyResult(
+  exercise: SupportedVocabExercise,
+  result: ExerciseResult
+) {
+  const metadata = result.metadata ?? {};
+
+  if (
+    exercise.type === "pair_match" ||
+    (exercise.type === "listen_match" && getExercisePairs(exercise).length > 1)
+  ) {
+    const selected = Array.isArray(metadata.selected_pairs)
+      ? metadata.selected_pairs.map(String)
+      : [];
+    const expected = getExercisePairs(exercise).map(
+      (pair) => `${getExercisePairLeftId(pair)}::${getExercisePairRightId(pair)}`
+    );
+    return JSON.stringify(sorted(selected)) === JSON.stringify(sorted(expected));
+  }
+
+  if (exercise.type === "sentence_builder") {
+    const selected = Array.isArray(metadata.selected_tile_ids)
+      ? metadata.selected_tile_ids.map(String)
+      : [];
+    return JSON.stringify(selected) === JSON.stringify(getExerciseCorrectSequence(exercise));
+  }
+
+  if (exercise.type === "spelling_from_audio") {
+    const selected = String(result.selected_answer ?? result.user_answer ?? "")
+      .trim()
+      .toLowerCase();
+    return getExerciseAcceptableAnswers(exercise)
+      .map((answer) => answer.trim().toLowerCase())
+      .includes(selected);
+  }
+
+  const selectedOptionId =
+    typeof metadata.selected_option_id === "string"
+      ? metadata.selected_option_id
+      : "";
+  return getExerciseAcceptableAnswers(exercise).includes(selectedOptionId);
+}
+
+export async function verifyVocabularyExerciseAttempt(params: {
+  studentId: string;
+  result: ExerciseResult;
+}) {
+  const supabase = await createServerSupabaseClient();
+  const { data: session, error } = await supabase
+    .from("vocab_sessions")
+    .select("metadata, completed_at")
+    .eq("student_id", params.studentId)
+    .eq("session_id", params.result.session_id)
+    .maybeSingle<{
+      metadata: Record<string, unknown> | null;
+      completed_at: string | null;
+    }>();
+
+  if (error) throw error;
+  if (session?.completed_at) {
+    throw new Error("This vocabulary session is already complete. Start a new drill.");
+  }
+
+  const snapshot = session?.metadata?.exercise_snapshot;
+  if (!Array.isArray(snapshot)) {
+    throw new Error("Vocabulary session snapshot not found. Refresh the drill and try again.");
+  }
+
+  const exercise = resolveSnapshotExercise(
+    snapshot as SupportedVocabExercise[],
+    params.result
+  );
+  if (!exercise) {
+    throw new Error("Exercise does not belong to this vocabulary session");
+  }
+
+  return {
+    exercise,
+    result: {
+      ...params.result,
+      exercise_type: exercise.type,
+      target_word_id:
+        exercise.target_word_id ?? exercise.targetWordId ?? params.result.target_word_id,
+      target_word:
+        exercise.target_word ?? exercise.targetWord ?? params.result.target_word,
+      correct_answer: getExerciseCorrectAnswer(exercise),
+      is_correct: verifyResult(exercise, params.result),
+      response_time_ms: Math.min(
+        Math.max(Math.round(Number(params.result.response_time_ms) || 1), 1_000),
+        30 * 60 * 1_000
+      ),
+      created_at: new Date().toISOString(),
+    } satisfies ExerciseResult,
+  };
+}
 
 function inferModality(exercise: SupportedVocabExercise): ExerciseAttemptRow["modality"] {
   if (exercise.modality) {
@@ -51,6 +174,7 @@ export async function saveExerciseAttempt(params: {
   const selectedAnswer = params.result.selected_answer ?? params.result.user_answer;
 
   const row = {
+    client_attempt_id: params.result.client_attempt_id,
     student_id: params.studentId,
     lesson_id: params.result.lesson_id,
     session_id: params.result.session_id,
@@ -92,9 +216,20 @@ export async function saveExerciseAttempt(params: {
     .select()
     .single();
 
+  if (error?.code === "23505") {
+    const { data: existing, error: existingError } = await supabase
+      .from("exercise_attempts")
+      .select("*")
+      .eq("student_id", params.studentId)
+      .eq("client_attempt_id", params.result.client_attempt_id)
+      .single();
+    if (existingError) throw existingError;
+    return { attempt: existing, deduplicated: true };
+  }
+
   if (error) {
     throw error;
   }
 
-  return data;
+  return { attempt: data, deduplicated: false };
 }

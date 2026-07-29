@@ -4,6 +4,10 @@ import {
   STUDENT_SESSION_COOKIE,
   verifyStudentSessionToken,
 } from "@/lib/auth/student-session";
+import {
+  ADMIN_SESSION_COOKIE,
+  verifyAdminSessionToken,
+} from "@/lib/auth/admin-session";
 
 const CANONICAL_STUDENT_SEGMENTS = new Set([
   "book",
@@ -28,10 +32,35 @@ function buildCanonicalStudentPath(pathname: string) {
   return rest.length > 0 ? `/s/${rest.join("/")}` : "/s";
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
-  if (!pathname.startsWith("/s")) {
+  if (
+    (pathname === "/admin" ||
+      pathname.startsWith("/admin/") ||
+      pathname.startsWith("/api/admin/")) &&
+    pathname !== "/api/admin/login" &&
+    pathname !== "/admin/login"
+  ) {
+    if (
+      !(await verifyAdminSessionToken(
+        request.cookies.get(ADMIN_SESSION_COOKIE)?.value
+      ))
+    ) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-sat-admin-authenticated", "1");
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
+  }
+
+  const isStudentAppPath = pathname === "/s" || pathname.startsWith("/s/");
+
+  if (!isStudentAppPath) {
     return NextResponse.next();
   }
 
@@ -69,5 +98,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/s", "/s/:path*"],
+  matcher: ["/:path*"],
 };

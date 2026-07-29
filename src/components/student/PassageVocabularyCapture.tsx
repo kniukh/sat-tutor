@@ -80,9 +80,6 @@ export default function PassageVocabularyCapture({
   const [items, setItems] = useState<CapturedVocabularyItem[]>(presetItems);
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
-  const pendingCount = items.filter((item) => item.saveState !== "saved").length;
-  const savedCount = items.length - pendingCount;
-
   const preparingHelperText = saving
     ? "Preparing cards now. Practice details can finish loading in the background."
     : null;
@@ -245,11 +242,6 @@ export default function PassageVocabularyCapture({
               {preparingHelperText ? (
                 <div className="token-text-muted mt-0.5 text-sm">
                   {preparingHelperText}
-                </div>
-              ) : items.length > 0 ? (
-                <div className="token-text-muted mt-0.5 text-sm">
-                  {pendingCount > 0 ? `${pendingCount} pending` : "All saved"}
-                  {savedCount > 0 ? ` • ${savedCount} saved` : ""}
                 </div>
               ) : latestItem ? (
                 <div className="token-text-muted mt-0.5 truncate text-sm">

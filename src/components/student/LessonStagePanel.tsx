@@ -456,13 +456,34 @@ export default function LessonStagePanel({
     await saveReadingMetricsIfNeeded();
     await flushPendingVocabularyItems();
 
-    await fetch("/api/lesson/mark-second-read", {
+    const response = await fetch("/api/lesson/mark-second-read", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ studentId, lessonId }),
     });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.error ?? "Failed to finish the second read");
+    }
 
     setStage("questions");
+  }
+
+  async function startSecondRead() {
+    const response = await fetch("/api/lesson/advance-stage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        studentId,
+        lessonId,
+        action: "start_second_read",
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.error ?? "Failed to start the second read");
+    }
+    setStage("second_read");
   }
 
   function handleCaptured(item: CapturedVocabularyItem) {
@@ -1119,52 +1140,31 @@ export default function LessonStagePanel({
     );
   }
 
-  function renderStageProgress() {
-    const stageKey = stage === "completed" ? "questions" : stage;
-    const stageIndex = Math.max(STAGE_ORDER.indexOf(stageKey), 0);
-    const progressPercent = ((stageIndex + 1) / STAGE_ORDER.length) * 100;
+  function renderReadingAudioPlayer() {
     const showAudioControls =
-      readingView === "text" &&
       Boolean(passageAudioUrl) &&
       (stage === "first_read" || stage === "second_read");
 
+    if (!showAudioControls) {
+      return null;
+    }
+
     return (
-      <div className="reading-topbar">
-        <div className="mx-auto w-full max-w-3xl px-4 py-3 sm:px-6">
-          {showAudioControls ? (
-            <PassageAudioControls
-              audioUrl={passageAudioUrl}
-              startMs={passageAudioStartMs}
-              endMs={passageAudioEndMs}
-              passageText={passageText}
-              sentenceTimings={passageAudioSentenceTimings}
-              alignmentConfidence={passageAudioAlignmentConfidence}
-              onActiveSentenceChange={setActiveAudioSentenceText}
-              compact
-              variant="topbar"
-            />
-          ) : (
-            <>
-              <div className="token-text-muted mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.18em]">
-                <span>Reading</span>
-                <span>
-                  {stageIndex + 1}/{STAGE_ORDER.length}
-                </span>
-              </div>
-              <div className="progress-track">
-                <div
-                  className="progress-fill"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-            </>
-          )}
-        </div>
+      <div className="mb-4">
+        <PassageAudioControls
+          audioUrl={passageAudioUrl}
+          startMs={passageAudioStartMs}
+          endMs={passageAudioEndMs}
+          passageText={passageText}
+          sentenceTimings={passageAudioSentenceTimings}
+          alignmentConfidence={passageAudioAlignmentConfidence}
+          onActiveSentenceChange={setActiveAudioSentenceText}
+          compact
+        />
       </div>
     );
   }
 
-  const reviewReadyCount = localVocabItems.filter((item) => item.review_ready).length;
   const uniqueCapturedLessonWords = Array.from(
     new Map(
       capturedItems.map((item) => [getCapturedVocabularyKey(item.itemText), item.itemText.trim()])
@@ -1185,9 +1185,6 @@ export default function LessonStagePanel({
   });
 
   if (stage === "completed") {
-    const preparedCount =
-      completionResult?.vocabularyPreparation?.totalItems ?? localVocabItems.length;
-    const generatedCount = completionResult?.vocabularyPreparation?.generatedCount ?? 0;
     const skipCompletionHref =
       nextLessonId ? studentLessonPath(nextLessonId) : studentLibraryPath();
     const guidedPracticeHref = studentVocabularyDrillPath({
@@ -1204,41 +1201,10 @@ export default function LessonStagePanel({
       <div className="mx-auto max-w-2xl space-y-4">
         <div className="app-card px-5 py-6 sm:px-6">
           <div className="space-y-4">
-            <div className="space-y-1">
-              <div className="app-kicker">
-                Lesson Complete
-              </div>
+            <div>
               <h2 className="app-heading-lg">
-                {shouldPromptPractice ? "Your new words are ready" : "Ready for the next lesson"}
+                Lesson Complete
               </h2>
-              <p className="app-copy">
-                {shouldPromptPractice
-                  ? `${capturedLessonWordCount} new word${capturedLessonWordCount === 1 ? "" : "s"} came out of ${lessonName}. Do a quick intro round now so reading flows straight into practice.`
-                  : "Your reading progress is saved. Keep the momentum going with the next lesson whenever you're ready."}
-              </p>
-            </div>
-
-            <div className="token-text-secondary flex flex-wrap gap-2 text-xs font-semibold">
-              {capturedLessonWordCount > 0 ? (
-                <span className="app-chip app-chip-success">
-                  {capturedLessonWordCount} new captures
-                </span>
-              ) : null}
-              {preparedCount > 0 ? (
-                <span className="app-chip app-chip-success">
-                  {preparedCount} lesson words ready
-                </span>
-              ) : null}
-              {generatedCount > 0 ? (
-                <span className="app-chip app-chip-secondary">
-                  {generatedCount} newly prepared
-                </span>
-              ) : null}
-              {reviewReadyCount > 0 ? (
-                <span className="app-chip app-chip-success">
-                  {reviewReadyCount} ready to revisit
-                </span>
-              ) : null}
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -1327,7 +1293,6 @@ export default function LessonStagePanel({
   if (stage === "vocab_review") {
     return (
       <div className="space-y-4">
-        {renderStageProgress()}
         <VocabularyReviewCards
           items={localVocabItems}
           isHydrating={isVocabularyHydrating}
@@ -1337,7 +1302,7 @@ export default function LessonStagePanel({
           onRegenerateItem={handleRegenerateVocabularyItem}
           isAudioLoading={isVocabularyAudioLoading}
           onBackToReading={() => setStage("first_read")}
-          onDone={() => setStage("second_read")}
+          onDone={() => void startSecondRead()}
         />
       </div>
     );
@@ -1347,10 +1312,9 @@ export default function LessonStagePanel({
     return (
       <>
         <div className="reading-stage-shell pb-28">
-          {renderStageProgress()}
-
           <div className="mx-auto max-w-[42rem] px-3 pb-7 pt-2 sm:px-5">
             <div className="reading-surface px-4 py-6 sm:px-7 sm:py-8">
+              {renderReadingAudioPlayer()}
               {renderReadingViewToggle()}
               {readingView === "words" ? (
                 <VocabularyReviewCards
@@ -1410,10 +1374,9 @@ export default function LessonStagePanel({
 
   return (
     <div className="reading-stage-shell pb-32">
-      {renderStageProgress()}
-
       <div className="mx-auto max-w-[42rem] px-3 pb-7 pt-2 sm:px-5">
         <div className="reading-surface px-4 py-6 sm:px-7 sm:py-8">
+          {renderReadingAudioPlayer()}
           {renderReadingViewToggle()}
           {readingView === "words" ? (
             <VocabularyReviewCards

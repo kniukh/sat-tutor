@@ -8,23 +8,6 @@ import {
 } from "@/lib/routes/student";
 import type { StudentVocabularyAnalytics } from "@/services/analytics/vocabulary-analytics.service";
 import type { StudentWeeklyLeaderboard } from "@/services/gamification/leaderboards.service";
-import FeedbackSettingsButton from "./FeedbackSettingsButton";
-import StudentLogoutButton from "./StudentLogoutButton";
-
-function LibraryIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
-      <path
-        d="M4.5 4.75a1.75 1.75 0 011.75-1.75h7.5A1.75 1.75 0 0115.5 4.75v10.5a.75.75 0 01-1.12.65L10 13.4l-4.38 2.5a.75.75 0 01-1.12-.65V4.75z"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
-}
 
 type CurrentBook = {
   id: string;
@@ -32,264 +15,113 @@ type CurrentBook = {
   completed_lessons_count: number;
   total_lessons_count: number;
   current_lesson_id?: string | null;
-  current_stage?: string | null;
   source_documents?: {
     id: string;
     title: string;
     author?: string | null;
-    metadata?: {
-      cover_image_path?: string | null;
-    } | null;
+    metadata?: { cover_image_path?: string | null } | null;
   } | null;
 };
 
 type Props = {
   currentBooks: CurrentBook[];
   readyVocabularyCount: number;
-  gamification?: {
-    xp?: number;
-    level?: number;
-    streak_days?: number;
-  } | null;
+  gamification?: { xp?: number; level?: number; streak_days?: number } | null;
   leaderboard?: StudentWeeklyLeaderboard | null;
   vocabularyAnalytics?: StudentVocabularyAnalytics | null;
   accessCode: string;
 };
 
-function formatStageLabel(stage?: string | null) {
-  if (!stage) {
-    return null;
-  }
-
-  return stage.replace(/_/g, " ");
-}
-
-function getCoverImagePath(book: CurrentBook | null) {
-  const metadata = book?.source_documents?.metadata;
-  return metadata?.cover_image_path ?? null;
+function BookIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+      <path d="M4 5.5c3.2-1.1 5.9-.5 8 1.7v12c-2.1-2.2-4.8-2.8-8-1.7v-12Zm16 0c-3.2-1.1-5.9-.5-8 1.7v12c2.1-2.2 4.8-2.8 8-1.7v-12Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+    </svg>
+  );
 }
 
 export default function StudentDashboardOverview({
   currentBooks,
   readyVocabularyCount,
   gamification,
-  leaderboard,
   vocabularyAnalytics,
   accessCode,
 }: Props) {
-  const featuredBook = currentBooks[0] ?? null;
-  const rankLabel = leaderboard?.user?.rank ? `#${leaderboard.user.rank}` : "Not ranked yet";
-  const primaryPracticeLabel =
-    readyVocabularyCount > 0 ? "Continue Practice" : "Start Practice";
-  const readingProgress = Math.round(Number(featuredBook?.progress_percent) || 0);
-  const currentStageLabel = formatStageLabel(featuredBook?.current_stage);
-  const coverImagePath = getCoverImagePath(featuredBook);
+  const book = currentBooks[0] ?? null;
+  const progress = Math.round(Number(book?.progress_percent) || 0);
+  const cover = book?.source_documents?.metadata?.cover_image_path ?? null;
+  const captured = vocabularyAnalytics?.summary.capturedWordsCount ?? 0;
+  const mastered = vocabularyAnalytics?.summary.masteredWordsCount ?? 0;
 
   return (
-    <div className="space-y-5">
-      <section className="app-hero-panel overflow-hidden p-5 sm:p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-2">
-            <div className="app-kicker text-white/70">Progress / Competition</div>
-            <h2 className="text-[1.8rem] font-semibold leading-[1.05] tracking-[-0.03em] text-white sm:text-[2.2rem]">
-              Keep climbing.
-            </h2>
-          </div>
-
-          <div className="flex flex-col items-end gap-2 text-right">
-            <Link
-              href={studentProgressPath()}
-              className="hero-link"
-            >
-              View Leaderboard
-            </Link>
-            <Link
-              href={studentMistakeBrainPath()}
-              className="hero-link"
-            >
-              View Insights
-            </Link>
-            <FeedbackSettingsButton tone="dark" />
-            <StudentLogoutButton tone="dark" />
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="hero-stat-card">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] token-text-inverse-muted">
-              XP
-            </div>
-            <div className="mt-2 text-3xl font-semibold token-text-inverse">
-              {gamification?.xp ?? 0}
-            </div>
-          </div>
-
-          <div className="hero-stat-card">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] token-text-inverse-muted">
-              Streak
-            </div>
-            <div className="mt-2 text-3xl font-semibold token-text-inverse">
-              {gamification?.streak_days ?? 0}
-            </div>
-          </div>
-
-          <div className="hero-stat-card">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] token-text-inverse-muted">
-              Level
-            </div>
-            <div className="mt-2 text-3xl font-semibold token-text-inverse">
-              {gamification?.level ?? 1}
-            </div>
-          </div>
-
-          <div className="hero-stat-card">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] token-text-inverse-muted">
-              Leaderboard
-            </div>
-            <div className="mt-2 text-3xl font-semibold token-text-inverse">{rankLabel}</div>
-          </div>
-        </div>
+    <div className="coach-dashboard">
+      <section className="coach-stats" aria-label="Your progress">
+        <Link href={studentProgressPath()} className="coach-stat coach-stat--xp">
+          <span>XP</span><strong>{gamification?.xp ?? 0}</strong>
+        </Link>
+        <Link href={studentProgressPath()} className="coach-stat coach-stat--streak">
+          <span>🔥 Streak</span><strong>{gamification?.streak_days ?? 0} days</strong>
+        </Link>
+        <Link href={studentProgressPath()} className="coach-stat coach-stat--level">
+          <span>Level</span><strong>{gamification?.level ?? 1}</strong>
+        </Link>
       </section>
 
-      <section className="card-surface p-5 sm:p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-start gap-4">
-            {featuredBook ? (
-              <div className="surface-soft-panel flex h-24 w-18 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem]">
-                {coverImagePath ? (
-                  <img
-                    src={coverImagePath}
-                    alt={`${featuredBook.source_documents?.title ?? "Book"} cover`}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="app-kicker token-text-muted text-center">Cover</div>
-                )}
-              </div>
-            ) : null}
-
-            <div className="min-w-0">
-              <div className="app-kicker">Current Reading</div>
-              <h2 className="app-heading-md mt-1">
-                {featuredBook?.source_documents?.title ?? "No reading in progress yet"}
-              </h2>
-              {featuredBook?.source_documents?.author ? (
-                <p className="app-copy mt-1">{featuredBook.source_documents.author}</p>
-              ) : null}
-            </div>
-          </div>
+      <section className="coach-current-card">
+        <div className="coach-current-cover">
+          {cover ? (
+            <img src={cover} alt={`${book?.source_documents?.title ?? "Current book"} cover`} />
+          ) : (
+            <div className="coach-cover-fallback"><BookIcon /></div>
+          )}
         </div>
-
-        {featuredBook ? (
-          <>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="app-card-soft p-4">
-                <div className="app-kicker token-text-muted">Progress</div>
-                <div className="mt-2 text-2xl font-semibold token-text-primary">
-                  {readingProgress}%
-                </div>
+        <div className="min-w-0 flex-1">
+          <div className="coach-eyebrow"><BookIcon /> Current reading</div>
+          <h2>{book?.source_documents?.title ?? "Choose your first book"}</h2>
+          <p>{book?.source_documents?.author ?? "Your next reading journey starts here."}</p>
+          {book ? (
+            <>
+              <div className="mt-5 flex items-center justify-between gap-3 text-sm font-semibold">
+                <span>{progress}% complete</span>
+                <span className="text-slate-500">{book.completed_lessons_count}/{book.total_lessons_count} lessons</span>
               </div>
-
-              <div className="app-card-soft p-4">
-                <div className="app-kicker token-text-muted">Current Stage</div>
-                <div className="mt-2 text-2xl font-semibold capitalize token-text-primary">
-                  {currentStageLabel ?? "In progress"}
-                </div>
-              </div>
-
-              <div className="app-card-soft p-4">
-                <div className="app-kicker token-text-muted">Lessons</div>
-                <div className="mt-2 text-2xl font-semibold token-text-primary">
-                  {featuredBook.completed_lessons_count}/{featuredBook.total_lessons_count}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 progress-track">
-              <div className="progress-fill" style={{ width: `${readingProgress}%` }} />
-            </div>
-
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              {featuredBook.current_lesson_id ? (
-                <Link
-                  href={studentLessonPath(featuredBook.current_lesson_id, accessCode)}
-                  className="primary-button w-full sm:w-auto"
-                >
-                  Continue Reading
-                </Link>
-              ) : null}
-              <Link href={studentBookLibraryPath()} className="secondary-button inline-flex w-full items-center justify-center gap-2 sm:w-auto">
-                <LibraryIcon />
-                <span>Go to Library</span>
+              <div className="coach-progress mt-2"><span style={{ width: `${progress}%` }} /></div>
+            </>
+          ) : null}
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            {book?.current_lesson_id ? (
+              <Link href={studentLessonPath(book.current_lesson_id, accessCode)} className="coach-primary-button">
+                <BookIcon /> Continue reading <span aria-hidden="true">›</span>
               </Link>
-            </div>
-          </>
-        ) : (
-          <div className="mt-5">
-            <Link href={studentBookLibraryPath()} className="secondary-button inline-flex w-full items-center justify-center gap-2 sm:w-auto">
-              <LibraryIcon />
-              <span>Go to Library</span>
-            </Link>
+            ) : null}
+            <Link href={studentBookLibraryPath()} className="coach-secondary-button">Go to library</Link>
           </div>
-        )}
+        </div>
       </section>
 
-      <section className="card-surface p-5 sm:p-6">
-        <div>
-          <div className="app-kicker">Vocabulary Studio</div>
-          <h2 className="app-heading-md mt-1">Practice anytime</h2>
-        </div>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="app-card-soft p-4">
-            <div className="app-kicker token-text-muted">Captured</div>
-            <div className="mt-2 text-2xl font-semibold token-text-primary">
-              {vocabularyAnalytics?.summary.capturedWordsCount ?? 0}
-            </div>
+      <div className="coach-feature-grid">
+        <section className="coach-feature-card coach-feature-card--vocab">
+          <div className="coach-feature-icon">Aa</div>
+          <div>
+            <div className="coach-eyebrow">Vocabulary</div>
+            <h2>Build your word power</h2>
+            <p>{captured} saved · {mastered} mastered · {readyVocabularyCount} ready</p>
           </div>
+          <Link href={studentVocabularyDrillPath({ mode: "mixed_practice" })} className="coach-primary-button coach-primary-button--blue">
+            {readyVocabularyCount > 0 ? "Continue practice" : "Start practice"} <span>›</span>
+          </Link>
+        </section>
 
-          <div className="app-card-soft p-4">
-            <div className="app-kicker token-text-muted">Mastered</div>
-            <div className="mt-2 text-2xl font-semibold token-text-primary">
-              {vocabularyAnalytics?.summary.masteredWordsCount ?? 0}
-            </div>
+        <section className="coach-feature-card coach-feature-card--review">
+          <div className="coach-feature-icon">✓</div>
+          <div>
+            <div className="coach-eyebrow">Mistake review</div>
+            <h2>Turn misses into progress</h2>
+            <p>Revisit difficult questions and strengthen weak skills.</p>
           </div>
-
-          <div className="app-card-soft p-4">
-            <div className="app-kicker token-text-muted">Practiced today</div>
-            <div className="mt-2 text-2xl font-semibold token-text-primary">
-              {vocabularyAnalytics?.summary.practicedTodayWordsCount ?? 0}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-          <Link
-            href={studentVocabularyDrillPath({ mode: "mixed_practice" })}
-            className="primary-button flex-1"
-          >
-            {primaryPracticeLabel}
-          </Link>
-          <Link
-            href={studentVocabularyDrillPath({
-              mode: "review_weak_words",
-              phase: "endless_continuation",
-            })}
-            className="secondary-button flex-1 sm:flex-none"
-          >
-            Review Weak Words
-          </Link>
-        </div>
-
-        <div className="mt-3">
-          <Link
-            href={studentMistakeBrainPath()}
-            className="text-sm font-semibold token-text-secondary underline underline-offset-4"
-          >
-            View Insights
-          </Link>
-        </div>
-      </section>
+          <Link href={studentMistakeBrainPath()} className="coach-secondary-button">Review mistakes</Link>
+        </section>
+      </div>
     </div>
   );
 }

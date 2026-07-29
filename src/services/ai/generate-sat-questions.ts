@@ -113,8 +113,8 @@ These should feel like a proper assessment set.
 
   const typeInstructions =
     types.length > 0
-      ? `Preferred question types: ${types.join(', ')}. Follow these as closely as possible.`
-      : `Use a balanced mix of main_idea, central_claim, detail, inference, command_of_evidence, function, text_structure, tone, cause_effect, summary, and vocabulary_in_context when appropriate.`;
+      ? `Suitability-ranked question types: ${types.join(', ')}. Use the strongest distinct types that the passage genuinely supports.`
+      : `Choose the strongest distinct types for this passage after evaluating Central Ideas and Details, Inferences, Command of Evidence, Words in Context, and Text Structure and Purpose.`;
 
   const prompt = `
 You are an elite SAT Reading curriculum designer.
@@ -148,6 +148,11 @@ ${typeInstructions}
   - main idea
   - structure
   - strongest inference points
+- Score the suitability of every eligible question type internally before choosing.
+- Do not force a main-idea question into every passage.
+- Generate a type only when the passage provides enough evidence for one clearly best answer.
+- Treat tone as a Text Structure and Purpose subtype.
+- Cross-Text Connections are not eligible because only one passage is provided.
 - Use that analysis so the questions require reasoning, not recall.
 - Each question must have 4 answer options.
 - Exactly one option must be correct.
@@ -202,13 +207,14 @@ ${input.passageText}
     },
   });
 
-  return questions.map((question) =>
+  return questions.map((question, index) =>
     shuffleQuestionOptions(
       normalizeAndValidateQuestionAnswers(question, {
         label: `${question.question_type} question`,
         semanticMode: question.question_type.startsWith('vocabulary') ? 'vocabulary' : 'reading',
         minPlausibleDistractors: 2,
-      })
+      }),
+      (['A', 'B', 'C', 'D'] as const)[index % 4]
     )
   );
 }

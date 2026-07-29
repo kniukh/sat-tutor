@@ -7,7 +7,7 @@ import type {
   ChunkLessonPackage,
 } from "@/services/ai/generate-chunk-lesson-package";
 
-export const CHUNK_PACKAGE_CACHE_VERSION = "2026-05-12-question-mix-v2";
+export const CHUNK_PACKAGE_CACHE_VERSION = "2026-07-29-explanation-remap-v4";
 
 export type StoredChunkPackageCache = {
   version: string;

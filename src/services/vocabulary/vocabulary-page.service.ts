@@ -16,13 +16,11 @@ import {
   adaptListenMatchDrillsToExercises,
   adaptMeaningDrillsToExercises,
   adaptPairMatchDrillsToExercises,
-  adaptSentenceBuilderDrillsToExercises,
   adaptSpellingFromAudioDrillsToExercises,
   adaptSynonymDrillsToExercises,
 } from "@/services/vocabulary/exercise-adapters";
 import {
   classifyReviewQueueCandidate,
-  generateReviewQueueForStudent,
   getNextReviewQueueCandidates,
   listActiveReviewQueueCandidates,
   type ReviewQueueCandidate,
@@ -47,6 +45,7 @@ import {
 } from "@/types/vocab-exercises";
 import type { VocabularyDrillAnswerSetMap } from "@/types/vocabulary-answer-sets";
 import type { ExerciseAttemptRow } from "@/types/vocab-tracking";
+import { registerVocabularySessionSnapshot } from "@/services/vocabulary/vocab-session.service";
 
 type VocabularyPageStudent = {
   id: string;
@@ -187,6 +186,7 @@ export type StudentVocabularyPageData = {
 type VocabularySessionEntryOptions = {
   guidedLessonIntro?: boolean;
   guidedWordTexts?: string[];
+  focusedSessionOnly?: boolean;
 };
 
 const EMPTY_BUCKET_COUNTS: QueueBucketCounts = {
@@ -551,7 +551,7 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
     synonymDrills,
     collocationDrills,
     pairMatchDrills,
-    sentenceBuilderDrills: contextMeaningDrills,
+    sentenceBuilderDrills: [],
     errorDetectionDrills: [],
     listenMatchDrills,
     spellingFromAudioDrills,
@@ -561,7 +561,6 @@ function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
       ...adaptListenMatchDrillsToExercises(listenMatchDrills),
       ...adaptSpellingFromAudioDrillsToExercises(spellingFromAudioDrills),
       ...adaptClozeDrillsToExercises(contextMeaningDrills),
-      ...adaptSentenceBuilderDrillsToExercises(contextMeaningDrills),
       ...adaptContextMeaningDrillsToExercises(contextMeaningDrills),
       ...adaptSynonymDrillsToExercises(synonymDrills),
       ...adaptCollocationDrillsToExercises(collocationDrills),
@@ -757,11 +756,6 @@ export async function getStudentVocabularyPageData(
     accessCode: student.access_code,
   };
 
-  await generateReviewQueueForStudent({
-    studentId: studentData.id,
-    limit: 150,
-  });
-
   const [
     activeQueueCandidates,
     nextQueueCandidates,
@@ -804,9 +798,12 @@ export async function getStudentVocabularyPageData(
   }
 
   const translationLanguage = student.native_language || "ru";
+  const focusedSessionOnly =
+    Boolean(options.focusedSessionOnly) && !options.guidedLessonIntro;
   let vocabularyDetailRows = await hydrateVocabularyDetailsWithGlobalContent({
     details: (allVocabDetails.data ?? []) as any[],
     translationLanguage,
+    touchUsedEntries: false,
   });
 
   const now = new Date();
@@ -836,22 +833,12 @@ export async function getStudentVocabularyPageData(
     throw wordProgressError;
   }
 
-  const { data: queueVocabDetails, error: queueVocabDetailsError } = await supabase
-    .from("vocabulary_item_details")
-    .select("*")
-    .eq("student_id", studentData.id)
-    .eq("is_removed", false)
-    .in("id", queueWordIds.length > 0 ? queueWordIds : [EMPTY_UUID]);
-
-  if (queueVocabDetailsError) {
-    throw queueVocabDetailsError;
-  }
-
   const wordProgressMap = new Map((wordProgressRows ?? []).map((row) => [row.word_id, row]));
-  const hydratedQueueVocabDetails = await hydrateVocabularyDetailsWithGlobalContent({
-    details: (queueVocabDetails ?? []) as any[],
-    translationLanguage,
-  });
+  const queueWordIdSet = new Set(queueWordIds);
+  const hydratedQueueVocabDetails = vocabularyDetailRows.filter((row: any) =>
+    queueWordIdSet.has(row.id)
+  );
+  const queueVocabDetails = hydratedQueueVocabDetails;
   const queueVocabDetailMap = new Map(
     hydratedQueueVocabDetails.map((row: any) => [row.id, row])
   );
@@ -889,7 +876,7 @@ export async function getStudentVocabularyPageData(
   ).slice(0, 8);
 
   const audioCandidateDetails = [
-    ...(queueVocabDetails ?? []),
+    ...queueVocabDetails,
     ...recentNewWordDetails,
     ...continuationReadyDetails,
   ].filter((detail: any) => Boolean(detail?.id));
@@ -902,10 +889,12 @@ export async function getStudentVocabularyPageData(
   );
   const lessonIdsForLookup = Array.from(new Set([...recentLessonIds, ...audioLessonIds]));
 
-  const { data: recentLessons, error: recentLessonsError } = await supabase
-    .from("lessons")
-    .select("id, name, lesson_type")
-    .in("id", lessonIdsForLookup.length > 0 ? lessonIdsForLookup : [EMPTY_UUID]);
+  const { data: recentLessons, error: recentLessonsError } = focusedSessionOnly
+    ? { data: [], error: null }
+    : await supabase
+        .from("lessons")
+        .select("id, name, lesson_type")
+        .in("id", lessonIdsForLookup.length > 0 ? lessonIdsForLookup : [EMPTY_UUID]);
 
   if (recentLessonsError) {
     throw recentLessonsError;
@@ -942,19 +931,21 @@ export async function getStudentVocabularyPageData(
 
   const lessonIdsForCaptures = Array.from(
     new Set([
-      ...(queueVocabDetails ?? []).map((detail: any) => detail.lesson_id).filter(Boolean),
+      ...queueVocabDetails.map((detail: any) => detail.lesson_id).filter(Boolean),
       ...recentNewWordDetails.map((detail: any) => detail.lesson_id).filter(Boolean),
       ...continuationReadyDetails.map((detail: any) => detail.lesson_id).filter(Boolean),
     ])
   );
 
-  const { data: sourceCaptureRows, error: sourceCaptureError } = await supabase
-    .from("vocabulary_capture_events")
-    .select("lesson_id, passage_id, item_text, context_text, created_at")
-    .eq("student_id", studentData.id)
-    .in("lesson_id", lessonIdsForCaptures.length > 0 ? lessonIdsForCaptures : [EMPTY_UUID])
-    .order("created_at", { ascending: false })
-    .limit(500);
+  const { data: sourceCaptureRows, error: sourceCaptureError } = focusedSessionOnly
+    ? { data: [], error: null }
+    : await supabase
+        .from("vocabulary_capture_events")
+        .select("lesson_id, passage_id, item_text, context_text, created_at")
+        .eq("student_id", studentData.id)
+        .in("lesson_id", lessonIdsForCaptures.length > 0 ? lessonIdsForCaptures : [EMPTY_UUID])
+        .order("created_at", { ascending: false })
+        .limit(500);
 
   if (sourceCaptureError) {
     throw sourceCaptureError;
@@ -964,10 +955,12 @@ export async function getStudentVocabularyPageData(
     new Set((sourceCaptureRows ?? []).map((row: any) => row.passage_id).filter(Boolean))
   );
 
-  const { data: lessonPassages, error: lessonPassagesError } = await supabase
-    .from("lesson_passages")
-    .select("id, title")
-    .in("id", passageIds.length > 0 ? passageIds : [EMPTY_UUID]);
+  const { data: lessonPassages, error: lessonPassagesError } = focusedSessionOnly
+    ? { data: [], error: null }
+    : await supabase
+        .from("lesson_passages")
+        .select("id, title")
+        .in("id", passageIds.length > 0 ? passageIds : [EMPTY_UUID]);
 
   if (lessonPassagesError) {
     throw lessonPassagesError;
@@ -1258,6 +1251,20 @@ export async function getStudentVocabularyPageData(
           seed: `${studentData.id}:${today}:${selectedMode}:${activePhase ?? "priority_review"}:${bucketCounts.recently_failed}:${bucketCounts.weak_again}:${bucketCounts.overdue}:${continuationExercises.length}:${newWordExercises.length}`,
         })
       : null;
+
+  if (session) {
+    await registerVocabularySessionSnapshot({
+      studentId: studentData.id,
+      sessionId: session.session_id,
+      sessionMode: session.mode,
+      exercises: session.ordered_exercises,
+      metadata: {
+        session_phase: session.metadata.session_phase,
+        requested_size: session.metadata.requested_size,
+        actual_size: session.metadata.actual_size,
+      },
+    });
+  }
 
   const totalQueueItems = activeQueueCandidates.length;
   const readyDrillsCount = queueDrillItems.length;

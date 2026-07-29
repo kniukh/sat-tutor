@@ -204,7 +204,7 @@ function buildReusableDrillIngredients(params: {
   ];
 
   if (practiceSentence) {
-    supportedTypes.push("fill_blank", "sentence_builder");
+    supportedTypes.push("fill_blank");
   }
 
   if ((meta?.collocation_candidates?.length ?? 0) > 0 || params.answerSets.collocation) {

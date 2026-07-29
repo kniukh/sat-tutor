@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "qa:vocabulary": "node scripts/qa/vocabulary-drills-smoke.js",
+    "qa:reading": "node scripts/qa/reading-lesson-qa.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

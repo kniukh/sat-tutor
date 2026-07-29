@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
-import { saveQuestionProgress } from "@/services/lesson-state/lesson-state.service";
+import {
+  isLessonFlowError,
+  saveQuestionProgress,
+} from "@/services/lesson-state/lesson-state.service";
 
 export async function POST(request: Request) {
   try {
@@ -22,6 +25,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     if (isStudentApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (isLessonFlowError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
 

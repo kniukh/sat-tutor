@@ -52,6 +52,23 @@ export async function POST(request: Request) {
       (generatedPassage ?? null) as Record<string, unknown> | null,
       chunkFingerprint
     );
+    const { data: recentPassages } = generatedPassage
+      ? await supabase
+          .from('generated_passages')
+          .select('recommended_question_types')
+          .eq('source_document_id', generatedPassage.source_document_id)
+          .eq('chapter_index', generatedPassage.chapter_index)
+          .lt('chunk_index', generatedPassage.chunk_index)
+          .order('chunk_index', { ascending: false })
+          .limit(3)
+      : { data: [] };
+    const recentQuestionTypes = (recentPassages ?? [])
+      .flatMap((item) =>
+        Array.isArray(item.recommended_question_types)
+          ? item.recommended_question_types.map((type) => String(type))
+          : []
+      )
+      .filter((type) => !type.startsWith('vocabulary'));
     generatedPackage =
       cachedPackage ??
       (await generateChunkLessonPackage({
@@ -64,6 +81,7 @@ export async function POST(request: Request) {
               ? 'article'
               : 'book',
         cachedAnalysis,
+        recentQuestionTypes,
       }));
 
     if (generatedPassage?.id) {
@@ -94,9 +112,14 @@ export async function POST(request: Request) {
         })
         .eq('id', generatedPassage.id);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
-      { error: error?.message ?? 'Question generation failed' },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Question generation failed',
+      },
       { status: 500 },
     );
   }

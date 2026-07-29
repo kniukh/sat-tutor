@@ -46,7 +46,16 @@ export type StudentVocabularyListPageData = {
     accessCode: string;
   };
   items: StudentVocabularyItemRow[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+    query: string;
+  };
 };
+
+const VOCABULARY_LIST_PAGE_SIZE = 24;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -58,8 +67,9 @@ async function hydrateStudentVocabularyItems(params: {
   items: StudentVocabularyItemRow[];
 }) {
   const hydrated = await hydrateVocabularyDetailsWithGlobalContent({
-    details: params.items as any[],
+    details: params.items,
     translationLanguage: params.translationLanguage,
+    touchUsedEntries: false,
   });
 
   return hydrated as StudentVocabularyItemRow[];
@@ -68,25 +78,97 @@ async function hydrateStudentVocabularyItems(params: {
 async function listActiveStudentVocabularyItems(params: {
   studentId: string;
   translationLanguage: string;
+  page: number;
+  query: string;
 }) {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const searchTerm = params.query
+    .trim()
+    .slice(0, 80)
+    .replace(/[%_(),]/g, " ")
+    .replace(/\s+/g, " ");
+  let query = supabase
     .from("vocabulary_item_details")
-    .select("*")
+    .select(
+      "id, student_id, lesson_id, item_text, item_type, canonical_lemma, global_content_id, english_explanation, translated_explanation, translation_language, example_text, context_sentence, audio_url, audio_status, student_definition_override, student_translation_override, definition_override_generated_from_context, is_removed, created_at, last_captured_at",
+      { count: "exact" }
+    )
     .eq("student_id", params.studentId)
-    .eq("is_removed", false)
+    .eq("is_removed", false);
+
+  if (searchTerm) {
+    const pattern = `%${searchTerm}%`;
+    query = query.or(
+      [
+        `item_text.ilike.${pattern}`,
+        `english_explanation.ilike.${pattern}`,
+        `translated_explanation.ilike.${pattern}`,
+        `student_definition_override.ilike.${pattern}`,
+        `student_translation_override.ilike.${pattern}`,
+      ].join(",")
+    );
+  }
+
+  const requestedPage = Math.max(1, Math.floor(params.page));
+  const from = (requestedPage - 1) * VOCABULARY_LIST_PAGE_SIZE;
+  const to = from + VOCABULARY_LIST_PAGE_SIZE - 1;
+  const { data, error, count } = await query
     .order("last_captured_at", { ascending: false, nullsFirst: false })
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
   if (error) {
     throw error;
   }
 
-  return hydrateStudentVocabularyItems({
+  const totalItems = count ?? 0;
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalItems / VOCABULARY_LIST_PAGE_SIZE)
+  );
+  if (requestedPage > totalPages) {
+    return listActiveStudentVocabularyItems({
+      ...params,
+      page: totalPages,
+    });
+  }
+
+  const hydrated = await hydrateStudentVocabularyItems({
     studentId: params.studentId,
     translationLanguage: params.translationLanguage,
     items: (data ?? []) as StudentVocabularyItemRow[],
   });
+
+  const items = hydrated.map((item) => ({
+    id: item.id,
+    student_id: item.student_id,
+    lesson_id: item.lesson_id,
+    item_text: item.item_text,
+    item_type: item.item_type,
+    canonical_lemma: item.canonical_lemma,
+    english_explanation: item.english_explanation,
+    translated_explanation: item.translated_explanation,
+    translation_language: item.translation_language,
+    example_text: item.example_text,
+    context_sentence: item.context_sentence,
+    audio_url: item.audio_url,
+    audio_status: item.audio_status,
+    student_definition_override: item.student_definition_override,
+    student_translation_override: item.student_translation_override,
+    definition_override_generated_from_context:
+      item.definition_override_generated_from_context,
+    is_removed: item.is_removed,
+    created_at: item.created_at,
+  }));
+
+  return {
+    items,
+    page: requestedPage,
+    pageSize: VOCABULARY_LIST_PAGE_SIZE,
+    totalItems,
+    totalPages,
+    query: searchTerm,
+  };
 }
 
 async function getLatestCaptureContext(params: {
@@ -171,7 +253,11 @@ async function getStudentVocabularyItemForMutation(params: {
 }
 
 export async function getStudentVocabularyListPageData(
-  accessCode: string
+  accessCode: string,
+  options?: {
+    page?: number;
+    query?: string;
+  }
 ): Promise<StudentVocabularyListPageData> {
   const supabase = await createClient();
   const { data: student, error: studentError } = await supabase
@@ -185,9 +271,11 @@ export async function getStudentVocabularyListPageData(
     throw studentError ?? new Error("Student not found");
   }
 
-  const items = await listActiveStudentVocabularyItems({
+  const result = await listActiveStudentVocabularyItems({
     studentId: student.id,
     translationLanguage: student.native_language || "ru",
+    page: options?.page ?? 1,
+    query: options?.query ?? "",
   });
 
   return {
@@ -196,7 +284,14 @@ export async function getStudentVocabularyListPageData(
       fullName: student.full_name,
       accessCode: student.access_code,
     },
-    items,
+    items: result.items,
+    pagination: {
+      page: result.page,
+      pageSize: result.pageSize,
+      totalItems: result.totalItems,
+      totalPages: result.totalPages,
+      query: result.query,
+    },
   };
 }
 

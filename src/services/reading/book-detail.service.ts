@@ -8,7 +8,7 @@ export type BookLessonListItem = {
   displayOrder: number | null;
   chapterIndex: number | null;
   chapterTitle: string | null;
-  status: "completed" | "current" | "available";
+  status: "completed" | "current" | "available" | "locked";
   href: string;
 };
 
@@ -260,6 +260,9 @@ export async function getBookDetailData(params: {
   const dedupedLessons: BookLessonListItem[] = [];
   const seenLessonIds = new Set<string>();
 
+  const firstIncompleteLessonId =
+    sortedCandidates.find((item) => !completedLessonIds.has(item.lessonId))?.lessonId ?? null;
+
   for (const item of sortedCandidates) {
     if (seenLessonIds.has(item.lessonId)) {
       continue;
@@ -267,11 +270,12 @@ export async function getBookDetailData(params: {
 
     seenLessonIds.add(item.lessonId);
 
-    const status: BookLessonListItem["status"] =
-      progressRow?.current_lesson_id === item.lessonId
+    const status: BookLessonListItem["status"] = completedLessonIds.has(item.lessonId)
+      ? "completed"
+      : item.lessonId === firstIncompleteLessonId
         ? "current"
-        : completedLessonIds.has(item.lessonId)
-          ? "completed"
+        : firstIncompleteLessonId
+          ? "locked"
           : "available";
 
     dedupedLessons.push({
@@ -325,7 +329,7 @@ export async function getBookDetailData(params: {
             progressRow?.completed_lessons_count ?? completedLessonsCount,
           totalLessonsCount:
             progressRow?.total_lessons_count ?? totalLessonsCount,
-          currentLessonId: progressRow?.current_lesson_id ?? null,
+          currentLessonId: firstIncompleteLessonId ?? progressRow?.current_lesson_id ?? null,
           lastOpenedAt: progressRow?.last_opened_at ?? null,
         }
       : null;

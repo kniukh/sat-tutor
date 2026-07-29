@@ -9,6 +9,48 @@ export type LessonStage =
   | "questions"
   | "completed";
 
+export class LessonFlowError extends Error {
+  status: number;
+
+  constructor(message: string, status = 409) {
+    super(message);
+    this.name = "LessonFlowError";
+    this.status = status;
+  }
+}
+
+export function isLessonFlowError(error: unknown): error is LessonFlowError {
+  return error instanceof LessonFlowError;
+}
+
+async function assertPublishedLesson(lessonId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("lessons")
+    .select("id")
+    .eq("id", lessonId)
+    .eq("is_active", true)
+    .eq("status", "published")
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new LessonFlowError("Published lesson not found", 404);
+}
+
+function assertStage(
+  actual: LessonStage,
+  expected: LessonStage | LessonStage[],
+  action: string
+) {
+  const allowed = Array.isArray(expected) ? expected : [expected];
+  if (!allowed.includes(actual)) {
+    throw new LessonFlowError(
+      `Cannot ${action} while lesson is in ${actual} stage`,
+      409
+    );
+  }
+}
+
 export type StudentAnswer = {
   questionId: string;
   selectedOption: "A" | "B" | "C" | "D" | null;
@@ -81,6 +123,7 @@ async function listLessonVocabularyItems(studentId: string, lessonId: string) {
 }
 
 export async function getOrCreateLessonState(studentId: string, lessonId: string) {
+  await assertPublishedLesson(lessonId);
   const supabase = await createClient();
 
   const { data: existing, error: existingError } = await supabase
@@ -140,6 +183,8 @@ export async function getOrCreateStudentLessonState(studentId: string, lessonId:
 export async function submitVocabulary(studentId: string, lessonId: string) {
   const supabase = await createClient();
   const state = await getOrCreateLessonState(studentId, lessonId);
+  if (state.stage === "vocab_review" && state.vocab_submitted) return state;
+  assertStage(state.stage as LessonStage, "first_read", "submit vocabulary");
 
   const { data, error } = await supabase
     .from("student_lesson_state")
@@ -159,6 +204,8 @@ export async function submitVocabulary(studentId: string, lessonId: string) {
 export async function markSecondReadDone(studentId: string, lessonId: string) {
   const supabase = await createClient();
   const state = await getOrCreateLessonState(studentId, lessonId);
+  if (state.stage === "questions" && state.second_read_done) return state;
+  assertStage(state.stage as LessonStage, "second_read", "finish the second read");
 
   const { data, error } = await supabase
     .from("student_lesson_state")
@@ -185,12 +232,30 @@ export async function saveQuestionProgress(params: {
   const supabase = await createClient();
 
   const state = await getOrCreateLessonState(params.studentId, params.lessonId);
+  assertStage(state.stage as LessonStage, "questions", "answer questions");
+
+  if (!["A", "B", "C", "D"].includes(params.selectedOption)) {
+    throw new LessonFlowError("selectedOption must be A, B, C, or D", 400);
+  }
+
+  const { data: question, error: questionError } = await supabase
+    .from("question_bank")
+    .select("id, question_type")
+    .eq("id", params.questionId)
+    .eq("lesson_id", params.lessonId)
+    .eq("review_status", "approved")
+    .maybeSingle();
+  if (questionError) throw questionError;
+  if (!question) {
+    throw new LessonFlowError("Question does not belong to this published lesson", 400);
+  }
+
   const answers = (state.question_answers_json ?? {}) as Record<string, StudentAnswer>;
 
   answers[params.questionId] = {
     questionId: params.questionId,
     selectedOption: params.selectedOption,
-    skill: params.skill ?? null,
+    skill: question.question_type ?? null,
     answeredAt: new Date().toISOString(),
   };
 
@@ -314,7 +379,23 @@ export async function updateStudentLessonStage(params: {
 }) {
   const supabase = await createClient();
 
-  await getOrCreateLessonState(params.studentId, params.lessonId);
+  const state = await getOrCreateLessonState(params.studentId, params.lessonId);
+
+  if (state.stage === params.stage) {
+    return state;
+  }
+
+  const nextStage: Partial<Record<LessonStage, LessonStage>> = {
+    first_read: "vocab_review",
+    vocab_review: "second_read",
+    second_read: "questions",
+  };
+  if (nextStage[state.stage as LessonStage] !== params.stage) {
+    throw new LessonFlowError(
+      `Invalid lesson stage transition: ${state.stage} → ${params.stage}`,
+      409
+    );
+  }
 
   const updatePayload: {
     stage: LessonStage;
@@ -326,18 +407,18 @@ export async function updateStudentLessonStage(params: {
     updated_at: new Date().toISOString(),
   };
 
-  if (typeof params.vocabSubmitted === "boolean") {
-    updatePayload.vocab_submitted = params.vocabSubmitted;
+  if (params.stage === "vocab_review") {
+    updatePayload.vocab_submitted = true;
   }
 
-  if (typeof params.secondReadDone === "boolean") {
-    updatePayload.second_read_done = params.secondReadDone;
+  if (params.stage === "questions") {
+    updatePayload.second_read_done = true;
   }
 
   const { data, error } = await supabase
     .from("student_lesson_state")
     .update(updatePayload)
-    .eq("id", (await getOrCreateLessonState(params.studentId, params.lessonId)).id)
+    .eq("id", state.id)
     .select()
     .single();
 

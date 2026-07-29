@@ -1,18 +1,8 @@
 import Link from "next/link";
-import { studentBookDetailPath, studentLessonPath } from "@/lib/routes/student";
+import { studentBookDetailPath, studentDashboardPath, studentLessonPath } from "@/lib/routes/student";
 import { getBooksPageData } from "@/services/reading/books-page.service";
 import { SelectBookButton } from "@/components/student/SelectBookButton";
-
-function ProgressBar({ value }: { value: number }) {
-  return (
-    <div className="progress-track">
-      <div
-        className="progress-fill"
-        style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
-      />
-    </div>
-  );
-}
+import ReadingCoachBrand from "@/components/student/ReadingCoachBrand";
 
 export default async function StudentBookPage({
   params,
@@ -21,198 +11,94 @@ export default async function StudentBookPage({
 }) {
   const { code } = await params;
   const data = await getBooksPageData(code);
+  const featured = data.featuredBook;
 
   return (
-    <div className="content-shell max-w-5xl space-y-5">
-      <section className="card-surface p-5 sm:p-6">
-        <div className="space-y-2">
-          <div className="app-kicker">Library</div>
-          <h1 className="app-heading-lg">Pick up your reading.</h1>
-          <p className="app-copy">
-            Continue your current book or open another reading path.
-          </p>
-        </div>
+    <div className="content-shell max-w-6xl">
+      <header className="coach-topbar">
+        <ReadingCoachBrand compact />
+        <Link href={studentDashboardPath()} className="coach-secondary-button">Dashboard</Link>
+      </header>
 
-        {data.featuredBook ? (
-          <div className="mt-5 space-y-4">
-            <div className="app-card-soft p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex min-w-0 items-start gap-4">
-                  <div className="surface-soft-panel flex h-24 w-18 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem]">
-                    {data.featuredBook.coverImagePath ? (
-                      <img
-                        src={data.featuredBook.coverImagePath}
-                        alt={`${data.featuredBook.title} cover`}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="app-kicker token-text-muted text-center">Cover</div>
-                    )}
-                  </div>
+      <div className="mt-7">
+        <div className="coach-eyebrow">Library</div>
+        <h1 className="coach-page-title">Choose your next journey.</h1>
+        <p className="coach-page-copy">Every book keeps its own reading path and progress.</p>
+      </div>
 
-                  <div className="min-w-0">
-                    <div className="app-kicker token-text-muted">Current Reading</div>
-                    <h2 className="app-heading-md mt-1">{data.featuredBook.title}</h2>
-                    <p className="app-copy mt-1">
-                      {data.featuredBook.author ?? "Unknown author"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="app-chip">
-                  {Math.round(data.featuredBook.progressPercent)}%
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div>
-                  <div className="app-kicker token-text-muted">Progress</div>
-                  <div className="token-text-primary mt-2 text-2xl font-semibold">
-                    {Math.round(data.featuredBook.progressPercent)}%
-                  </div>
-                </div>
-                <div>
-                  <div className="app-kicker token-text-muted">Completed</div>
-                  <div className="token-text-primary mt-2 text-2xl font-semibold">
-                    {data.featuredBook.completedLessonsCount}
-                  </div>
-                </div>
-                <div>
-                  <div className="app-kicker token-text-muted">Lessons</div>
-                  <div className="token-text-primary mt-2 text-2xl font-semibold">
-                    {data.featuredBook.totalLessonsCount}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <ProgressBar value={data.featuredBook.progressPercent} />
-              </div>
-
-              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-                {data.featuredBook.currentLessonId ? (
-                  <Link
-                    href={studentLessonPath(data.featuredBook.currentLessonId)}
-                    className="primary-button flex-1"
-                  >
-                    Continue Reading
-                  </Link>
-                ) : null}
-
-                <Link
-                  href={studentBookDetailPath(data.featuredBook.sourceDocumentId)}
-                  className="secondary-button flex-1 sm:flex-none"
-                >
-                  Open Book
+      {featured ? (
+        <section className="coach-library-featured">
+          <div className="coach-library-cover">
+            {featured.coverImagePath ? (
+              <img src={featured.coverImagePath} alt={`${featured.title} cover`} />
+            ) : (
+              <div className="coach-cover-fallback">📖</div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="coach-eyebrow">Continue reading</div>
+            <h2>{featured.title}</h2>
+            <p>{featured.author ?? "Unknown author"}</p>
+            <div className="mt-5 flex justify-between text-sm font-bold">
+              <span>{Math.round(featured.progressPercent)}% complete</span>
+              <span className="text-slate-500">{featured.completedLessonsCount}/{featured.totalLessonsCount} lessons</span>
+            </div>
+            <div className="coach-progress mt-2"><span style={{ width: `${featured.progressPercent}%` }} /></div>
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              {featured.currentLessonId ? (
+                <Link href={studentLessonPath(featured.currentLessonId)} className="coach-primary-button">
+                  Continue reading <span>›</span>
                 </Link>
-              </div>
+              ) : null}
+              <Link href={studentBookDetailPath(featured.sourceDocumentId)} className="coach-secondary-button">View path</Link>
             </div>
           </div>
-        ) : (
-          <div className="mt-5 app-card-soft p-5">
-            <div className="app-copy">No current book yet. Open any available book to start reading.</div>
-          </div>
-        )}
-      </section>
+        </section>
+      ) : null}
 
-      <section className="card-surface p-5 sm:p-6">
-        <div className="flex items-center justify-between gap-3">
+      <section className="mt-9">
+        <div className="flex items-end justify-between gap-4">
           <div>
-            <div className="app-kicker">Books</div>
-            <h2 className="app-heading-md mt-1">Your reading library</h2>
+            <div className="coach-eyebrow">All books</div>
+            <h2 className="font-[var(--font-display)] text-2xl font-extrabold tracking-[-0.03em]">Your reading library</h2>
           </div>
-          <div className="token-text-muted text-sm font-semibold">{data.books.length}</div>
+          <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-700">{data.books.length}</span>
         </div>
 
         {data.books.length === 0 ? (
-          <div className="mt-5 app-card-soft p-5">
-            <div className="app-copy">No books are available yet.</div>
+          <div className="coach-empty-state">
+            <div className="coach-empty-art coach-empty-art--books">
+              <img src="/brand/empty-states.png" alt="" />
+            </div>
+            <h3>No books yet</h3>
+            <p>Your reading library will appear here.</p>
           </div>
         ) : (
-          <div className="mt-5 space-y-3">
+          <div className="coach-library-grid">
             {data.books.map((book) => (
-              <article
-                key={book.sourceDocumentId}
-                className={`rounded-[1.5rem] border p-4 ${
-                  book.isCurrent
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "surface-panel token-text-primary"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-start gap-4">
-                    <div
-                      className={`flex h-24 w-18 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] ${
-                        book.isCurrent ? "bg-white/10" : "surface-soft-panel"
-                      }`}
-                    >
-                      {book.coverImagePath ? (
-                        <img
-                          src={book.coverImagePath}
-                          alt={`${book.title} cover`}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className={book.isCurrent ? "app-kicker text-white/55" : "app-kicker token-text-muted"}>
-                          Cover
-                        </div>
-                      )}
+              <article key={book.sourceDocumentId} className={`coach-library-card ${book.isCurrent ? "coach-library-card--current" : ""}`}>
+                <Link href={studentBookDetailPath(book.sourceDocumentId)} className="coach-library-card-cover">
+                  {book.coverImagePath ? (
+                    <img src={book.coverImagePath} alt={`${book.title} cover`} />
+                  ) : (
+                    <div className="coach-cover-fallback">📘</div>
+                  )}
+                </Link>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="coach-eyebrow">{book.isCurrent ? "Current book" : "Book"}</div>
+                  <h3>{book.title}</h3>
+                  <p>{book.author ?? "Unknown author"}</p>
+                  <div className="mt-auto pt-4">
+                    <div className="flex justify-between text-xs font-bold">
+                      <span>{Math.round(book.progressPercent)}%</span>
+                      <span className="text-slate-500">{book.completedLessonsCount}/{book.totalLessonsCount}</span>
                     </div>
-
-                    <div className="min-w-0">
-                    <div
-                      className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${
-                        book.isCurrent ? "text-white/60" : "token-text-muted"
-                      }`}
-                    >
-                      {book.isCurrent ? "Current" : "Book"}
-                    </div>
-                    <h3 className="mt-1 text-lg font-semibold">{book.title}</h3>
-                    <div className={book.isCurrent ? "mt-1 text-sm text-white/75" : "token-text-secondary mt-1 text-sm"}>
-                      {book.author ?? "Unknown author"}
-                    </div>
+                    <div className="coach-progress mt-2"><span style={{ width: `${book.progressPercent}%` }} /></div>
+                    <div className="mt-4 grid gap-2">
+                      <SelectBookButton studentId={data.student.id} sourceDocumentId={book.sourceDocumentId} isCurrent={book.isCurrent} />
+                      <Link href={studentBookDetailPath(book.sourceDocumentId)} className="coach-secondary-button">Open reading path</Link>
                     </div>
                   </div>
-
-                  <div className={book.isCurrent ? "app-chip bg-white/10 text-white" : "app-chip"}>
-                    {Math.round(book.progressPercent)}%
-                  </div>
-                </div>
-
-                <div className={book.isCurrent ? "mt-3 text-sm text-white/75" : "token-text-secondary mt-3 text-sm"}>
-                  {book.completedLessonsCount} / {book.totalLessonsCount} lessons completed
-                </div>
-
-                <div className="mt-3">
-                  <div className={book.isCurrent ? "h-2 w-full overflow-hidden rounded-full bg-white/15" : "progress-track"}>
-                    <div
-                      className={book.isCurrent ? "h-full rounded-full bg-white" : "progress-fill"}
-                      style={{ width: `${Math.max(0, Math.min(100, book.progressPercent))}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                  <SelectBookButton
-                    studentId={data.student.id}
-                    sourceDocumentId={book.sourceDocumentId}
-                    isCurrent={book.isCurrent}
-                  />
-                  {book.currentLessonId ? (
-                    <Link
-                      href={studentLessonPath(book.currentLessonId)}
-                      className={book.isCurrent ? "secondary-button flex-1 bg-white text-slate-950" : "primary-button flex-1"}
-                    >
-                      Continue Reading
-                    </Link>
-                  ) : null}
-
-                  <Link
-                    href={studentBookDetailPath(book.sourceDocumentId)}
-                    className={book.isCurrent ? "secondary-button flex-1 border-white/20 bg-transparent text-white" : "secondary-button flex-1"}
-                  >
-                    Open Book
-                  </Link>
                 </div>
               </article>
             ))}

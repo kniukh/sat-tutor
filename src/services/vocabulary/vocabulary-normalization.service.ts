@@ -55,6 +55,29 @@ export function normalizeVocabularySurfaceForm(itemText: string) {
   return normalizeCapturedSurfaceForm(itemText).toLowerCase();
 }
 
+export function validateVocabularyCaptureText(itemText: string) {
+  const normalized = normalizeCapturedSurfaceForm(itemText);
+  const words = normalized.split(/\s+/).filter(Boolean);
+
+  if (!normalized || !/\p{L}/u.test(normalized)) {
+    return { valid: false, reason: "Select a word or a short meaningful phrase." };
+  }
+  if (normalized.length > 80 || words.length > 8 || /[\r\n]/.test(itemText)) {
+    return {
+      valid: false,
+      reason: "Vocabulary captures are limited to one word or a phrase of up to 8 words.",
+    };
+  }
+  if ((normalized.match(/[.!?]/g) ?? []).length > 0) {
+    return {
+      valid: false,
+      reason: "Select the useful word or phrase, not the complete sentence.",
+    };
+  }
+
+  return { valid: true, reason: null };
+}
+
 function resolveWordLemma(normalizedSurfaceForm: string): {
   canonicalLemma: string;
   normalizationReason: VocabularyNormalizationReason;

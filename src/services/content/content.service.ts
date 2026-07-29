@@ -37,7 +37,12 @@ export async function getPublishedLessons() {
     throw new Error(error.message);
   }
 
-  return data ?? [];
+  return (data ?? []).map((lesson) => ({
+    ...lesson,
+    question_bank: (lesson.question_bank ?? []).filter(
+      (question) => question.review_status === "approved"
+    ),
+  }));
 }
 
 export async function getPublishedLessonById(lessonId: string) {
@@ -78,7 +83,12 @@ export async function getPublishedLessonById(lessonId: string) {
     throw new Error(error.message);
   }
 
-  return data;
+  return {
+    ...data,
+    question_bank: (data.question_bank ?? []).filter(
+      (question) => question.review_status === "approved"
+    ),
+  };
 }
 
 // Backward-compatible alias used by legacy test pages.

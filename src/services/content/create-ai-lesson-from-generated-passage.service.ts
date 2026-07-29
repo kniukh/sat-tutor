@@ -71,7 +71,14 @@ export async function createAiLessonFromGeneratedPassage(params: {
     passage.title ||
     source?.title ||
     `Generated Passage ${Number(passage.chunk_index ?? 0) + 1}`;
-  const chapterPrefix = passage.chapter_title ? `${passage.chapter_title} — ` : '';
+  const normalizedBaseName = baseName.trim().toLowerCase();
+  const normalizedChapterTitle = String(passage.chapter_title ?? '').trim().toLowerCase();
+  const chapterPrefix =
+    passage.chapter_title &&
+    normalizedChapterTitle &&
+    !normalizedBaseName.startsWith(normalizedChapterTitle)
+      ? `${passage.chapter_title} — `
+      : '';
   const lessonName = `${chapterPrefix}${baseName}`.slice(0, 120);
   const lessonSlug = `${makeSlug(lessonName)}-${Date.now()}`;
   const chunkFingerprint = computeChunkFingerprint({
@@ -83,6 +90,21 @@ export async function createAiLessonFromGeneratedPassage(params: {
     passage as Record<string, unknown>,
     chunkFingerprint
   );
+  const { data: recentPassages } = await supabase
+    .from('generated_passages')
+    .select('recommended_question_types')
+    .eq('source_document_id', passage.source_document_id)
+    .eq('chapter_index', passage.chapter_index)
+    .lt('chunk_index', passage.chunk_index)
+    .order('chunk_index', { ascending: false })
+    .limit(3);
+  const recentQuestionTypes = (recentPassages ?? [])
+    .flatMap((item) =>
+      Array.isArray(item.recommended_question_types)
+        ? item.recommended_question_types.map((type) => String(type))
+        : []
+    )
+    .filter((type) => !type.startsWith('vocabulary'));
   const generatedPackage =
     cachedPackage ??
     (await generateChunkLessonPackage({
@@ -91,9 +113,10 @@ export async function createAiLessonFromGeneratedPassage(params: {
       passageText: passage.passage_text,
       sourceType: source?.source_type ?? null,
       cachedAnalysis,
+      recentQuestionTypes,
     }));
 
-  const { data: updatedPassage } = await supabase
+  const { data: updatedPassage, error: updatedPassageError } = await supabase
     .from('generated_passages')
     .update({
       chunk_fingerprint: chunkFingerprint,
@@ -121,6 +144,10 @@ export async function createAiLessonFromGeneratedPassage(params: {
     .eq('id', passage.id)
     .select()
     .single();
+
+  if (updatedPassageError) {
+    throw new Error(`Failed to save AI package metadata: ${updatedPassageError.message}`);
+  }
 
   if (updatedPassage) {
     passage = updatedPassage;

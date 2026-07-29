@@ -41,7 +41,7 @@ Return ONLY valid JSON object with:
 - question_strategy: full_set | light_check | none
 - recommended_question_count: integer
 - recommended_question_types: string[]
-- analyzer_reason: short explanation
+- analyzer_reason: short explanation of why the selected types fit this passage
 - difficulty_level: easy | medium | hard
 - text_mode: narrative | dialogue | descriptive | analytical
 - vocab_density: low | medium | high
@@ -57,9 +57,22 @@ Rules:
 - bridge = should usually have no reading questions
 - recommended_vocab_questions_count should usually be 1
 - target words/phrases must come from or clearly fit the passage
-- question types can include:
+- Evaluate every eligible reading skill before choosing.
+- Rank recommended_question_types from strongest to weakest fit.
+- Recommend only types that the passage can support with one clearly best answer.
+- Do not include main_idea or central_claim automatically.
+- Prefer 2-3 distinct reading types for assessment passages and 1-2 for context passages.
+- Eligible reading types:
   main_idea, central_claim, detail, inference, command_of_evidence, function,
-  text_structure, tone, cause_effect, summary, vocabulary_in_context
+  text_structure, tone, cause_effect, summary
+- vocabulary_in_context may be added only when context determines a useful, non-trivial word or phrase.
+- SAT skill mapping:
+  - Central Ideas and Details: main_idea, central_claim, detail, summary
+  - Inferences: inference, cause_effect
+  - Command of Evidence: command_of_evidence
+  - Text Structure and Purpose: function, text_structure, tone
+  - Words in Context: vocabulary_in_context
+- Do not recommend Cross-Text Connections unless two separate passages are provided.
 
 Chapter:
 ${input.chapterTitle ?? 'Unknown chapter'}

@@ -3,6 +3,7 @@ import {
   mergeVocabularySurfaceForms,
   normalizeCapturedSurfaceForm,
   resolveVocabularyLemma,
+  validateVocabularyCaptureText,
   type VocabularyItemType,
 } from "@/services/vocabulary/vocabulary-normalization.service";
 
@@ -348,6 +349,10 @@ export async function recordVocabularyCaptures(params: {
   const supabase = await createClient();
   const normalizedItems = params.items
     .map((item) => {
+      const validation = validateVocabularyCaptureText(item.itemText);
+      if (!validation.valid) {
+        throw new Error(validation.reason ?? "Invalid vocabulary capture");
+      }
       const resolved = resolveVocabularyLemma({
         itemText: item.itemText,
         itemType: item.itemType,

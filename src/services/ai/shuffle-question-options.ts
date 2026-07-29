@@ -40,7 +40,39 @@ function stableShuffle<T>(values: T[], seed: string) {
   return items;
 }
 
-export function shuffleQuestionOptions<T extends QuestionWithOptions>(question: T): T {
+function remapExplanation(
+  explanation: string | undefined,
+  keyMap: Map<OptionKey, OptionKey>,
+  originalCorrectKey: OptionKey
+) {
+  if (!explanation) return explanation;
+
+  const placeholders = new Map<OptionKey, string>(
+    TARGET_KEYS.map((key) => [key, `__OPTION_KEY_${key}__`])
+  );
+
+  // Generated explanations commonly use both "option B" and compact forms such
+  // as "B and C distort the claim". Replace every standalone uppercase option
+  // key through placeholders so chained remaps cannot overwrite one another.
+  let next = explanation.replace(/\b[A-D]\b/g, (key) => {
+    return placeholders.get(key as OptionKey) ?? key;
+  });
+
+  for (const originalKey of TARGET_KEYS) {
+    const placeholder = placeholders.get(originalKey);
+    const remappedKey = keyMap.get(originalKey);
+    if (placeholder && remappedKey) {
+      next = next.replaceAll(placeholder, remappedKey);
+    }
+  }
+
+  return next;
+}
+
+export function shuffleQuestionOptions<T extends QuestionWithOptions & { explanation?: string }>(
+  question: T,
+  desiredCorrectKey?: OptionKey
+): T {
   const options = [
     { originalKey: 'A' as const, text: question.option_a },
     { originalKey: 'B' as const, text: question.option_b },
@@ -48,12 +80,28 @@ export function shuffleQuestionOptions<T extends QuestionWithOptions>(question: 
     { originalKey: 'D' as const, text: question.option_d },
   ];
   const shuffled = stableShuffle(options, buildSeed(question));
+  if (desiredCorrectKey) {
+    const desiredIndex = TARGET_KEYS.indexOf(desiredCorrectKey);
+    const correctIndex = shuffled.findIndex(
+      (option) => option.originalKey === question.correct_option
+    );
+    if (correctIndex !== -1 && correctIndex !== desiredIndex) {
+      [shuffled[correctIndex], shuffled[desiredIndex]] = [
+        shuffled[desiredIndex],
+        shuffled[correctIndex],
+      ];
+    }
+  }
 
   const remapped = shuffled.map((option, index) => ({
     key: TARGET_KEYS[index],
     text: option.text,
     isCorrect: option.originalKey === question.correct_option,
   }));
+
+  const keyMap = new Map(
+    remapped.map((option, index) => [shuffled[index].originalKey, option.key])
+  );
 
   return {
     ...question,
@@ -62,5 +110,10 @@ export function shuffleQuestionOptions<T extends QuestionWithOptions>(question: 
     option_c: remapped[2]?.text ?? question.option_c,
     option_d: remapped[3]?.text ?? question.option_d,
     correct_option: remapped.find((option) => option.isCorrect)?.key ?? question.correct_option,
+    explanation: remapExplanation(
+      question.explanation,
+      keyMap,
+      question.correct_option
+    ),
   };
 }

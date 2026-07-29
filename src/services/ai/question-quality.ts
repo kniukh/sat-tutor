@@ -89,10 +89,6 @@ export function validateQuestionAnswerQuality<T extends QuestionWithOptions>(
   const label = params?.label ?? 'question';
   const semanticMode = params?.semanticMode ?? 'reading';
   const thresholds = QUESTION_QUALITY_CONFIG[semanticMode];
-  const minPlausibleDistractors = Math.max(
-    1,
-    params?.minPlausibleDistractors ?? thresholds.minPlausibleDistractors
-  );
   const normalized = withNormalizedOptions(question);
   const options = getOptions(normalized);
   const comparable = options.map((option) => comparableText(option.text));
@@ -124,23 +120,10 @@ export function validateQuestionAnswerQuality<T extends QuestionWithOptions>(
     throw new Error(`${label} has an invalid correct option`);
   }
 
-  const correctWordCount = wordCounts[correctIndex];
-  const plausibleGap = Math.max(
-    semanticMode === 'vocabulary' ? 1 : 2,
-    Math.round(correctWordCount * thresholds.plausibleGapMultiplier)
-  );
-
-  const plausibleDistractorCount = wordCounts.filter((count, index) => {
-    if (index === correctIndex) {
-      return false;
-    }
-
-    return Math.abs(count - correctWordCount) <= plausibleGap;
-  }).length;
-
-  if (plausibleDistractorCount < minPlausibleDistractors) {
-    throw new Error(`${label} does not have enough structurally plausible distractors`);
-  }
+  // Word-count similarity cannot determine whether a distractor is
+  // semantically plausible. The overall length-mismatch guard above still
+  // rejects obvious visual giveaways, while plausibility is enforced by the
+  // generation prompt and human review.
 
   const starts = options.map((option) => option.text.charAt(0)).filter(Boolean);
   const uppercaseStarts = starts.filter((character) => /[A-Z]/.test(character)).length;

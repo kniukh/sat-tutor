@@ -1,6 +1,9 @@
 import { requireStudentSession } from "@/lib/auth/student";
 import StudentDashboardOverview from "@/components/student/StudentDashboardOverview";
 import { getStudentDashboardData } from "@/services/progress/student-dashboard.service";
+import ReadingCoachBrand from "@/components/student/ReadingCoachBrand";
+import FeedbackSettingsButton from "@/components/student/FeedbackSettingsButton";
+import StudentLogoutButton from "@/components/student/StudentLogoutButton";
 
 export default async function CanonicalStudentDashboardPage() {
   const session = await requireStudentSession();
@@ -8,10 +11,18 @@ export default async function CanonicalStudentDashboardPage() {
 
   return (
     <div className="content-shell">
-      <div className="space-y-5">
+      <div className="space-y-6">
+        <header className="coach-topbar">
+          <ReadingCoachBrand />
+          <div className="flex items-center gap-2">
+            <FeedbackSettingsButton />
+            <StudentLogoutButton />
+          </div>
+        </header>
         <div>
-          <h1 className="app-heading-xl">Welcome, {session.fullName}</h1>
-          <p className="app-copy mt-2">Pick up where you left off.</p>
+          <div className="coach-eyebrow">Your learning path</div>
+          <h1 className="coach-page-title">Welcome back, {session.fullName.split(" ")[0]}!</h1>
+          <p className="coach-page-copy">Keep your momentum going with today&apos;s next step.</p>
         </div>
 
         <StudentDashboardOverview

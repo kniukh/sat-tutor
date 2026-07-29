@@ -13,6 +13,7 @@ export async function finalizeVocabularySession(params: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
+    keepalive: true,
   });
 
   const payload = await response.json().catch(() => null);

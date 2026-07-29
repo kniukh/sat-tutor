@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import StudentDashboardOverview from "@/components/student/StudentDashboardOverview";
 import { getStudentDashboardData } from "@/services/progress/student-dashboard.service";
+import ReadingCoachBrand from "@/components/student/ReadingCoachBrand";
 
 export default async function StudentDashboardPage({
   params,
@@ -25,12 +26,12 @@ export default async function StudentDashboardPage({
 
   return (
     <div className="content-shell">
-      <div className="space-y-5">
+      <div className="space-y-6">
+        <header className="coach-topbar"><ReadingCoachBrand /></header>
         <div>
-          <h1 className="app-heading-xl">
-            Welcome, {student.full_name}
-          </h1>
-          <p className="app-copy mt-2">Pick up where you left off.</p>
+          <div className="coach-eyebrow">Your learning path</div>
+          <h1 className="coach-page-title">Welcome back, {String(student.full_name).split(" ")[0]}!</h1>
+          <p className="coach-page-copy">Keep your momentum going with today&apos;s next step.</p>
         </div>
 
         <StudentDashboardOverview

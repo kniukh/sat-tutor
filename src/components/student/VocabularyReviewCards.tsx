@@ -94,6 +94,8 @@ function getNativeTranslation(item: VocabItem) {
   return (
     normalizeText(item.translation_word) ||
     shortFallbacks[0] ||
+    normalizeText(item.translated_explanation) ||
+    normalizeText(getEffectiveVocabularyTranslation(item)) ||
     null
   );
 }
@@ -536,7 +538,7 @@ export default function VocabularyReviewCards({
   const showFooterActions = Boolean(onDone || onBackToReading);
   const containerClassName = embedded
     ? "mx-auto flex w-full max-w-3xl flex-col px-0 py-0"
-    : "mx-auto flex min-h-[calc(100svh-12rem)] max-w-3xl flex-col px-4 py-4 sm:px-6";
+    : "mx-auto flex min-h-[calc(100svh-12rem)] w-full min-w-0 max-w-3xl flex-col px-4 py-4 sm:px-6";
 
   if (!effectiveItems.length) {
     return (
@@ -602,7 +604,7 @@ export default function VocabularyReviewCards({
             isPendingThisAudioItem && isAudioLoading && !resolvedAudioUrl;
 
           return (
-            <div key={item.id} className="card-surface flex flex-col gap-3 px-4 py-4">
+            <div key={item.id} className="card-surface min-w-0 max-w-full flex flex-col gap-3 px-4 py-4">
               <div className="space-y-2">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

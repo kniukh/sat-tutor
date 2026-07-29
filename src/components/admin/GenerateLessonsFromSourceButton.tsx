@@ -20,6 +20,7 @@ export default function GenerateLessonsFromSourceButton({
   const [unitId, setUnitId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -47,20 +48,59 @@ export default function GenerateLessonsFromSourceButton({
     setMessage(null);
 
     startTransition(async () => {
-      const response = await fetch('/api/admin/sources/generate-lessons', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceDocumentId, unitId }),
-      });
-
-      const json = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        setError(json?.error ?? 'Failed to generate lessons');
+      const queueResponse = await fetch(
+        `/api/admin/sources/generate-lessons?sourceDocumentId=${encodeURIComponent(sourceDocumentId)}`
+      );
+      const queueJson = await queueResponse.json().catch(() => null);
+      if (!queueResponse.ok) {
+        setError(queueJson?.error ?? 'Failed to load generation queue');
         return;
       }
 
-      setMessage(`Created ${json?.createdCount ?? 0} lesson${json?.createdCount === 1 ? '' : 's'}.`);
+      const pending = Array.isArray(queueJson?.pending) ? queueJson.pending : [];
+      let createdCount = 0;
+      const failures: Array<{ passageId: string; error: string }> = [];
+      setProgress({ current: 0, total: pending.length });
+
+      for (let index = 0; index < pending.length; index += 1) {
+        setProgress({ current: index + 1, total: pending.length });
+        setMessage(`Generating chunk ${index + 1} of ${pending.length}…`);
+        const response = await fetch('/api/admin/sources/generate-lessons', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceDocumentId,
+            unitId,
+            generatedPassageId: pending[index].id,
+          }),
+        });
+        const json = await response.json().catch(() => null);
+        if (!response.ok) {
+          failures.push({
+            passageId: pending[index].id,
+            error: json?.error ?? 'Request failed',
+          });
+          continue;
+        }
+        createdCount += Number(json?.createdCount ?? 0);
+        failures.push(...(Array.isArray(json?.failed) ? json.failed : []));
+      }
+
+      const failedCount = failures.length;
+      const skippedCount = Number(queueJson?.data?.length ?? 0) - pending.length;
+      setMessage(
+        `Created ${createdCount}, skipped ${skippedCount}, failed ${failedCount}.` +
+          (failedCount > 0 ? ' Retry to process only the failed chunks.' : '')
+      );
+      setProgress(null);
+      if (failedCount > 0) {
+        const firstFailure = failures[0];
+        setError(
+          firstFailure
+            ? `Chunk ${firstFailure.passageId}: ${firstFailure.error}`
+            : 'Some chunks failed.'
+        );
+      }
       router.refresh();
     });
   }
@@ -85,7 +125,11 @@ export default function GenerateLessonsFromSourceButton({
         disabled={isPending || !unitId || disabled}
         className="primary-button disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {isPending ? 'Generating...' : 'Generate AI Lessons'}
+        {isPending
+          ? progress
+            ? `Generating ${progress.current}/${progress.total}`
+            : 'Preparing…'
+          : 'Generate AI Lessons'}
       </button>
 
       {message ? <div className="text-sm text-emerald-700">{message}</div> : null}

@@ -5,6 +5,7 @@ type Props = {
   comboCount?: number;
   comboMultiplier?: number;
   comboActive?: boolean;
+  retryCount?: number;
 };
 
 export default function ExerciseProgressHeader({
@@ -14,13 +15,21 @@ export default function ExerciseProgressHeader({
   comboCount = 0,
   comboMultiplier,
   comboActive = false,
+  retryCount = 0,
 }: Props) {
   const completed = Math.min(currentIndex + (submitted ? 2 : 1), total);
   const progressPercent = total > 0 ? (completed / total) * 100 : 0;
 
   return (
     <div className="space-y-2 pt-0.5">
-      <div className="sr-only">Exercise {completed} of {total}</div>
+      <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[var(--color-text-muted)]">
+        <span>Exercise {completed} of {total}</span>
+        {retryCount > 0 ? (
+          <span className="rounded-full border border-amber-300/50 bg-amber-100/80 px-2 py-1 text-amber-800">
+            {retryCount} reinforcement {retryCount === 1 ? "rep" : "reps"}
+          </span>
+        ) : null}
+      </div>
       {comboCount >= 2 ? (
         <div className="flex justify-end">
           <div className="combo-chip" data-active={comboActive ? "true" : "false"}>

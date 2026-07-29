@@ -67,6 +67,7 @@ type ExerciseFeedbackState = {
   streakCount?: number;
   translationText?: string | null;
   translationLabel?: string | null;
+  retryAdded?: boolean;
 };
 
 function parseSentenceBuilderResponse(value: string) {
@@ -216,7 +217,7 @@ function buildCorrectiveRetryExercise(params: {
 
   return {
     ...preferredAlternative,
-    id: `${preferredAlternative.id}:retry-for:${params.missedExercise.id}`,
+    id: `${preferredAlternative.id}:retry`,
     metadata: {
       ...(preferredAlternative.metadata ?? {}),
       retry_source_exercise_id: params.missedExercise.id,
@@ -347,6 +348,12 @@ export default function ExercisePlayer({
         target?.getAttribute("contenteditable") === "true";
       const isButton = tagName === "BUTTON";
 
+      if (submitted && event.key === "Enter" && !isButton) {
+        event.preventDefault();
+        handleContinue();
+        return;
+      }
+
       if (submitted) {
         return;
       }
@@ -390,12 +397,34 @@ export default function ExercisePlayer({
     currentFeedback,
   ]);
 
-  function handleContinue() {
-    if (submitted || isAdvancing) {
+  function advanceAfterFeedback() {
+    if (isAdvancing) return;
+
+    if (currentIndex >= exerciseQueue.length - 1) {
+      onComplete?.(results);
       return;
     }
 
-    if (!canSubmit || isAdvancing) return;
+    setIsAdvancing(true);
+    autoAdvanceTimeoutRef.current = window.setTimeout(() => {
+      setCurrentIndex((prev) => prev + 1);
+      setResponseValue("");
+      setSubmitted(false);
+      setCurrentFeedback(null);
+    }, 120);
+  }
+
+  function handleContinue() {
+    if (isAdvancing) {
+      return;
+    }
+
+    if (submitted) {
+      advanceAfterFeedback();
+      return;
+    }
+
+    if (!canSubmit) return;
 
     if (isTypedResponse && typeof document !== "undefined") {
       const activeElement = document.activeElement;
@@ -471,6 +500,16 @@ export default function ExercisePlayer({
         ? JSON.stringify(selectedTileIds) ===
           JSON.stringify(getExerciseCorrectSequence(currentExercise))
       : getExerciseAcceptableAnswers(currentExercise).includes(responseValue);
+    const targetWordId = getExerciseTargetWordId(currentExercise);
+    const retryAlreadyQueuedForWord = exerciseQueue.some(
+      (candidate) =>
+        Boolean(getRetrySourceExerciseId(candidate)) &&
+        getExerciseTargetWordId(candidate) === targetWordId
+    );
+    const shouldQueueRetry =
+      !isCorrect &&
+      canQueueRetryExercise(currentExercise) &&
+      !retryAlreadyQueuedForWord;
     const comboCountAfter = isCorrect ? currentStreak + 1 : 0;
     triggerFeedbackCue(
       getAnswerFeedbackCue({
@@ -481,6 +520,10 @@ export default function ExercisePlayer({
     );
     const wordProgressId = currentExercise.reviewMeta?.sourceDrillId ?? null;
     const result: ExerciseResult = {
+      client_attempt_id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${sessionIdRef.current}:${currentExercise.id}:${Date.now()}`,
       response_time_ms: timeSpentMs,
       session_id: sessionIdRef.current,
       exercise_id: currentExercise.id,
@@ -501,6 +544,14 @@ export default function ExercisePlayer({
       word_progress_id: wordProgressId,
       metadata: {
         ...(sessionMetadata ?? {}),
+        retry_source_exercise_id:
+          typeof currentExercise.metadata?.retry_source_exercise_id === "string"
+            ? currentExercise.metadata.retry_source_exercise_id
+            : null,
+        retry_followup_exercise_id:
+          typeof currentExercise.metadata?.retry_followup_exercise_id === "string"
+            ? currentExercise.metadata.retry_followup_exercise_id
+            : null,
         selected_option_id:
           isTypedResponse || isSentenceBuilder || isPairStyleExercise ? null : responseValue,
         correct_option_id:
@@ -549,18 +600,20 @@ export default function ExercisePlayer({
     }
     setCurrentFeedback({
       isCorrect,
-      explanation: currentExercise.explanation,
-      selectedAnswer: selectedAnswer,
-      correctAnswer:
-        !isCorrect && currentExercise.type === "context_meaning"
-          ? null
-          : isTypedResponse
-            ? correctAnswerId
-            : isPairStyleExercise
-              ? correctPairs.map((pair) => pair.label).join(" | ")
+      explanation:
+        typeof currentExercise.explanation === "string"
+          ? currentExercise.explanation
+          : undefined,
+      selectedAnswer: String(selectedAnswer ?? ""),
+      correctAnswer: String(
+        isTypedResponse
+          ? correctAnswerId
+          : isPairStyleExercise
+            ? correctPairs.map((pair) => pair.label).join(" | ")
             : isSentenceBuilder
               ? correctAnswerId
-              : correctOption?.label ?? correctAnswerId,
+              : correctOption?.label ?? correctAnswerId ?? ""
+      ),
       answerLabel: isTypedResponse
         ? "Your spelling"
         : isPairStyleExercise
@@ -572,13 +625,14 @@ export default function ExercisePlayer({
       translationText: isCorrect && isTypedResponse ? translationText : null,
       translationLabel:
         isCorrect && isTypedResponse && translationText ? "Translation" : null,
+      retryAdded: shouldQueueRetry,
     });
     setResults((prev) => [
       ...prev.filter((item) => item.exercise_id !== result.exercise_id),
       result,
     ]);
 
-    if (!isCorrect && canQueueRetryExercise(currentExercise)) {
+    if (shouldQueueRetry) {
       setExerciseQueue((current) => [
         ...current,
         buildCorrectiveRetryExercise({
@@ -590,45 +644,27 @@ export default function ExercisePlayer({
 
     console.debug("Vocab exercise attempt", result);
     onExerciseComplete?.(result);
-
-    const nextResults = [
-      ...results.filter((item) => item.exercise_id !== result.exercise_id),
-      result,
-    ];
-    const queueLengthAfterCheck =
-      !isCorrect && canQueueRetryExercise(currentExercise)
-        ? exerciseQueue.length + 1
-        : exerciseQueue.length;
-
-    const autoAdvanceDelayMs = isTypedResponse
-      ? isCorrect && translationText
-        ? 2300
-        : 1600
-      : 520;
-
-    autoAdvanceTimeoutRef.current = window.setTimeout(() => {
-      if (currentIndex >= queueLengthAfterCheck - 1) {
-        onComplete?.(nextResults);
-        return;
-      }
-
-      setIsAdvancing(true);
-      window.setTimeout(() => {
-        setCurrentIndex((prev) => prev + 1);
-        setResponseValue("");
-        setSubmitted(false);
-        setCurrentFeedback(null);
-      }, 120);
-    }, autoAdvanceDelayMs);
   }
 
   function handleAlreadyKnow() {
     if (submitted || isAdvancing || !canUseAlreadyKnow) {
       return;
     }
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Mark “${getExerciseTargetWord(currentExercise)}” as already known? This moves it to Mastered.`
+      )
+    ) {
+      return;
+    }
 
     const timeSpentMs = Math.max(1, Date.now() - startedAtRef.current);
     const result: ExerciseResult = {
+      client_attempt_id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${sessionIdRef.current}:${currentExercise.id}:known:${Date.now()}`,
       response_time_ms: timeSpentMs,
       session_id: sessionIdRef.current,
       exercise_id: currentExercise.id,
@@ -670,29 +706,6 @@ export default function ExercisePlayer({
 
     onExerciseComplete?.(result);
 
-    const nextResults = [
-      ...results.filter((item) => item.exercise_id !== result.exercise_id),
-      result,
-    ];
-
-    if (autoAdvanceTimeoutRef.current) {
-      clearTimeout(autoAdvanceTimeoutRef.current);
-    }
-
-    autoAdvanceTimeoutRef.current = window.setTimeout(() => {
-      if (currentIndex >= exerciseQueue.length - 1) {
-        onComplete?.(nextResults);
-        return;
-      }
-
-      setIsAdvancing(true);
-      window.setTimeout(() => {
-        setCurrentIndex((prev) => prev + 1);
-        setResponseValue("");
-        setSubmitted(false);
-        setCurrentFeedback(null);
-      }, 120);
-    }, 520);
   }
 
   function renderExercise() {
@@ -864,6 +877,7 @@ export default function ExercisePlayer({
       <ExerciseProgressHeader
         currentIndex={currentIndex}
         total={exerciseQueue.length}
+        retryCount={Math.max(0, exerciseQueue.length - exercises.length)}
         submitted={submitted}
         comboCount={comboCount}
         comboMultiplier={floatingReward?.comboCount === comboCount ? floatingReward.comboMultiplier : undefined}

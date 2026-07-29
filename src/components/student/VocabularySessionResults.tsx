@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import MascotCat from "@/components/student/MascotCat";
 import FeedbackSettingsButton from "@/components/student/FeedbackSettingsButton";
 import {
   studentMistakeBrainPath,
@@ -20,6 +19,14 @@ import {
 import { triggerFeedbackCue } from "@/services/feedback/feedback-effects.client";
 import { useFeedbackSettings } from "@/services/feedback/use-feedback-settings";
 
+function CheckpointRewardArt() {
+  return (
+    <div className="coach-reward-art" aria-hidden="true">
+      <img src="/brand/checkpoint-rewards.png" alt="" />
+    </div>
+  );
+}
+
 export default function VocabularySessionResults({
   session,
   results,
@@ -29,6 +36,7 @@ export default function VocabularySessionResults({
   rewardCredit,
   sessionGamification,
   isRewardPending = false,
+  isCompletionBlocked = false,
   focused = false,
 }: {
   session: VocabExerciseSession;
@@ -42,6 +50,7 @@ export default function VocabularySessionResults({
   rewardCredit?: VocabularySessionRewardCredit | null;
   sessionGamification?: VocabularySessionGamificationSummary | null;
   isRewardPending?: boolean;
+  isCompletionBlocked?: boolean;
   focused?: boolean;
 }) {
   const completionPlayedRef = useRef(false);
@@ -66,18 +75,31 @@ export default function VocabularySessionResults({
   const insightsHref = studentMistakeBrainPath();
 
   useEffect(() => {
-    if (completionPlayedRef.current) {
+    if (completionPlayedRef.current || isCompletionBlocked) {
       return;
     }
 
     completionPlayedRef.current = true;
     triggerFeedbackCue("completion", feedbackSettings);
-  }, [feedbackSettings]);
+  }, [feedbackSettings, isCompletionBlocked]);
+
+  const completionTitle = isRewardPending
+    ? "Saving your checkpoint…"
+    : isCompletionBlocked
+      ? "Checkpoint needs your attention"
+      : summary.completionTitle;
+  const completionSubtitle = isRewardPending
+    ? "Keep this page open while your answers, XP, and review schedule are confirmed."
+    : isCompletionBlocked
+      ? "Your results are still here. Retry saving before leaving this page."
+      : summary.completionSubtitle;
 
   const sessionHighlights = [
     {
       label: "XP",
-      value: `+${summary.sessionGamification?.totalXpEarned ?? summary.reward.totalXp}`,
+      value: isCompletionBlocked
+        ? "…"
+        : `+${summary.sessionGamification?.totalXpEarned ?? summary.reward.totalXp}`,
       hint:
         summary.reward.accuracyBonusXp > 0 || summary.reward.dueReviewBonusXp > 0
           ? "Includes session bonuses"
@@ -149,14 +171,14 @@ export default function VocabularySessionResults({
       <div className="mx-auto flex min-h-[100svh] w-full max-w-xl flex-col justify-center gap-6 px-4 py-6 text-center sm:px-6">
         <div className="space-y-3">
           <div className="flex justify-center">
-            <MascotCat mood="celebrate" size="md" />
+            <CheckpointRewardArt />
           </div>
           <div className="app-kicker">
             {summary.sessionPhase === "priority_review" ? "Checkpoint" : "Practice Checkpoint"}
           </div>
-          <h2 className="app-heading-lg text-[2rem]">{summary.completionTitle}</h2>
-          <p className="token-text-secondary text-base leading-7">{summary.completionSubtitle}</p>
-          <p className="app-copy font-medium">{summary.rewardNote}</p>
+          <h2 className="app-heading-lg text-[2rem]">{completionTitle}</h2>
+          <p className="token-text-secondary text-base leading-7">{completionSubtitle}</p>
+          {!isCompletionBlocked ? <p className="app-copy font-medium">{summary.rewardNote}</p> : null}
           {summary.sessionGamification?.leveledUp ? (
             <div className="rounded-full border border-[var(--color-secondary)] bg-[var(--color-secondary-soft)] px-3 py-1 text-xs font-semibold text-[var(--color-secondary)]">
               {`Level ${summary.sessionGamification.currentLevel ?? 1} reached`}
@@ -176,7 +198,9 @@ export default function VocabularySessionResults({
               XP
             </div>
             <div className="token-text-primary mt-2 text-3xl font-semibold">
-              +{summary.sessionGamification?.totalXpEarned ?? summary.reward.totalXp}
+              {isCompletionBlocked
+                ? "…"
+                : `+${summary.sessionGamification?.totalXpEarned ?? summary.reward.totalXp}`}
             </div>
           </div>
         </div>
@@ -208,34 +232,36 @@ export default function VocabularySessionResults({
           </div>
         ) : null}
 
-        <div className="space-y-3 pt-2">
-          <Link
-            href={primaryContinueHref}
-            className="app-button app-button-primary flex w-full"
-          >
-            {primaryContinueLabel}
-          </Link>
-          <Link
-            href={weakWordsHref}
-            className="app-button app-button-secondary flex w-full"
-          >
-            Review Weak Words
-          </Link>
-          <Link
-            href={studentVocabularyPath({ mode: session.mode })}
-            className="app-button app-button-muted flex w-full"
-          >
-            Back to vocabulary
-          </Link>
-          <Link
-            href={insightsHref}
-            className="text-sm font-semibold text-slate-600 underline underline-offset-4"
-          >
-            View your weak areas
-          </Link>
-          <div className="flex justify-center">
-            <FeedbackSettingsButton label="Feedback settings" />
-          </div>
+        <div className="space-y-3 pt-2 pb-[env(safe-area-inset-bottom)]">
+          {isCompletionBlocked ? (
+            <button type="button" disabled className="app-button app-button-muted flex w-full opacity-70">
+              {isRewardPending ? "Saving checkpoint…" : "Retry saving above"}
+            </button>
+          ) : (
+            <>
+              <Link href={primaryContinueHref} className="app-button app-button-primary flex w-full">
+                {primaryContinueLabel}
+              </Link>
+              <Link href={weakWordsHref} className="app-button app-button-secondary flex w-full">
+                Review Weak Words
+              </Link>
+              <Link
+                href={studentVocabularyPath({ mode: session.mode })}
+                className="app-button app-button-muted flex w-full"
+              >
+                Back to vocabulary
+              </Link>
+              <Link
+                href={insightsHref}
+                className="text-sm font-semibold text-slate-600 underline underline-offset-4"
+              >
+                View your weak areas
+              </Link>
+              <div className="flex justify-center">
+                <FeedbackSettingsButton label="Feedback settings" />
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -245,14 +271,14 @@ export default function VocabularySessionResults({
     <div className="app-card mx-auto max-w-3xl space-y-5 p-5 sm:p-6">
       <div className="space-y-3 text-center sm:text-left">
         <div className="flex justify-center sm:justify-start">
-          <MascotCat mood="celebrate" size="md" />
+          <CheckpointRewardArt />
         </div>
         <div className="app-kicker">
           {summary.sessionPhase === "priority_review" ? "Checkpoint" : "Practice Checkpoint"}
         </div>
-        <h2 className="app-heading-lg">{summary.completionTitle}</h2>
+        <h2 className="app-heading-lg">{completionTitle}</h2>
         <p className="app-copy">
-          {summary.completionSubtitle} {summary.accuracyTone}
+          {completionSubtitle} {!isCompletionBlocked ? summary.accuracyTone : ""}
         </p>
         <p className="app-copy font-medium">{summary.rewardNote}</p>
         {summary.sessionGamification?.leveledUp ? (
@@ -375,40 +401,44 @@ export default function VocabularySessionResults({
           <div className="token-text-secondary mt-1 text-sm">
             {isRewardPending
               ? "Saving your session credit..."
+              : isCompletionBlocked
+                ? "Retry saving before you continue."
               : "Keep the momentum going with another adaptive checkpoint instead of stopping after today's priority words."}
           </div>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <Link
-            href={primaryContinueHref}
-            className="app-button app-button-primary"
-          >
-            {primaryContinueLabel}
-          </Link>
-          <Link
-            href={weakWordsHref}
-            className="app-button app-button-secondary"
-          >
-            Review weak words
-          </Link>
-          <Link
-            href={studentVocabularyPath({ mode: session.mode })}
-            className="app-button app-button-muted"
-          >
-            Back to vocabulary
-          </Link>
-        </div>
-        <div>
-          <Link
-            href={insightsHref}
-            className="hero-link text-sm font-semibold underline underline-offset-4"
-          >
-            View your weak areas
-          </Link>
-        </div>
-        <div>
-          <FeedbackSettingsButton label="Feedback settings" />
-        </div>
+        {isCompletionBlocked ? (
+          <button type="button" disabled className="app-button app-button-muted opacity-70">
+            {isRewardPending ? "Saving checkpoint…" : "Retry saving above"}
+          </button>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-3">
+              <Link href={primaryContinueHref} className="app-button app-button-primary">
+                {primaryContinueLabel}
+              </Link>
+              <Link href={weakWordsHref} className="app-button app-button-secondary">
+                Review weak words
+              </Link>
+              <Link
+                href={studentVocabularyPath({ mode: session.mode })}
+                className="app-button app-button-muted"
+              >
+                Back to vocabulary
+              </Link>
+            </div>
+            <div>
+              <Link
+                href={insightsHref}
+                className="hero-link text-sm font-semibold underline underline-offset-4"
+              >
+                View your weak areas
+              </Link>
+            </div>
+            <div>
+              <FeedbackSettingsButton label="Feedback settings" />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

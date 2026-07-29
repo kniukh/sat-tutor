@@ -355,12 +355,19 @@ export default function ListenMatchExercise({
                 aria-pressed={activeLeftId === option.id || isMatched}
               >
                 {showWord ? (
-                  <span
-                    className={`text-center text-sm font-semibold ${
-                      isMatched ? "text-slate-400" : "text-emerald-700"
-                    }`}
-                  >
-                    {feedbackLabel}
+                  <span className="flex flex-col items-center gap-1 text-center">
+                    <span
+                      className={`text-sm font-semibold ${
+                        isMatched ? "text-slate-500" : "text-emerald-700"
+                      }`}
+                    >
+                      {option.label}
+                    </span>
+                    {feedbackLabel !== option.label ? (
+                      <span className="text-[11px] font-medium leading-4 text-slate-400">
+                        {feedbackLabel}
+                      </span>
+                    ) : null}
                   </span>
                 ) : (
                   <ListenWaveIcon active={isPlaying} />

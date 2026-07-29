@@ -12,6 +12,7 @@ import {
   normalizeVocabularyPageMode,
   normalizeVocabularySessionPhase,
 } from "@/services/vocabulary/vocabulary-page.service";
+import ReadingCoachBrand from "@/components/student/ReadingCoachBrand";
 
 export default async function StudentVocabularyPage({
   params,
@@ -67,16 +68,21 @@ export default async function StudentVocabularyPage({
 
   return (
     <div className="app-page-shell max-w-4xl space-y-5">
-      <section className="card-surface p-4 sm:p-5">
+      <header className="coach-topbar">
+        <ReadingCoachBrand compact />
+        <Link href={studentDashboardPath()} className="coach-secondary-button">Dashboard</Link>
+      </header>
+      <section className="coach-vocab-hero">
         <div className="space-y-5">
           <div className="space-y-1">
-            <div className="app-kicker">Vocabulary Studio</div>
-            <h1 className="app-heading-lg">Practice anytime</h1>
+            <div className="coach-eyebrow">Vocabulary studio</div>
+            <h1 className="coach-page-title !text-[clamp(2rem,7vw,3rem)]">Build your word power.</h1>
+            <p className="coach-page-copy">Short adaptive sessions strengthen meaning, context, and recall.</p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
             {topMetrics.map((item) => (
-              <div key={item.label} className="app-card-soft p-4">
+              <div key={item.label} className="coach-stat">
                 <div className="app-kicker text-slate-500">{item.label}</div>
                 <div className="app-metric-value mt-2">{item.value}</div>
               </div>
@@ -84,17 +90,14 @@ export default async function StudentVocabularyPage({
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Link href={primaryPracticeHref} className="primary-button flex-1">
+            <Link href={primaryPracticeHref} className="coach-primary-button coach-primary-button--blue flex-1">
               {primaryActionLabel}
             </Link>
-            <Link href={weakWordsHref} className="secondary-button flex-1 sm:flex-none">
+            <Link href={weakWordsHref} className="coach-secondary-button flex-1 sm:flex-none">
               Review Weak Words
             </Link>
-            <Link href={studentVocabularyListPath()} className="secondary-button flex-1 sm:flex-none">
+            <Link href={studentVocabularyListPath()} className="coach-secondary-button flex-1 sm:flex-none">
               My Vocabulary
-            </Link>
-            <Link href={studentDashboardPath()} className="secondary-button flex-1 sm:flex-none">
-              Return to Dashboard
             </Link>
           </div>
 

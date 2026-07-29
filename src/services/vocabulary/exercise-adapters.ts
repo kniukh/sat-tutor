@@ -122,6 +122,44 @@ function makeBlank(sentence: string, itemText: string) {
   return `_____ — ${sentence}`;
 }
 
+function getCompleteSentenceForCloze(item: ClozeDrillItem) {
+  const pattern = new RegExp(escapeRegExp(item.itemText), "i");
+  const sources = [
+    item.exampleSentence,
+    item.contextSentence,
+    item.exampleText,
+  ];
+
+  for (const source of sources) {
+    const normalized = source?.trim().replace(/\s+/g, " ");
+    if (!normalized || !pattern.test(normalized)) {
+      continue;
+    }
+
+    const sentences = normalized.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [];
+    const matchingSentence = sentences
+      .map((sentence) => sentence.trim())
+      .find((sentence) => pattern.test(sentence));
+
+    if (!matchingSentence) {
+      continue;
+    }
+
+    // Captured context is sometimes a character window that starts halfway
+    // through a word. Do not turn such fragments into cloze questions.
+    const startsLikeSentence = /^[“"'([{]*[A-Z0-9]/.test(matchingSentence);
+    if (!startsLikeSentence) {
+      continue;
+    }
+
+    return /[.!?][”"')\]]*$/.test(matchingSentence)
+      ? matchingSentence
+      : `${matchingSentence}.`;
+  }
+
+  return null;
+}
+
 function isConciseDrillLabel(text: string | null | undefined, maxTokens = 10, maxLength = 90) {
   const normalized = text?.trim().replace(/\s+/g, " ") ?? "";
   return Boolean(normalized) && countTokens(normalized) <= maxTokens && normalized.length <= maxLength;
@@ -1422,7 +1460,11 @@ export function adaptClozeDrillToExerciseWithPool(
   allItems: ClozeDrillItem[]
 ): FillBlankVocabExercise {
   const questionText = "Which option best completes the sentence?";
-  const sentenceText = makeBlank(item.contextSentence, item.itemText);
+  const sourceSentence =
+    getCompleteSentenceForCloze(item) ??
+    item.exampleSentence?.trim() ??
+    item.contextSentence.trim();
+  const sentenceText = makeBlank(sourceSentence, item.itemText);
   const answerSet = getStoredAnswerSet(item, "collocation");
   const drillCorrectAnswer = answerSet?.drill_correct_answer ?? item.itemText;
   const options = answerSet
@@ -1482,28 +1524,12 @@ export function adaptClozeDrillsToExercises(
   items: ClozeDrillItem[]
 ): SupportedVocabExercise[] {
   return items.flatMap((item) => {
-    const primary = adaptClozeDrillToExerciseWithPool(item, items);
-    const contextHint = item.exampleText?.trim();
-
-    if (!contextHint || contextHint === item.contextSentence) {
-      return [primary];
+    if (!getCompleteSentenceForCloze(item)) {
+      return [];
     }
 
-    return [
-      primary,
-      {
-        ...primary,
-        id: `${item.wordProgressId}:fill_blank:context_clue`,
-        instructions: "Use the sentence and the added context clue to choose the best fit.",
-        question_text: "Which option best fits once you consider the broader context?",
-        questionText: "Which option best fits once you consider the broader context?",
-        explanation: `"${item.itemText}" matches both the sentence and the extra context clue because it means ${getPlainMeaning(item)}.`,
-        difficulty_band: "hard",
-        variant: "context_clue",
-        contextHint,
-        tags: [...(primary.tags ?? []), "context_clue"],
-      },
-    ];
+    const primary = adaptClozeDrillToExerciseWithPool(item, items);
+    return [primary];
   });
 }
 
@@ -2351,41 +2377,11 @@ export function adaptCollocationDrillToExercise(
   };
 }
 
-function extractCollocationLead(sourceSentence: string, itemText: string) {
-  const pattern = new RegExp(`([A-Za-z'-]+)\\s+${escapeRegExp(itemText)}`, "i");
-  const match = sourceSentence.match(pattern);
-  return match?.[1] ?? null;
-}
-
 export function adaptCollocationDrillsToExercises(
   items: Array<MeaningDrillItem | ClozeDrillItem>
 ): SupportedVocabExercise[] {
   return items.flatMap((item) => {
     const base = adaptCollocationDrillToExercise(item, items);
-    if (!base) {
-      return [];
-    }
-
-    const sourceSentence = getSourceSentence(item);
-    const pairLead = extractCollocationLead(sourceSentence, item.itemText);
-
-    if (!pairLead) {
-      return [base];
-    }
-
-    return [
-      base,
-      {
-        ...base,
-        id: `${item.wordProgressId}:collocation:pair_selection`,
-        question_text: `Which option best completes the natural pair "${pairLead} ____"?`,
-        questionText: `Which option best completes the natural pair "${pairLead} ____"?`,
-        instructions:
-          "Focus on the natural English pairing first, then confirm it against the example sentence.",
-        variant: "pair_selection",
-        pairLead,
-        tags: [...(base.tags ?? []), "pair_selection"],
-      },
-    ];
+    return base ? [base] : [];
   });
 }

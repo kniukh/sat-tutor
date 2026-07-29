@@ -8,6 +8,7 @@ import { classifyReviewQueueCandidate } from "@/services/vocabulary/review-queue
 import Link from "next/link";
 import { studentDashboardPath } from "@/lib/routes/student";
 import type { PassageAudioSentenceTiming } from "@/components/student/PassageAudioControls";
+import ReadingCoachBrand from "@/components/student/ReadingCoachBrand";
 
 function parsePassageAudioSentenceTimings(value: unknown): PassageAudioSentenceTiming[] {
   if (!Array.isArray(value)) {
@@ -164,12 +165,10 @@ export default async function StudentLessonPage({
 
       <div className="reading-topbar">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <Link
-            href={studentDashboardPath()}
-            className="secondary-button min-h-10 px-3 py-2 text-xs sm:text-sm"
-          >
-            Back
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href={studentDashboardPath()} className="coach-back-button !h-10 !w-10">←</Link>
+            <ReadingCoachBrand compact />
+          </div>
 
           <div className="min-w-0 text-right">
             <div className="token-text-primary truncate text-sm font-semibold sm:text-base">

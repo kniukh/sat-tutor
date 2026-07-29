@@ -2,29 +2,26 @@ import { NextResponse } from "next/server";
 import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { awardVocabularySessionCompletionXp } from "@/services/gamification/xp-awards.service";
-import { ensureVocabularySessionForAttempt } from "@/services/vocabulary/vocab-session.service";
 import type { VocabularySessionRow } from "@/types/vocab-tracking";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const {
-      studentId,
-      sessionId,
-      sessionMode,
-      completedCount,
-      correctCount,
-      accuracy,
-    }: {
-      studentId: string;
-      sessionId: string;
-      sessionMode: VocabularySessionRow["mode"];
-      completedCount: number;
-      correctCount: number;
-      accuracy: number;
-    } = body;
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+    }
+    const studentId = typeof body.studentId === "string" ? body.studentId : "";
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+    const sessionMode =
+      typeof body.sessionMode === "string"
+        ? (body.sessionMode as VocabularySessionRow["mode"])
+        : null;
+    const completedCount =
+      typeof body.completedCount === "number" ? body.completedCount : undefined;
 
-    if (!sessionId || !sessionMode || !Number.isFinite(completedCount)) {
+    if (!sessionId || !sessionMode) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
@@ -42,23 +39,35 @@ export async function POST(request: Request) {
       throw sessionError;
     }
 
-    const safeCompletedCount = Math.max(0, Math.round(completedCount));
-    const safeCorrectCount = Math.max(0, Math.round(correctCount));
-    const safeAccuracy =
-      Number.isFinite(accuracy) && accuracy >= 0 ? Math.round(accuracy) : 0;
-    const resolvedSession =
-      existingSession ??
-      (await ensureVocabularySessionForAttempt({
-        studentId: sessionStudentId,
-        sessionId,
-        sessionMode,
-        sessionMetadata: {
-          session_mode: sessionMode,
-          completion_fallback_session: true,
+    if (!existingSession) {
+      return NextResponse.json({ error: "Vocabulary session not found" }, { status: 404 });
+    }
+
+    const { data: attempts, error: attemptsError } = await supabase
+      .from("exercise_attempts")
+      .select("id, is_correct")
+      .eq("student_id", sessionStudentId)
+      .eq("session_id", sessionId);
+    if (attemptsError) throw attemptsError;
+
+    const safeCompletedCount = attempts?.length ?? 0;
+    const expectedCompletedCount = Math.max(0, Math.round(Number(completedCount) || 0));
+    if (expectedCompletedCount > 0 && safeCompletedCount < expectedCompletedCount) {
+      return NextResponse.json(
+        {
+          error: "Some exercise attempts are still being saved. Retry checkpoint finalization.",
+          savedCount: safeCompletedCount,
+          expectedCount: expectedCompletedCount,
         },
-        attemptCreatedAt: new Date().toISOString(),
-        isCorrect: safeCorrectCount > 0,
-      }));
+        { status: 409 }
+      );
+    }
+    const safeCorrectCount = (attempts ?? []).filter((attempt) => attempt.is_correct).length;
+    const safeAccuracy =
+      safeCompletedCount > 0
+        ? Math.round((safeCorrectCount / safeCompletedCount) * 100)
+        : 0;
+    const resolvedSession = existingSession;
 
     const existingMetadata =
       resolvedSession.metadata && typeof resolvedSession.metadata === "object"

@@ -61,7 +61,13 @@ export async function persistExerciseAttempt(params: {
   const response = await fetch("/api/vocabulary/exercise-attempt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    // The server verifies the exercise against its registered snapshot. Do not
+    // resend the full exercise here: audio exercises may contain large payloads
+    // that exceed the browser's keepalive request limit.
+    body: JSON.stringify({
+      studentId: params.studentId,
+      result: params.result,
+    }),
   });
 
   const payload = await response.json().catch(() => null);

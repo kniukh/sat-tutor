@@ -55,6 +55,7 @@ export default async function FocusedVocabularyDrillPage({
     {
       guidedLessonIntro,
       guidedWordTexts,
+      focusedSessionOnly: true,
     }
   );
   const guidedCompletionAction =

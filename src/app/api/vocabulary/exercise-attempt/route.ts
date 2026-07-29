@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
-import { saveExerciseAttempt } from "@/services/vocabulary/exercise-attempts.service";
+import {
+  saveExerciseAttempt,
+  verifyVocabularyExerciseAttempt,
+} from "@/services/vocabulary/exercise-attempts.service";
 import { applyExerciseAttemptToProgress } from "@/services/vocabulary/exercise-progress.service";
 import { awardVocabularyExerciseXp } from "@/services/gamification/xp-awards.service";
 import type { ExerciseResult } from "@/components/student/exercise-player/types";
-import type { SupportedVocabExercise } from "@/types/vocab-exercises";
 
 export async function POST(request: Request) {
   try {
@@ -13,24 +15,38 @@ export async function POST(request: Request) {
     const {
       studentId,
       result,
-      exercise,
     }: {
       studentId: string;
       result: ExerciseResult;
-      exercise: SupportedVocabExercise;
     } = body;
 
-    if (!result?.exercise_id || !result?.session_id || !exercise?.id || exercise.id !== result.exercise_id) {
+    if (!result?.client_attempt_id || !result?.exercise_id || !result?.session_id) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
     const sessionStudentId = await requireStudentApiStudentId(studentId);
-
-    const saved = await saveExerciseAttempt({
+    const verified = await verifyVocabularyExerciseAttempt({
       studentId: sessionStudentId,
       result,
-      exercise,
     });
+
+    const savedResult = await saveExerciseAttempt({
+      studentId: sessionStudentId,
+      result: verified.result,
+      exercise: verified.exercise,
+    });
+    const saved = savedResult.attempt;
+
+    if (savedResult.deduplicated) {
+      return NextResponse.json({
+        ok: true,
+        data: saved,
+        deduplicated: true,
+        progress: null,
+        progressError: null,
+        xpReward: null,
+      });
+    }
 
     let progress = null;
     let progressError: string | null = null;
@@ -50,7 +66,7 @@ export async function POST(request: Request) {
       xpReward = await awardVocabularyExerciseXp({
         studentId: sessionStudentId,
         attempt: saved,
-        exercise,
+        exercise: verified.exercise,
         sameSessionCreditCapped: Boolean((progress as any)?.sameSessionCreditCapped),
         resultingLifecycleState: (progress as any)?.progressRow?.lifecycle_state ?? null,
       });
@@ -62,6 +78,18 @@ export async function POST(request: Request) {
   } catch (error: any) {
     if (isStudentApiAuthError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
+    if (
+      error instanceof Error &&
+      (error.message.includes("session snapshot") ||
+        error.message.includes("does not belong"))
+    ) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    if (error instanceof Error && error.message.includes("already complete")) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
     }
 
     console.error("POST /api/vocabulary/exercise-attempt error", error);
