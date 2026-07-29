@@ -237,6 +237,22 @@ function validatePackageShape(pkg: ChunkLessonPackage) {
   }
 }
 
+function validateGeneratedQuestionQuality(pkg: ChunkLessonPackage) {
+  pkg.sat_questions.slice(0, 3).forEach((item, index) => {
+    normalizeQuestion(
+      item as unknown as Record<string, unknown>,
+      "sat",
+      (["A", "B", "C"] as const)[index]
+    );
+  });
+
+  normalizeQuestion(
+    pkg.vocab_questions[0] as unknown as Record<string, unknown>,
+    "vocab",
+    "D"
+  );
+}
+
 export async function generateChunkLessonPackage(input: {
   title?: string | null;
   chapterTitle?: string | null;
@@ -351,6 +367,10 @@ Global rules:
 - Every question must have exactly 4 options.
 - Exactly 1 option must be correct.
 - Distractors must be plausible and similar in length, tone, and structure to the correct answer.
+- Keep the four choices visually balanced: no choice may be more than 8 words longer
+  than the shortest choice or more than about twice its word count.
+- If one answer needs extra qualification, add parallel specificity to the other
+  choices instead of making the correct answer visibly longer.
 - Answers must work as "best answer" choices, not merely technically true statements.
 - Explanations must be short, practical, and useful for later review.
 - Difficulty must be an integer from 1 to 5.
@@ -497,9 +517,11 @@ ${input.passageText}
   const parsed = await runAiGenerationWithRetry({
     label: "chunk lesson package generation",
     prompt,
+    maxAttempts: 3,
     parseAndValidate: (text) => {
       const next = extractJsonObject(text);
       validatePackageShape(next);
+      validateGeneratedQuestionQuality(next);
       return next;
     },
   });
