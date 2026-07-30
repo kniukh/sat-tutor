@@ -158,6 +158,10 @@ export default async function StudentLessonPage({
         reviewBucket === "overdue",
     };
   });
+  const displayLessonName = lesson.name.replace(
+    /^(Chapter\s+\d+)\s*[—:-]\s*\1\s*[—:-]\s*/i,
+    "$1 — "
+  );
 
   return (
     <div className="reading-stage-shell">
@@ -166,13 +170,13 @@ export default async function StudentLessonPage({
       <div className="reading-topbar">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2">
-            <Link href={studentDashboardPath()} className="coach-back-button !h-10 !w-10">←</Link>
+            <Link href={studentDashboardPath()} className="coach-back-button !h-11 !w-11">←</Link>
             <ReadingCoachBrand compact />
           </div>
 
           <div className="min-w-0 text-right">
             <div className="token-text-primary truncate text-sm font-semibold sm:text-base">
-              {lesson.name}
+              {displayLessonName}
             </div>
             <div className="token-text-muted text-[11px] uppercase tracking-[0.16em]">
               Reading
@@ -186,7 +190,7 @@ export default async function StudentLessonPage({
           accessCode={code}
           studentId={student.id}
           lessonId={lesson.id}
-          lessonName={lesson.name}
+          lessonName={displayLessonName}
           nextLessonId={lessonSequence.nextLesson?.id ?? null}
           passageId={mainPassage?.id}
           passageText={mainPassage?.passage_text ?? ""}

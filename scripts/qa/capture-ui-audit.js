@@ -429,6 +429,13 @@ async function main() {
         height: 844,
         session: "student",
       },
+      {
+        name: "student-audio-lesson-mobile",
+        path: "/s/lesson/b4679e49-e878-4cf4-8fc9-5e8bde846a25",
+        width: 390,
+        height: 844,
+        session: "student",
+      },
       { name: "vocabulary-list-mobile", path: "/s/vocabulary/list", width: 390, height: 844, session: "student" },
       {
         name: "vocabulary-drill-mobile",
@@ -443,7 +450,12 @@ async function main() {
       { name: "admin-students-mobile", path: "/admin/students", width: 390, height: 844, session: "admin" },
     ];
     const results = [];
-    const casesToRun = process.argv.includes("--interactive-only") ? [] : cases;
+    const requestedCase = process.env.QA_UI_CASE?.trim();
+    const casesToRun = process.argv.includes("--interactive-only")
+      ? []
+      : requestedCase
+        ? cases.filter((item) => item.name === requestedCase)
+        : cases;
     for (const item of casesToRun) {
       results.push({
         name: item.name,

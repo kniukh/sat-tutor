@@ -21,7 +21,7 @@ export function ReadingCoachMark({ className = "h-10 w-10" }: { className?: stri
 export default function ReadingCoachBrand({ compact = false }: { compact?: boolean }) {
   return (
     <Link href={studentDashboardPath()} className="inline-flex items-center gap-3" aria-label="SAT Reading Coach home">
-      <ReadingCoachMark className={compact ? "h-9 w-9" : "h-11 w-11"} />
+      <ReadingCoachMark className="h-11 w-11" />
       <span className={compact ? "hidden sm:block" : "block"}>
         <span className="block font-[var(--font-display)] text-sm font-extrabold leading-tight tracking-[-0.02em] text-slate-950">
           SAT Reading
