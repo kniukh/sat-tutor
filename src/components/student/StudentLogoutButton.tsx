@@ -5,9 +5,10 @@ import { useState, useTransition } from "react";
 
 type Props = {
   tone?: "light" | "dark";
+  label?: string;
 };
 
-export default function StudentLogoutButton({ tone = "light" }: Props) {
+export default function StudentLogoutButton({ tone = "light", label = "Log out" }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +44,7 @@ export default function StudentLogoutButton({ tone = "light" }: Props) {
         className={tone === "dark" ? "hero-link" : "secondary-button px-4 py-2 text-sm"}
         disabled={pending}
       >
-        {pending ? "Signing out..." : "Logout"}
+        {pending ? "Signing out..." : label}
       </button>
       {error ? (
         <div className={tone === "dark" ? "text-xs text-white/70" : "token-text-muted text-xs"}>

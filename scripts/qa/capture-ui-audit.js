@@ -413,6 +413,13 @@ async function main() {
 
     const cases = [
       { name: "student-login-mobile", path: "/student/login", width: 390, height: 844 },
+      {
+        name: "student-switch-login-mobile",
+        path: "/student/login",
+        width: 390,
+        height: 844,
+        session: "student",
+      },
       { name: "student-dashboard-mobile", path: "/s", width: 390, height: 844, session: "student" },
       { name: "student-dashboard-desktop", path: "/s", width: 1440, height: 1000, session: "student" },
       {

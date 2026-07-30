@@ -107,7 +107,7 @@ export default function FeedbackSettingsButton({
         className={
           tone === "dark"
             ? "inline-flex items-center gap-2 text-sm font-semibold text-white/75 underline underline-offset-4"
-            : "hero-link inline-flex items-center gap-2 text-sm font-semibold underline underline-offset-4"
+            : "secondary-button min-h-11 gap-2 px-3 text-sm"
         }
       >
         <span>{label}</span>
