@@ -738,6 +738,8 @@ export async function getStudentVocabularyPageData(
   options: VocabularySessionEntryOptions = {}
 ) {
   const supabase = await createServerSupabaseClient();
+  const focusedSessionOnly =
+    Boolean(options.focusedSessionOnly) && !options.guidedLessonIntro;
 
   const { data: student, error: studentError } = await supabase
     .from("students")
@@ -768,25 +770,31 @@ export async function getStudentVocabularyPageData(
         studentId: studentData.id,
         limit: 150,
       }),
-      getNextReviewQueueCandidates({
-        studentId: studentData.id,
-        limit: 8,
-        dueOnly: false,
-      }),
+      focusedSessionOnly
+        ? Promise.resolve([])
+        : getNextReviewQueueCandidates({
+            studentId: studentData.id,
+            limit: 8,
+            dueOnly: false,
+          }),
       supabase
         .from("vocabulary_item_details")
         .select("*")
         .eq("student_id", studentData.id)
         .eq("is_removed", false)
         .order("created_at", { ascending: false })
-        .limit(200),
+        .limit(focusedSessionOnly ? 80 : 200),
       supabase
         .from("exercise_attempts")
         .select("target_word_id")
         .eq("student_id", studentData.id)
         .not("target_word_id", "is", null),
-      getStudentVocabularyAnalytics(studentData.id),
-      getStudentGamificationSnapshot(studentData.id),
+      focusedSessionOnly
+        ? Promise.resolve(null)
+        : getStudentVocabularyAnalytics(studentData.id),
+      focusedSessionOnly
+        ? Promise.resolve(null)
+        : getStudentGamificationSnapshot(studentData.id),
     ]);
 
   if (allVocabDetails.error) {
@@ -798,8 +806,6 @@ export async function getStudentVocabularyPageData(
   }
 
   const translationLanguage = student.native_language || "ru";
-  const focusedSessionOnly =
-    Boolean(options.focusedSessionOnly) && !options.guidedLessonIntro;
   let vocabularyDetailRows = await hydrateVocabularyDetailsWithGlobalContent({
     details: (allVocabDetails.data ?? []) as any[],
     translationLanguage,
@@ -1287,12 +1293,13 @@ export async function getStudentVocabularyPageData(
     const bucket = classifyReviewQueueCandidate(candidate, now);
     return bucket === "recently_failed" || bucket === "weak_again";
   }).length;
-  const masteryDistribution = vocabularyAnalytics.masteryDistribution;
-  const totalTrackedWords = vocabularyAnalytics.summary.capturedWordsCount;
+  const masteryDistribution = vocabularyAnalytics?.masteryDistribution ?? [];
+  const totalTrackedWords =
+    vocabularyAnalytics?.summary.capturedWordsCount ?? vocabularyDetailRows.length;
   const totalWordsLearned = totalTrackedWords - getLifecycleCount(masteryDistribution, "new");
-  const masteredWords = vocabularyAnalytics.summary.masteredWordsCount;
+  const masteredWords = vocabularyAnalytics?.summary.masteredWordsCount ?? 0;
   const wordsInReview = getLifecycleCount(masteryDistribution, "review");
-  const practicedTodayWords = vocabularyAnalytics.summary.practicedTodayWordsCount;
+  const practicedTodayWords = vocabularyAnalytics?.summary.practicedTodayWordsCount ?? 0;
   const currentStreak = Number(gamificationResult?.streak_days ?? 0);
   const longestStreakCandidate = Number(
     (gamificationResult as Record<string, unknown> | null)?.longest_streak_days ??
@@ -1311,7 +1318,7 @@ export async function getStudentVocabularyPageData(
         totalWordsLearned,
         masteredWords,
         wordsInReview,
-        weakWords: vocabularyAnalytics.summary.weakWordCount,
+        weakWords: vocabularyAnalytics?.summary.weakWordCount ?? 0,
         practicedTodayWords,
         totalTrackedWords,
       },

@@ -70,13 +70,16 @@ Root cause and fix:
 - Reading lesson: approximately 1.3 seconds in the final run.
 - Reading completion: approximately 1.6 seconds.
 - Vocabulary list pages: under approximately 1.4 seconds.
-- Vocabulary drill initial generation remains the slowest operation:
-  `learn_new_words` reached approximately 11 seconds in one cold run.
+- Vocabulary focused-session cold loading was optimized after the initial audit:
+  `learn_new_words` dropped from approximately 11.1 seconds to 5.7 seconds,
+  while the response payload dropped from approximately 511 KB to 226 KB.
+- `review_weak_words` measured approximately 4.7 seconds and
+  `mixed_practice` approximately 3.1 seconds in the same regression run.
 
 Recommendation:
 
-- Move drill preparation ahead of navigation or cache a ready session when a
-  lesson finishes. This is now the main remaining performance opportunity.
+- Pre-build or cache the next ready session when a lesson finishes if a
+  sub-three-second cold start becomes a product requirement.
 
 ## Ukrainian Language
 
@@ -90,4 +93,3 @@ Added `uk` / Ukrainian to:
 
 New vocabulary content for Ukrainian students will request Ukrainian
 translations rather than falling back to Russian.
-
