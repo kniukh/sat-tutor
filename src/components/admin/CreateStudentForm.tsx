@@ -8,7 +8,7 @@ export function CreateStudentForm() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [accessCode, setAccessCode] = useState('');
-  const [nativeLanguage, setNativeLanguage] = useState<'ru' | 'ro' | 'en'>('ru');
+  const [nativeLanguage, setNativeLanguage] = useState<'ru' | 'ro' | 'uk' | 'en'>('ru');
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -80,12 +80,13 @@ export function CreateStudentForm() {
 
       <select
         value={nativeLanguage}
-        onChange={(e) => setNativeLanguage(e.target.value as 'ru' | 'ro' | 'en')}
+        onChange={(e) => setNativeLanguage(e.target.value as 'ru' | 'ro' | 'uk' | 'en')}
         className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       >
-        <option value="ru">ru</option>
-        <option value="ro">ro</option>
-        <option value="en">en</option>
+        <option value="ru">Russian</option>
+        <option value="ro">Romanian</option>
+        <option value="uk">Ukrainian</option>
+        <option value="en">English</option>
       </select>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}

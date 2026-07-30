@@ -165,15 +165,29 @@ async function main() {
   });
   assert(invalidAnswer.status === 400, "Invalid question/option was not blocked");
 
-  for (const question of questions) {
+  let repairCredit = null;
+  for (const [questionIndex, question] of questions.entries()) {
+    const selectedOption =
+      questionIndex === 0
+        ? ({ A: "B", B: "C", C: "D", D: "A" }[question.correct_option] ?? "A")
+        : question.correct_option;
     const answer = await post("/api/lesson/save-question-progress", {
       studentId: student.id,
       lessonId: lesson.id,
       questionId: question.id,
-      selectedOption: question.correct_option,
+      selectedOption,
       skill: "forged-skill",
     });
     assert(answer.status === 200, `Failed to save answer ${question.id}`);
+    if (questionIndex === 0) {
+      repairCredit = await post("/api/lesson/repair-credit", {
+        studentId: student.id,
+        lessonId: lesson.id,
+        questionId: question.id,
+        comboCountAfter: 1,
+      });
+      assert(repairCredit.status === 200, `Repair credit failed: ${repairCredit.status}`);
+    }
   }
 
   const beforeAttempts = await db
@@ -181,10 +195,12 @@ async function main() {
     .select("id", { count: "exact", head: true })
     .eq("student_id", student.id)
     .eq("lesson_id", lesson.id);
+  const completionStartedAt = Date.now();
   const completeOnce = await post("/api/lesson/complete", {
     studentId: student.id,
     lessonId: lesson.id,
   });
+  const completionMs = Date.now() - completionStartedAt;
   const completeTwice = await post("/api/lesson/complete", {
     studentId: student.id,
     lessonId: lesson.id,
@@ -247,6 +263,8 @@ async function main() {
           skipSecondRead: skippedSecondRead.status,
           invalidAnswer: invalidAnswer.status,
           completionStatuses: [completeOnce.status, completeTwice.status],
+          completionMs,
+          repairCreditStatus: repairCredit?.status ?? null,
           createdAttempts,
           completedRegression: regressCompleted.status,
           finalStage: state.stage,

@@ -28,11 +28,14 @@ export async function POST(request: Request) {
     fullName: string;
     email?: string;
     accessCode: string;
-    nativeLanguage?: 'ru' | 'ro' | 'en';
+    nativeLanguage?: 'ru' | 'ro' | 'uk' | 'en';
   } = body;
 
   if (!fullName || !accessCode) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+  if (!['ru', 'ro', 'uk', 'en'].includes(nativeLanguage)) {
+    return NextResponse.json({ error: 'Unsupported native language' }, { status: 400 });
   }
 
   const supabase = await createServerSupabaseClient();

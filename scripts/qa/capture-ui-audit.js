@@ -261,16 +261,40 @@ async function runVocabularyDrillJourney(client) {
     const answerButtons = initial.buttons.filter(
       (button) =>
         !button.disabled &&
-        !["Continue", "Already Know", "Finish", "Back"].includes(button.text) &&
+        !["Continue", "Already Know", "Finish", "Back", "Play audio"].includes(button.text) &&
+        !button.text.startsWith("Play audio ") &&
         button.text.length > 0
     );
-    if (answerButtons.length === 0) {
+    const hasTextInput = initial.text.includes("Type the word you hear.");
+    if (answerButtons.length === 0 && !hasTextInput) {
       journey.push({ exerciseIndex: exerciseIndex + 1, phase: "no-answer-control" });
       break;
     }
-    const chosen = answerButtons[exerciseIndex % answerButtons.length];
-    let chosenText = chosen.text;
-    if (initial.text.includes("Match each audio clip")) {
+    const chosen = answerButtons.length > 0
+      ? answerButtons[exerciseIndex % answerButtons.length]
+      : null;
+    let chosenText = chosen?.text ?? "qa-spelling-answer";
+    if (hasTextInput) {
+      const inputResult = await client.send("Runtime.evaluate", {
+        expression: `(() => {
+          const input = document.querySelector('input');
+          if (!input) return false;
+          const setter = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            'value'
+          ).set;
+          setter.call(input, 'qa-spelling-answer');
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()`,
+        returnByValue: true,
+      });
+      if (!inputResult.result.value) {
+        throw new Error("Could not fill spelling input");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    } else if (initial.text.includes("Match each audio clip")) {
       const audioButtons = initial.buttons.filter((button) =>
         button.text.startsWith("Play audio ")
       );

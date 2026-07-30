@@ -1103,7 +1103,18 @@ export default function LessonPlayer({
         feedbackSettings
       );
 
-      try {
+      setRepairFeedback({
+        status: "correct",
+        message: activeRepairItem.microTask.successMessage,
+      });
+      setRepairedQuestionIds((current) =>
+        current.includes(activeRepairItem.question.id)
+          ? current
+          : [...current, activeRepairItem.question.id]
+      );
+
+      void (async () => {
+        try {
         const response = await fetch("/api/lesson/repair-credit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1144,19 +1155,10 @@ export default function LessonPlayer({
           comboMultiplier,
           leveledUp: Boolean(xpReward?.progress?.leveledUp),
         });
-      } catch (error) {
-        console.error("repair credit error", error);
-      }
-
-      setRepairFeedback({
-        status: "correct",
-        message: activeRepairItem.microTask.successMessage,
-      });
-      setRepairedQuestionIds((current) =>
-        current.includes(activeRepairItem.question.id)
-          ? current
-          : [...current, activeRepairItem.question.id]
-      );
+        } catch (error) {
+          console.error("repair credit error", error);
+        }
+      })();
       return;
     }
 
@@ -1704,19 +1706,11 @@ export default function LessonPlayer({
           <div className="space-y-3">
             <button
               type="button"
-              onClick={() => void completeLesson()}
+              onClick={() => void completeLesson(studentDashboardPath())}
               disabled={saving}
               className="primary-button min-h-14 w-full"
             >
-              {saving ? "Saving..." : "Continue"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void completeLesson(studentDashboardPath())}
-              disabled={saving}
-              className="secondary-button min-h-14 w-full"
-            >
-              {saving ? "Saving..." : "Return to Dashboard"}
+              {saving ? "Saving..." : "Finish Lesson"}
             </button>
             <div className="flex justify-center">
               <FeedbackSettingsButton label="Feedback settings" />
@@ -1965,19 +1959,11 @@ export default function LessonPlayer({
           <div className="space-y-3">
             <button
               type="button"
-              onClick={() => void completeLesson()}
+              onClick={() => void completeLesson(studentDashboardPath())}
               disabled={saving}
               className="primary-button min-h-14 w-full"
             >
-              {saving ? "Saving..." : "Continue"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void completeLesson(studentDashboardPath())}
-              disabled={saving}
-              className="secondary-button min-h-14 w-full"
-            >
-              {saving ? "Saving..." : "Return to Dashboard"}
+              {saving ? "Saving..." : "Finish Lesson"}
             </button>
           </div>
           <div className="flex justify-center">

@@ -16,12 +16,15 @@ export async function POST(request: Request) {
     fullName: string;
     email: string;
     accessCode: string;
-    nativeLanguage: 'ru' | 'ro' | 'en';
+    nativeLanguage: 'ru' | 'ro' | 'uk' | 'en';
     isActive: boolean;
   } = body;
 
   if (!studentId) {
     return NextResponse.json({ error: 'studentId is required' }, { status: 400 });
+  }
+  if (!['ru', 'ro', 'uk', 'en'].includes(nativeLanguage)) {
+    return NextResponse.json({ error: 'Unsupported native language' }, { status: 400 });
   }
 
   const supabase = await createServerSupabaseClient();

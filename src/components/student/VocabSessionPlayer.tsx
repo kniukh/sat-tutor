@@ -299,10 +299,6 @@ export default function VocabSessionPlayer({
         if (pendingSaves.length > 0) {
           await Promise.allSettled(pendingSaves);
         }
-        // Reconcile the complete client result set before finalization. Attempt
-        // writes are idempotent by client_attempt_id, so this also closes races
-        // caused by fast navigation through the final feedback screen.
-        await Promise.all(results.map((result) => submitExerciseAttempt(result)));
         if (failedAttemptResultsRef.current.size > 0) {
           setSaveError('Some answers were not saved. Retry before finishing the session.');
           return;

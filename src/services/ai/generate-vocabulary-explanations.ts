@@ -40,6 +40,7 @@ export async function generateVocabularyExplanations(input: {
   const languageMap: Record<string, string> = {
     ru: 'Russian',
     ro: 'Romanian',
+    uk: 'Ukrainian',
     en: 'English',
   };
 

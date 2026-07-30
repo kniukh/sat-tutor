@@ -142,31 +142,34 @@ export async function completeLesson(studentId: string, lessonId: string) {
 
   if (stateError) throw stateError;
 
-  try {
-    const lessonSequence = await getLessonSequenceByCurrentLessonId(lessonId);
-
-    await updateStudentBookProgress({
-      studentId,
-      lessonId,
-      currentLessonId: lessonSequence.nextLesson?.id ?? null,
-    });
-  } catch (bookProgressError) {
-    console.error("Book progress update failed after lesson completion", bookProgressError);
-  }
-
-  let xpReward = null;
-
-  try {
-    xpReward = await awardReadingLessonCompletionXp({
+  const [bookProgressResult, xpRewardResult] = await Promise.allSettled([
+    (async () => {
+      const lessonSequence = await getLessonSequenceByCurrentLessonId(lessonId);
+      return updateStudentBookProgress({
+        studentId,
+        lessonId,
+        currentLessonId: lessonSequence.nextLesson?.id ?? null,
+      });
+    })(),
+    awardReadingLessonCompletionXp({
       studentId,
       lessonId,
       lessonAttemptId: attempt.id,
       totalQuestions,
       accuracy,
-    });
-  } catch (error) {
-    console.error("Reading lesson XP reward failed", error);
+    }),
+  ]);
+
+  if (bookProgressResult.status === "rejected") {
+    console.error(
+      "Book progress update failed after lesson completion",
+      bookProgressResult.reason
+    );
   }
+  if (xpRewardResult.status === "rejected") {
+    console.error("Reading lesson XP reward failed", xpRewardResult.reason);
+  }
+  const xpReward = xpRewardResult.status === "fulfilled" ? xpRewardResult.value : null;
 
   void (async () => {
     try {
