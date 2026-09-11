@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { awardVocabularySessionCompletionXp } from "@/services/gamification/xp-awards.service";
+import { completeGuidedVocabularyCheckpoint } from "@/services/reading/guided-learning.service";
 import type { VocabularySessionRow } from "@/types/vocab-tracking";
 
 export async function POST(request: Request) {
@@ -20,6 +21,8 @@ export async function POST(request: Request) {
         : null;
     const completedCount =
       typeof body.completedCount === "number" ? body.completedCount : undefined;
+    const readingAssignmentId =
+      typeof body.readingAssignmentId === "string" ? body.readingAssignmentId : null;
 
     if (!sessionId || !sessionMode) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
@@ -75,6 +78,23 @@ export async function POST(request: Request) {
         : {};
 
     if (existingMetadata.reward_credited_at) {
+      if (readingAssignmentId && !existingMetadata.guided_assignment_checkpoint_recorded) {
+        await completeGuidedVocabularyCheckpoint({
+          studentId: sessionStudentId,
+          assignmentId: readingAssignmentId,
+        });
+        await supabase
+          .from("vocab_sessions")
+          .update({
+            metadata: {
+              ...existingMetadata,
+              guided_assignment_checkpoint_recorded: true,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq("session_id", sessionId)
+          .eq("student_id", sessionStudentId);
+      }
       return NextResponse.json({
         ok: true,
         data: {
@@ -146,6 +166,24 @@ export async function POST(request: Request) {
 
     if (updateError) {
       throw updateError;
+    }
+
+    if (readingAssignmentId) {
+      await completeGuidedVocabularyCheckpoint({
+        studentId: sessionStudentId,
+        assignmentId: readingAssignmentId,
+      });
+      await supabase
+        .from("vocab_sessions")
+        .update({
+          metadata: {
+            ...updatedMetadata,
+            guided_assignment_checkpoint_recorded: true,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("session_id", sessionId)
+        .eq("student_id", sessionStudentId);
     }
 
     return NextResponse.json({

@@ -5,6 +5,8 @@ export type LessonType =
   | 'math_drill'
   | 'quiz';
 
+export type ReadingContentMode = 'sat' | 'det';
+
 export type LessonStatus = 'draft' | 'review' | 'published' | 'archived';
 
 export type QuestionOption = 'A' | 'B' | 'C' | 'D';
@@ -23,6 +25,7 @@ export interface LessonQuestion {
   difficulty: number;
   meta_json: Record<string, unknown>;
   display_order: number;
+  content_mode?: ReadingContentMode;
 }
 
 export interface LessonPassage {
@@ -36,4 +39,5 @@ export interface LessonPassage {
   word_count?: number | null;
   is_primary: boolean;
   display_order: number;
+  content_mode?: ReadingContentMode;
 }

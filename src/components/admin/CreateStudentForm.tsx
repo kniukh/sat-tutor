@@ -2,23 +2,20 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { normalizeStudentAccessCode } from '@/lib/auth/student-access-code';
 
 export function CreateStudentForm() {
   const router = useRouter();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [accessCode, setAccessCode] = useState('');
+  const [hasCustomAccessCode, setHasCustomAccessCode] = useState(false);
   const [nativeLanguage, setNativeLanguage] = useState<'ru' | 'ro' | 'uk' | 'en'>('ru');
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function makeAccessCode(value: string) {
-    return value
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '')
-      .replace(/-+/g, '');
+    return normalizeStudentAccessCode(value).replace(/[^a-z0-9]/g, '');
   }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -42,6 +39,7 @@ export function CreateStudentForm() {
       setFullName('');
       setEmail('');
       setAccessCode('');
+      setHasCustomAccessCode(false);
       setNativeLanguage('ru');
       router.refresh();
     });
@@ -56,7 +54,7 @@ export function CreateStudentForm() {
         onChange={(e) => {
           const value = e.target.value;
           setFullName(value);
-          if (!accessCode) {
+          if (!hasCustomAccessCode) {
             setAccessCode(makeAccessCode(value));
           }
         }}
@@ -73,7 +71,10 @@ export function CreateStudentForm() {
 
       <input
         value={accessCode}
-        onChange={(e) => setAccessCode(makeAccessCode(e.target.value))}
+        onChange={(e) => {
+          setHasCustomAccessCode(true);
+          setAccessCode(makeAccessCode(e.target.value));
+        }}
         placeholder="Access code"
         className="surface-soft-panel token-text-primary w-full rounded-xl border border-[var(--color-border)] px-3 py-2"
       />

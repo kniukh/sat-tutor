@@ -26,6 +26,7 @@ type ReviewChunk = {
   passageText: string;
   lessonId: string | null;
   lessonStatus: string | null;
+  contentMode?: 'sat' | 'det' | null;
   questions: ReviewQuestion[];
 };
 
@@ -70,6 +71,8 @@ function QuestionReviewCard({ question }: { question: ReviewQuestion }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ questionText: question.question_text, optionA: question.option_a, optionB: question.option_b, optionC: question.option_c, optionD: question.option_d, correctOption: question.correct_option });
 
   function runAction(action: () => Promise<void>) {
     setError(null);
@@ -135,6 +138,15 @@ function QuestionReviewCard({ question }: { question: ReviewQuestion }) {
     });
   }
 
+  function saveEdit() {
+    runAction(async () => {
+      const response = await fetch('/api/admin/questions/review', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ questionId: question.id, ...draft }) });
+      const json = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(json?.error ?? 'Failed to save question');
+      setEditing(false);
+    });
+  }
+
   return (
     <div className="surface-panel rounded-[1.35rem] p-4">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -146,12 +158,21 @@ function QuestionReviewCard({ question }: { question: ReviewQuestion }) {
         </div>
       </div>
 
-      <QuestionPreview question={question} />
+      {editing ? (
+        <div className="space-y-2">
+          <textarea value={draft.questionText} onChange={(event) => setDraft({ ...draft, questionText: event.target.value })} rows={3} className="w-full rounded-xl border border-line px-3 py-2 text-sm" />
+          {(['A', 'B', 'C', 'D'] as const).map((key) => {
+            const field = `option${key}` as 'optionA' | 'optionB' | 'optionC' | 'optionD';
+            return <div key={key} className="flex items-center gap-2"><input type="radio" checked={draft.correctOption === key} onChange={() => setDraft({ ...draft, correctOption: key })} /><input value={draft[field]} onChange={(event) => setDraft({ ...draft, [field]: event.target.value })} className="w-full rounded-xl border border-line px-3 py-2 text-sm" /></div>;
+          })}
+        </div>
+      ) : <QuestionPreview question={question} />}
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" onClick={approve} disabled={isPending} className="primary-button">
           {isPending ? 'Updating...' : 'Approve'}
         </button>
+        {editing ? <button type="button" onClick={saveEdit} disabled={isPending} className="primary-button">Save edit</button> : <button type="button" onClick={() => setEditing(true)} disabled={isPending} className="secondary-button">Edit</button>}
         <button type="button" onClick={regenerate} disabled={isPending} className="secondary-button">
           Regenerate
         </button>
@@ -161,6 +182,53 @@ function QuestionReviewCard({ question }: { question: ReviewQuestion }) {
       </div>
 
       {error ? <div className="mt-3 text-sm text-rose-600">{error}</div> : null}
+    </div>
+  );
+}
+
+function ChunkTextEditor({ chunk }: { chunk: ReviewChunk }) {
+  const router = useRouter();
+  const [text, setText] = useState(chunk.passageText);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+  const sentenceWarning = text.trim() && !/[.!?][\"']?$/.test(text.trim())
+    ? 'Chunk should end at a complete sentence.'
+    : null;
+
+  function save() {
+    setError(null);
+    startTransition(async () => {
+      const response = await fetch('/api/admin/generated-passages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passageId: chunk.id, passageText: text }),
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        setError(json?.error ?? 'Failed to save chunk');
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <textarea
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        rows={10}
+        className="w-full rounded-[1rem] border border-[var(--color-border)] bg-white px-3 py-3 text-sm leading-7 text-slate-900"
+        aria-label={`Edit ${chunk.title ?? `chunk ${chunk.chunkIndex + 1}`}`}
+      />
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <span>{wordCount} words{sentenceWarning ? ` · ${sentenceWarning}` : ''}</span>
+        <button type="button" onClick={save} disabled={isPending || wordCount < 20 || text.trim() === chunk.passageText.trim()} className="primary-button disabled:cursor-not-allowed disabled:opacity-50">
+          {isPending ? 'Saving...' : 'Save chunk'}
+        </button>
+      </div>
+      {error ? <div className="text-sm text-rose-600">{error}</div> : null}
     </div>
   );
 }
@@ -222,6 +290,7 @@ export default function SourceChunkReview({
               <div className="space-y-2">
                 <div className="flex flex-wrap gap-2">
                   <span className="app-chip">Chunk {chunk.chunkIndex + 1}</span>
+                  <span className="app-chip">{(chunk.contentMode ?? 'sat').toUpperCase()}</span>
                   <span className={`app-chip ${chunkApproved ? 'app-chip-success' : ''}`}>
                     {chunkApproved ? 'approved' : 'pending'}
                   </span>
@@ -255,7 +324,7 @@ export default function SourceChunkReview({
 
             <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
               <div className="surface-soft-panel rounded-[1.35rem] p-4">
-                <div className="token-text-secondary whitespace-pre-wrap text-sm leading-7">{chunk.passageText}</div>
+                <ChunkTextEditor chunk={chunk} />
               </div>
 
               <div className="space-y-4">
@@ -267,7 +336,7 @@ export default function SourceChunkReview({
                   <>
                     <div className="surface-soft-panel space-y-3 rounded-[1.35rem] p-4">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="app-kicker token-text-muted">SAT Questions</div>
+                        <div className="app-kicker token-text-muted">{chunk.contentMode === 'det' ? 'DET Questions' : 'SAT Questions'}</div>
                         <div className="token-text-muted text-sm font-semibold">{satQuestions.length}</div>
                       </div>
                       {satQuestions.length === 0 ? (

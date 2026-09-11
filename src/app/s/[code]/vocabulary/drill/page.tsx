@@ -3,6 +3,7 @@ import VocabSessionPlayer from "@/components/student/VocabSessionPlayer";
 import {
   studentLessonPath,
   studentLibraryPath,
+  studentDashboardPath,
   studentVocabularyPath,
 } from "@/lib/routes/student";
 import {
@@ -24,6 +25,7 @@ export default async function FocusedVocabularyDrillPage({
     guided?: string;
     guidedWords?: string;
     nextLesson?: string;
+    assignment?: string;
   }>;
 }) {
   const [{ code }, resolvedSearchParams] = await Promise.all([params, searchParams]);
@@ -32,6 +34,7 @@ export default async function FocusedVocabularyDrillPage({
   const preferredLessonId = normalizeVocabularyLessonId(resolvedSearchParams.lesson);
   const guidedLessonIntro = resolvedSearchParams.guided === "lesson_intro";
   const nextLessonId = normalizeVocabularyLessonId(resolvedSearchParams.nextLesson);
+  const guidedAssignmentId = resolvedSearchParams.assignment?.trim() || null;
   let guidedWordTexts: string[] = [];
 
   if (resolvedSearchParams.guidedWords) {
@@ -56,6 +59,7 @@ export default async function FocusedVocabularyDrillPage({
       guidedLessonIntro,
       guidedWordTexts,
       focusedSessionOnly: true,
+      guidedAssignmentId,
     }
   );
   const guidedCompletionAction =
@@ -64,6 +68,11 @@ export default async function FocusedVocabularyDrillPage({
           href: nextLessonId ? studentLessonPath(nextLessonId, code) : studentLibraryPath(),
           label: nextLessonId ? "Continue Reading" : "Back to Library",
         }
+      : guidedAssignmentId
+        ? {
+            href: studentDashboardPath(),
+            label: "Back to Chapter",
+          }
       : null;
 
   if (data.session) {
@@ -74,6 +83,7 @@ export default async function FocusedVocabularyDrillPage({
           studentId={data.student.id}
           accessCode={data.student.accessCode}
           focused
+          guidedAssignmentId={guidedAssignmentId}
           completionAction={guidedCompletionAction}
         />
       </main>

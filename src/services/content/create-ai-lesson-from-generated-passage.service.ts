@@ -63,7 +63,7 @@ export async function createAiLessonFromGeneratedPassage(params: {
 
   const { data: source } = await supabase
     .from('source_documents')
-    .select('id, title, author, source_type, metadata')
+    .select('id, title, author, source_type, content_mode, metadata')
     .eq('id', passage.source_document_id)
     .maybeSingle();
 
@@ -112,6 +112,7 @@ export async function createAiLessonFromGeneratedPassage(params: {
       chapterTitle: passage.chapter_title,
       passageText: passage.passage_text,
       sourceType: source?.source_type ?? null,
+      readingMode: source?.content_mode === 'det' || passage.content_mode === 'det' ? 'det' : 'sat',
       cachedAnalysis,
       recentQuestionTypes,
     }));
@@ -161,6 +162,7 @@ export async function createAiLessonFromGeneratedPassage(params: {
       slug: lessonSlug,
       lesson_type: 'reading_vocab',
       status: 'draft',
+      content_mode: source?.content_mode ?? passage.content_mode ?? 'sat',
       is_active: true,
       display_order: 0,
     })
@@ -175,6 +177,7 @@ export async function createAiLessonFromGeneratedPassage(params: {
     .from('lesson_passages')
     .insert({
       lesson_id: lesson.id,
+      content_mode: source?.content_mode ?? passage.content_mode ?? 'sat',
       title: passage.title || source?.title || null,
       passage_text: passage.passage_text,
       passage_kind: inferPassageKind(source?.source_type),

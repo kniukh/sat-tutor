@@ -108,6 +108,10 @@ function normalizeSatQuestionType(value: string) {
     return "detail";
   }
 
+  if (normalized.includes("completion") || normalized.includes("complete")) {
+    return "sentence_completion";
+  }
+
   if (normalized.includes("tone")) {
     return "tone";
   }
@@ -258,10 +262,12 @@ export async function generateChunkLessonPackage(input: {
   chapterTitle?: string | null;
   passageText: string;
   sourceType?: string | null;
+  readingMode?: "sat" | "det";
   cachedAnalysis?: ChunkLessonAnalysis | null;
   recentQuestionTypes?: string[];
 }) {
   const sourceType = (input.sourceType ?? "book").toLowerCase();
+  const readingMode = input.readingMode ?? "sat";
   const contentMode =
     sourceType === "poem" ? "poem" : sourceType === "article" || sourceType === "essay" ? "article" : "book";
 
@@ -284,6 +290,16 @@ For SAT questions, use classic passage-based reading skills:
 - tone when it fits naturally
 - cause/effect or summary when the passage supports it
 `;
+
+  const modeQuestionGuidance = readingMode === "det"
+    ? `
+DET question rules:
+- Generate exactly 3 DET reading questions and exactly 1 vocabulary question.
+- Use only main_idea, detail, inference, or sentence_completion.
+- Focus on everyday situations, actions, reasons, sequence, and context.
+- Keep questions quick to process and answerable from this chunk alone.
+`
+    : "Generate exactly 3 SAT reading questions and exactly 1 vocabulary question.";
 
   const cachedAnalysisBlock = input.cachedAnalysis
     ? `
@@ -325,12 +341,17 @@ Use these only as a diversity signal:
       : "";
 
   const prompt = `
-You are an expert SAT curriculum designer building a lesson package from one clean reading chunk.
+You are an expert reading curriculum designer building a ${readingMode.toUpperCase()} lesson package from one clean reading chunk.
+
+Reading mode: ${readingMode.toUpperCase()}
+${readingMode === "det"
+    ? "For DET, prefer everyday modern English, practical context, quick comprehension, and vocabulary-in-context. Keep questions answerable from this short chunk."
+    : "For SAT, use academic passage-based reading skills and precise evidence-based distractors."}
 
 Task:
 In ONE pass, analyze the chunk and generate:
 - analysis metadata
-- exactly 3 SAT-style reading questions
+- exactly 3 ${readingMode.toUpperCase()} reading questions
 - exactly 1 vocabulary question
 
 The chunk text is already clean and approved by a human editor.
@@ -410,6 +431,7 @@ Analysis rules:
 - recommended_vocab_target_words: string[]
 - recommended_vocab_target_phrases: string[]
 
+- ${modeQuestionGuidance}
 SAT question rules:
 ${literaryGuidance}
 - Generate exactly 3 SAT questions.

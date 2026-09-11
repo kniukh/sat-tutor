@@ -11,7 +11,7 @@ export default async function AdminLessonsPage() {
 
   const { data: lessons, error } = await supabase
     .from('lessons')
-    .select('id, name, slug, lesson_type, status')
+    .select('id, name, slug, lesson_type, status, content_mode')
     .order('created_at', { ascending: false });
 
   if (error) {

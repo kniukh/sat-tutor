@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { normalizeStudentAccessCode } from '@/lib/auth/student-access-code';
 import { studentDashboardPath } from '@/lib/routes/student';
 
 export function StudentLoginForm() {
@@ -14,7 +15,7 @@ export function StudentLoginForm() {
     e.preventDefault();
     setError(null);
 
-    const normalizedCode = code.trim();
+    const normalizedCode = normalizeStudentAccessCode(code);
     if (!normalizedCode) {
       setError('Введите код ученика');
       return;

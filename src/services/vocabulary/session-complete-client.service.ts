@@ -8,6 +8,7 @@ export async function finalizeVocabularySession(params: {
   completedCount: number;
   correctCount: number;
   accuracy: number;
+  readingAssignmentId?: string | null;
 }) {
   const response = await fetch("/api/vocabulary/session-complete", {
     method: "POST",

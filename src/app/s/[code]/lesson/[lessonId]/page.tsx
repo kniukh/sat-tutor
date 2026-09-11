@@ -9,6 +9,7 @@ import Link from "next/link";
 import { studentDashboardPath } from "@/lib/routes/student";
 import type { PassageAudioSentenceTiming } from "@/components/student/PassageAudioControls";
 import ReadingCoachBrand from "@/components/student/ReadingCoachBrand";
+import { getGuidedLearningState } from "@/services/reading/guided-learning.service";
 
 function parsePassageAudioSentenceTimings(value: unknown): PassageAudioSentenceTiming[] {
   if (!Array.isArray(value)) {
@@ -84,6 +85,18 @@ export default async function StudentLessonPage({
   const lessonState = await getOrCreateLessonState(student.id, lesson.id);
 
   const lessonSequence = await getLessonSequenceByCurrentLessonId(lesson.id);
+  const guidedLearning = await getGuidedLearningState(student.id);
+  const currentPassageMeta = lessonSequence.currentGeneratedPassage as {
+    source_document_id?: string | null;
+    chapter_index?: number | null;
+  } | null;
+  const guidedAssignmentId =
+    guidedLearning &&
+    guidedLearning.status !== "completed" &&
+    guidedLearning.sourceDocumentId === currentPassageMeta?.source_document_id &&
+    guidedLearning.chapterIndex === currentPassageMeta?.chapter_index
+      ? guidedLearning.assignmentId
+      : null;
 
   const passages = (lesson.lesson_passages ?? []).sort(
     (a: { display_order: number }, b: { display_order: number }) =>
@@ -191,6 +204,7 @@ export default async function StudentLessonPage({
           studentId={student.id}
           lessonId={lesson.id}
           lessonName={displayLessonName}
+          guidedAssignmentId={guidedAssignmentId}
           nextLessonId={lessonSequence.nextLesson?.id ?? null}
           passageId={mainPassage?.id}
           passageText={mainPassage?.passage_text ?? ""}

@@ -80,6 +80,7 @@ export async function POST(request: Request) {
             : lessonPassage.passage_kind === 'article'
               ? 'article'
               : 'book',
+        readingMode: generatedPassage?.content_mode ?? 'sat',
         cachedAnalysis,
         recentQuestionTypes,
       }));

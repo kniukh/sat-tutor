@@ -1051,22 +1051,24 @@ export default function LessonPlayer({
   }
 
   async function openQuizWordsOrRepair() {
-    const latestQuizVocabularyItems = latestQuizVocabularyItemsRef.current;
+    const latestQuizVocabularyItems =
+      quizVocabularyItems.length > 0
+        ? quizVocabularyItems
+        : latestQuizVocabularyItemsRef.current;
     const latestMistakeItems = latestMistakeItemsRef.current;
 
     // Auto-advance after the final quiz answer must read the newest state,
     // not the render snapshot from before the last answer was committed.
     if (latestQuizVocabularyItems.length > 0) {
-      setSaving(true);
-      try {
-        await onPrepareQuizVocabularyReview?.();
-        setQuizPhase("quiz_words");
-      } catch (error) {
-        console.error("prepare quiz vocabulary review error", error);
-        setQuizPhase("quiz_words");
-      } finally {
-        setSaving(false);
-      }
+      setQuizPhase("quiz_words");
+
+      // Show the captured words immediately. Meanings, drill assets, and audio
+      // continue loading into the visible cards without blocking quiz navigation.
+      void Promise.resolve()
+        .then(() => onPrepareQuizVocabularyReview?.())
+        .catch((error) => {
+          console.error("prepare quiz vocabulary review error", error);
+        });
       return;
     }
 
@@ -1339,7 +1341,7 @@ export default function LessonPlayer({
 
             <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
               <div className="reading-surface px-5 py-7 sm:px-8 sm:py-9">
-                <div className="mb-4">
+                <div className="reading-audio-sticky reading-audio-sticky--player mb-4">
                   <PassageAudioControls
                     audioUrl={passageAudioUrl}
                     startMs={passageAudioStartMs}

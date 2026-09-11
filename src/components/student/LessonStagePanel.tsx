@@ -88,6 +88,7 @@ type Props = {
   studentId: string;
   lessonId: string;
   lessonName: string;
+  guidedAssignmentId?: string | null;
   nextLessonId?: string | null;
   passageId?: string;
   passageText: string;
@@ -157,7 +158,9 @@ function mergeVocabularyItems(
       context_sentence: item.context_sentence ?? existing?.context_sentence ?? null,
       audio_url: item.audio_url ?? existing?.audio_url ?? null,
       audio_status:
-        item.audio_status === "ready"
+        item.audio_status === "ready" ||
+        existing?.audio_status === "ready" ||
+        Boolean(item.audio_url ?? existing?.audio_url)
           ? "ready"
           : item.audio_status ?? existing?.audio_status ?? null,
       lifecycle_state: item.lifecycle_state ?? existing?.lifecycle_state ?? null,
@@ -342,6 +345,7 @@ export default function LessonStagePanel({
   studentId,
   lessonId,
   lessonName,
+  guidedAssignmentId = null,
   nextLessonId = null,
   passageId,
   passageText,
@@ -1150,7 +1154,7 @@ export default function LessonStagePanel({
     }
 
     return (
-      <div className="mb-4">
+      <div className="reading-audio-sticky mb-4">
         <PassageAudioControls
           audioUrl={passageAudioUrl}
           startMs={passageAudioStartMs}
@@ -1196,6 +1200,22 @@ export default function LessonStagePanel({
       nextLesson: nextLessonId ?? undefined,
     });
     const shouldPromptPractice = capturedLessonWordCount > 0;
+
+    if (guidedAssignmentId) {
+      return (
+        <div className="mx-auto max-w-2xl space-y-4">
+          <div className="app-card px-5 py-6 sm:px-6">
+            <div className="space-y-4">
+              <h2 className="app-heading-lg">Reading step complete</h2>
+              <p className="app-copy">Return to your learning path for the next assigned step.</p>
+              <Link href={studentDashboardPath()} className="app-button app-button-primary">
+                Continue
+              </Link>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="mx-auto max-w-2xl space-y-4">

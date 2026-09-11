@@ -31,6 +31,7 @@ export default async function CanonicalStudentDashboardPage() {
           gamification={dashboard?.gamification ?? null}
           leaderboard={dashboard?.leaderboard ?? null}
           vocabularyAnalytics={dashboard?.vocabularyAnalytics ?? null}
+          guidedLearning={dashboard?.guidedLearning ?? null}
           accessCode={session.accessCode}
         />
       </div>

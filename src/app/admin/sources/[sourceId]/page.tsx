@@ -107,6 +107,7 @@ export default async function AdminSourceDetailPage({
 
     return {
       id: passage.id,
+      contentMode: source.content_mode ?? 'sat',
       title: passage.title,
       chunkIndex: passage.chunk_index ?? 0,
       wordCount: passage.word_count ?? null,
@@ -140,7 +141,7 @@ export default async function AdminSourceDetailPage({
   return (
     <AdminShell
       title={source.title}
-      subtitle={`${source.author || 'Unknown author'} · ${source.source_type}`}
+      subtitle={`${source.author || 'Unknown author'} · ${source.source_type} · ${(source.content_mode ?? 'sat').toUpperCase()}`}
     >
       <section className="card-surface p-5 sm:p-6">
         <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
@@ -174,7 +175,7 @@ export default async function AdminSourceDetailPage({
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="app-card-soft p-4">
                 <div className="app-kicker token-text-muted">Type</div>
-                <div className="mt-2 text-xl font-semibold token-text-primary">{source.source_type}</div>
+                <div className="mt-2 text-xl font-semibold token-text-primary">{source.source_type} · {(source.content_mode ?? 'sat').toUpperCase()}</div>
               </div>
               <div className="app-card-soft p-4">
                 <div className="app-kicker token-text-muted">Sections</div>

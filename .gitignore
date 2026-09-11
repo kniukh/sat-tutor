@@ -44,3 +44,6 @@ next-env.d.ts
 
 # accidental nested repo
 /sattutor/
+
+# chapter audio is stored in Supabase Storage, not in the Vercel bundle
+/public/uploads/chapter-audio/

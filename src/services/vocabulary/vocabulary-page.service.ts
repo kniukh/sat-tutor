@@ -187,6 +187,7 @@ type VocabularySessionEntryOptions = {
   guidedLessonIntro?: boolean;
   guidedWordTexts?: string[];
   focusedSessionOnly?: boolean;
+  guidedAssignmentId?: string | null;
 };
 
 const EMPTY_BUCKET_COUNTS: QueueBucketCounts = {
@@ -1119,8 +1120,37 @@ export async function getStudentVocabularyPageData(
     queueCandidateMap,
     isNewWord: false,
   });
+
+  let guidedLessonIds: Set<string> | null = null;
+  if (options.guidedAssignmentId) {
+    const { data: guidedAssignment } = await supabase
+      .from("reading_assignments")
+      .select("source_document_id, chapter_index")
+      .eq("id", options.guidedAssignmentId)
+      .eq("student_id", studentData.id)
+      .maybeSingle<{ source_document_id: string; chapter_index: number | null }>();
+
+    if (guidedAssignment?.chapter_index !== null && guidedAssignment?.chapter_index !== undefined) {
+      const { data: guidedPassages } = await supabase
+        .from("generated_passages")
+        .select("lesson_id")
+        .eq("source_document_id", guidedAssignment.source_document_id)
+        .eq("chapter_index", guidedAssignment.chapter_index)
+        .not("lesson_id", "is", null);
+      guidedLessonIds = new Set(
+        (guidedPassages ?? [])
+          .map((passage) => passage.lesson_id)
+          .filter((lessonId): lessonId is string => Boolean(lessonId)),
+      );
+    }
+  }
+
+  const sessionNewWordExercises = guidedLessonIds
+    ? newWordExercises.filter((exercise: any) => guidedLessonIds?.has(exercise.reviewMeta?.sourceLessonId))
+    : newWordExercises;
+
   const adaptiveNewWordCandidates = buildAdaptiveWordCandidates({
-    exercises: newWordExercises,
+    exercises: sessionNewWordExercises,
     recentAttemptsByWordId,
     isNewWord: true,
   });
@@ -1231,7 +1261,7 @@ export async function getStudentVocabularyPageData(
     activePhase === "endless_continuation" ? continuationSelection : prioritySelection;
   const allSelectableExercises =
     selectedMode === "learn_new_words"
-      ? [...newWordExercises, ...continuationExercises]
+      ? [...sessionNewWordExercises, ...continuationExercises]
       : [...queueExercises, ...newWordExercises, ...continuationExercises];
   const selectedExercisePool = adaptiveSelection
     ? attachAdaptiveSelectionMeta({
@@ -1268,6 +1298,7 @@ export async function getStudentVocabularyPageData(
         session_phase: session.metadata.session_phase,
         requested_size: session.metadata.requested_size,
         actual_size: session.metadata.actual_size,
+        guided_assignment_id: options.guidedAssignmentId ?? null,
       },
     });
   }

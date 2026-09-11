@@ -2,6 +2,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getStudentVocabularyAnalytics } from "@/services/analytics/vocabulary-analytics.service";
 import { getStudentGamificationSnapshot } from "@/services/gamification/gamification.service";
 import { getWeeklyLeaderboardForStudent } from "@/services/gamification/leaderboards.service";
+import { getGuidedLearningState } from "@/services/reading/guided-learning.service";
 import {
   generateReviewQueueForStudent,
   getNextReviewQueueCandidates,
@@ -38,6 +39,7 @@ export async function getStudentDashboardData(studentId: string) {
     gamificationResult,
     leaderboardResult,
     vocabularyAnalytics,
+    guidedLearning,
   ] = await Promise.all([
     supabase
       .from("skill_mastery")
@@ -93,6 +95,7 @@ export async function getStudentDashboardData(studentId: string) {
     getStudentGamificationSnapshot(studentId),
     leaderboardPromise,
     getStudentVocabularyAnalytics(studentId),
+    getGuidedLearningState(studentId),
   ]);
 
   if (skillResult.error) throw new Error(skillResult.error.message);
@@ -123,5 +126,6 @@ export async function getStudentDashboardData(studentId: string) {
     gamification: gamificationResult ?? null,
     leaderboard: leaderboardResult ?? null,
     vocabularyAnalytics,
+    guidedLearning,
   };
 }

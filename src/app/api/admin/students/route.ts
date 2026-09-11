@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { normalizeStudentAccessCode } from '@/lib/auth/student-access-code';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function GET() {
@@ -31,7 +32,9 @@ export async function POST(request: Request) {
     nativeLanguage?: 'ru' | 'ro' | 'uk' | 'en';
   } = body;
 
-  if (!fullName || !accessCode) {
+  const normalizedAccessCode = normalizeStudentAccessCode(accessCode ?? '');
+
+  if (!fullName?.trim() || !normalizedAccessCode) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
   if (!['ru', 'ro', 'uk', 'en'].includes(nativeLanguage)) {
@@ -43,9 +46,9 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from('students')
     .insert({
-      full_name: fullName,
+      full_name: fullName.trim(),
       email,
-      access_code: accessCode,
+      access_code: normalizedAccessCode,
       native_language: nativeLanguage,
       is_active: true,
     })
@@ -53,7 +56,10 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: error.code === '23505' ? 'Этот код доступа уже используется' : error.message },
+      { status: error.code === '23505' ? 409 : 500 },
+    );
   }
 
   return NextResponse.json({ data });

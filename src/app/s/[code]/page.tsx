@@ -48,6 +48,7 @@ export default async function StudentDashboardPage({
           gamification={dashboard?.gamification ?? null}
           leaderboard={dashboard?.leaderboard ?? null}
           vocabularyAnalytics={dashboard?.vocabularyAnalytics ?? null}
+          guidedLearning={dashboard?.guidedLearning ?? null}
           accessCode={code}
         />
       </div>

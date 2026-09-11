@@ -1,25 +1,16 @@
 import { NextResponse } from "next/server";
-import fs from "fs/promises";
-import path from "path";
-import { requireAdmin } from "@/lib/auth/admin";
+import { isAdminApiAuthError, requireAdminApi } from "@/lib/auth/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   buildEstimatedSentenceAlignments,
   buildSttSentenceAlignments,
+  resolveChunkAudioWindow,
+  type ChapterSentenceAlignment,
 } from "@/services/content/chapter-audio-alignment";
 import { transcribeChapterAudio } from "@/services/ai/transcribe-chapter-audio";
 
-function safeSlug(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-}
-
 function getAudioExtension(fileName: string) {
-  const extension = path.extname(fileName || "").toLowerCase();
+  const extension = fileName.match(/\.[a-z0-9]+$/i)?.[0]?.toLowerCase() ?? "";
   if ([".mp3", ".m4a", ".aac", ".wav", ".ogg", ".webm"].includes(extension)) {
     return extension;
   }
@@ -27,26 +18,54 @@ function getAudioExtension(fileName: string) {
   return ".mp3";
 }
 
+const MAX_CHAPTER_AUDIO_BYTES = 25 * 1024 * 1024;
+
 async function saveAudioFile(params: {
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
   buffer: Buffer;
   fileName: string;
   sourceDocumentId: string;
   chapterIndex: number;
 }) {
-  const uploadDir = path.join(process.cwd(), "public", "uploads", "chapter-audio");
-  await fs.mkdir(uploadDir, { recursive: true });
-
-  const baseName = safeSlug(`${params.sourceDocumentId}-chapter-${params.chapterIndex}`);
   const extension = getAudioExtension(params.fileName);
-  const fileName = `${Date.now()}-${baseName}${extension}`;
-  const fullPath = path.join(uploadDir, fileName);
-  await fs.writeFile(fullPath, params.buffer);
+  const objectPath = `chapter-audio/${params.sourceDocumentId}/chapter-${params.chapterIndex}${extension}`;
+  const { error: uploadError } = await params.supabase.storage
+    .from("audio")
+    .upload(objectPath, params.buffer, {
+      contentType: `audio/${extension === ".mp3" ? "mpeg" : extension.slice(1)}`,
+      upsert: true,
+    });
 
-  return `/uploads/chapter-audio/${fileName}`;
+  if (uploadError) {
+    throw new Error(`Audio storage upload failed: ${uploadError.message}`);
+  }
+
+  return params.supabase.storage.from("audio").getPublicUrl(objectPath).data.publicUrl;
 }
 
 export async function POST(request: Request) {
-  await requireAdmin();
+  try {
+    await requireAdminApi();
+    return await uploadChapterAudio(request);
+  } catch (error) {
+    if (isAdminApiAuthError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
+    console.error("chapter audio upload failed", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Chapter audio upload failed",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+async function uploadChapterAudio(request: Request) {
 
   const formData = await request.formData();
   const sourceDocumentId = String(formData.get("sourceDocumentId") ?? "").trim();
@@ -63,6 +82,17 @@ export async function POST(request: Request) {
 
   if (!(audioFile instanceof File)) {
     return NextResponse.json({ error: "audioFile is required" }, { status: 400 });
+  }
+
+  if (audioFile.size === 0) {
+    return NextResponse.json({ error: "The audio file is empty" }, { status: 400 });
+  }
+
+  if (audioFile.size > MAX_CHAPTER_AUDIO_BYTES) {
+    return NextResponse.json(
+      { error: "The audio file is too large. Please use a file up to 25 MB." },
+      { status: 413 },
+    );
   }
 
   const supabase = await createServerSupabaseClient();
@@ -82,6 +112,7 @@ export async function POST(request: Request) {
 
   const audioBytes = Buffer.from(await audioFile.arrayBuffer());
   const audioUrl = await saveAudioFile({
+    supabase,
     buffer: audioBytes,
     fileName: audioFile.name,
     sourceDocumentId,
@@ -154,6 +185,79 @@ export async function POST(request: Request) {
     }
   }
 
+  const chapterSentenceAlignments: ChapterSentenceAlignment[] = alignments.map((sentence) => ({
+    sentenceIndex: sentence.sentenceIndex,
+    sentenceText: sentence.sentenceText,
+    charStart: sentence.charStart,
+    charEnd: sentence.charEnd,
+    audioStartMs: sentence.audioStartMs,
+    audioEndMs: sentence.audioEndMs,
+    confidence: sentence.confidence,
+    alignmentMethod: sentence.alignmentMethod,
+  }));
+
+  const { data: existingPassages, error: passagesError } = await supabase
+    .from("generated_passages")
+    .select("id, lesson_id, passage_text, chunk_index")
+    .eq("source_document_id", sourceDocumentId)
+    .eq("chapter_index", chapterIndex)
+    .order("chunk_index", { ascending: true });
+
+  if (passagesError) {
+    return NextResponse.json({ error: passagesError.message }, { status: 500 });
+  }
+
+  let syncedPassagesCount = 0;
+  for (const passage of existingPassages ?? []) {
+    const audioWindow = resolveChunkAudioWindow({
+      audioUrl,
+      chunkText: String(passage.passage_text ?? ""),
+      chapterSentences: chapterSentenceAlignments,
+    });
+
+    const { error: passageUpdateError } = await supabase
+      .from("generated_passages")
+      .update({
+        audio_url: audioWindow.audioUrl,
+        audio_start_ms: audioWindow.audioStartMs,
+        audio_end_ms: audioWindow.audioEndMs,
+        audio_sentence_start_index: audioWindow.sentenceStartIndex,
+        audio_sentence_end_index: audioWindow.sentenceEndIndex,
+        audio_sentence_timings: audioWindow.sentenceTimings,
+        audio_alignment_confidence: audioWindow.confidence,
+        audio_alignment_method: audioWindow.alignmentMethod,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", passage.id);
+
+    if (passageUpdateError) {
+      return NextResponse.json({ error: passageUpdateError.message }, { status: 500 });
+    }
+
+    if (passage.lesson_id) {
+      const { error: lessonPassageUpdateError } = await supabase
+        .from("lesson_passages")
+        .update({
+          audio_url: audioWindow.audioUrl,
+          audio_start_ms: audioWindow.audioStartMs,
+          audio_end_ms: audioWindow.audioEndMs,
+          audio_sentence_start_index: audioWindow.sentenceStartIndex,
+          audio_sentence_end_index: audioWindow.sentenceEndIndex,
+          audio_sentence_timings: audioWindow.sentenceTimings,
+          audio_alignment_confidence: audioWindow.confidence,
+          audio_alignment_method: audioWindow.alignmentMethod,
+        })
+        .eq("lesson_id", passage.lesson_id)
+        .eq("is_primary", true);
+
+      if (lessonPassageUpdateError) {
+        return NextResponse.json({ error: lessonPassageUpdateError.message }, { status: 500 });
+      }
+    }
+
+    syncedPassagesCount += 1;
+  }
+
   const { error: updateError } = await supabase
     .from("source_document_clean_text")
     .update({
@@ -183,5 +287,6 @@ export async function POST(request: Request) {
     alignmentMethod,
     transcriptionWordsCount,
     transcriptionText,
+    syncedPassagesCount,
   });
 }

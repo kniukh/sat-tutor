@@ -54,6 +54,13 @@ export default async function AdminInsightsPage() {
       value: `${aiUsageReport.summary.totalTokens.toLocaleString("en-US")} tokens · ${aiUsageReport.summary.cacheHitRate}% cache hit`,
       cta: "Open AI Usage",
     },
+    {
+      title: "DET Reading",
+      href: "/admin/insights/det",
+      description: "DET books, lessons, assignments, and reading-speed signals.",
+      value: "Open DET analytics",
+      cta: "Open DET Insights",
+    },
   ];
 
   return (

@@ -11,6 +11,7 @@ export type StudentBooksListItem = {
   currentLessonId: string | null;
   lastOpenedAt: string | null;
   isCurrent: boolean;
+  isAssigned?: boolean;
 };
 
 export type BooksPageData = {
@@ -82,7 +83,7 @@ function pickFeaturedBookId(progressRows: StudentBookProgressRow[]) {
   return null;
 }
 
-export async function getBooksPageData(accessCode: string): Promise<BooksPageData> {
+export async function getBooksPageData(accessCode: string, contentMode: "sat" | "det" = "sat", assignedOnly = false): Promise<BooksPageData> {
   const supabase = await createServerSupabaseClient();
 
   const { data: student, error: studentError } = await supabase
@@ -108,6 +109,13 @@ export async function getBooksPageData(accessCode: string): Promise<BooksPageDat
   if (progressError) {
     throw new Error(progressError.message);
   }
+
+  const { data: assignments } = await supabase
+    .from('reading_assignments')
+    .select('source_document_id')
+    .eq('student_id', student.id)
+    .in('status', ['assigned', 'in_progress']);
+  const assignedBookIds = new Set((assignments ?? []).map((row) => row.source_document_id));
 
   const { data: generatedPassages, error: generatedPassagesError } = await supabase
     .from("generated_passages")
@@ -161,8 +169,9 @@ export async function getBooksPageData(accessCode: string): Promise<BooksPageDat
 
   const { data: sourceDocuments, error: sourceDocumentsError } = await supabase
     .from("source_documents")
-    .select("id, title, author, metadata")
+    .select("id, title, author, metadata, content_mode")
     .eq("source_type", "book")
+    .eq("content_mode", contentMode)
     .returns<SourceDocumentRow[]>();
 
   if (sourceDocumentsError) {
@@ -174,6 +183,7 @@ export async function getBooksPageData(accessCode: string): Promise<BooksPageDat
   const featuredId = pickFeaturedBookId(progressRows ?? []);
 
   const books = (sourceDocuments ?? [])
+    .filter((sourceDocument) => !assignedOnly || assignedBookIds.has(sourceDocument.id))
     .map((sourceDocument) => {
       const sourceDocumentId = sourceDocument.id;
       const progressRow = progressMap.get(sourceDocumentId);
@@ -204,6 +214,7 @@ export async function getBooksPageData(accessCode: string): Promise<BooksPageDat
         currentLessonId: progressRow?.current_lesson_id ?? null,
         lastOpenedAt: progressRow?.last_opened_at ?? null,
         isCurrent: sourceDocumentId === featuredId,
+        isAssigned: assignedBookIds.has(sourceDocumentId),
       } satisfies StudentBooksListItem;
     })
     .sort((a, b) => {

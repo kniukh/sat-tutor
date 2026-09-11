@@ -6,11 +6,15 @@ import ReadingCoachBrand from "@/components/student/ReadingCoachBrand";
 
 export default async function StudentBookPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ code: string }>;
+  searchParams: Promise<{ mode?: string; assigned?: string }>;
 }) {
   const { code } = await params;
-  const data = await getBooksPageData(code);
+  const { mode, assigned } = await searchParams;
+  const contentMode = mode === "det" ? "det" : "sat";
+  const data = await getBooksPageData(code, contentMode, assigned === "1");
   const featured = data.featuredBook;
 
   return (
@@ -21,9 +25,9 @@ export default async function StudentBookPage({
       </header>
 
       <div className="mt-7">
-        <div className="coach-eyebrow">Library</div>
+        <div className="coach-eyebrow">{contentMode === "det" ? "DET Reading" : "SAT Reading"}</div>
         <h1 className="coach-page-title">Choose your next journey.</h1>
-        <p className="coach-page-copy">Every book keeps its own reading path and progress.</p>
+        <p className="coach-page-copy">{assigned === "1" ? "Books assigned to you by your teacher." : contentMode === "det" ? "Practice modern everyday English in short reading chunks." : "Every book keeps its own reading path and progress."}</p>
       </div>
 
       {featured ? (
@@ -85,7 +89,7 @@ export default async function StudentBookPage({
                   )}
                 </Link>
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <div className="coach-eyebrow">{book.isCurrent ? "Current book" : "Book"}</div>
+                  <div className="coach-eyebrow">{book.isCurrent ? "Current book" : book.isAssigned ? "Assigned book" : "Book"}</div>
                   <h3>{book.title}</h3>
                   <p>{book.author ?? "Unknown author"}</p>
                   <div className="mt-auto pt-4">

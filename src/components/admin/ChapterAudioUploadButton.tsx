@@ -82,7 +82,14 @@ export default function ChapterAudioUploadButton({
       if (durationMs) {
         formData.append("durationMs", String(durationMs));
       }
-      formData.append("audioFile", file);
+      // Next's multipart parser can reject non-ASCII filenames. Keep the original
+      // bytes but send an ASCII filename in Content-Disposition.
+      const extension = file.name.match(/\.[a-z0-9]+$/i)?.[0].toLowerCase() ?? ".mp3";
+      formData.append(
+        "audioFile",
+        file,
+        `chapter-${chapterIndex}${extension}`,
+      );
 
       const response = await fetch("/api/admin/sources/chapter-audio", {
         method: "POST",
@@ -91,7 +98,10 @@ export default function ChapterAudioUploadButton({
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        setError(payload?.error ?? "Failed to upload chapter audio");
+        setError(
+          payload?.error ??
+            `Upload failed (${response.status}). Please try again.`,
+        );
         return;
       }
 

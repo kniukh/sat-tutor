@@ -6,6 +6,7 @@ export async function saveLessonReadingMetrics(params: {
   readingDurationSec: number;
   wordsCount: number;
   wordsPerMinute: number;
+  contentMode?: "sat" | "det";
 }) {
   const supabase = await createServerSupabaseClient();
 
@@ -17,6 +18,7 @@ export async function saveLessonReadingMetrics(params: {
       reading_duration_sec: params.readingDurationSec,
       words_count: params.wordsCount,
       words_per_minute: params.wordsPerMinute,
+      content_mode: params.contentMode ?? "sat",
     })
     .select()
     .single();

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { generateVocabularyCards } from "@/services/ai/generate-vocabulary-cards";
+import { generateInlineVocabularyPreview } from "@/services/ai/generate-inline-vocabulary-preview";
 import {
   buildVocabularyDictionaryCacheKey,
   listVocabularyDictionaryCacheEntries,
@@ -96,7 +96,9 @@ export async function POST(request: Request) {
     const cachedEntry = dictionaryCache.get(cacheKey) ?? null;
 
     if (cachedEntry) {
-      await touchVocabularyDictionaryCacheEntries([cachedEntry]);
+      void touchVocabularyDictionaryCacheEntries([cachedEntry]).catch((error) => {
+        console.error("inline vocabulary cache touch failed", error);
+      });
 
       return NextResponse.json({
         data: {
@@ -110,57 +112,39 @@ export async function POST(request: Request) {
       });
     }
 
-    const [generatedCard] = await generateVocabularyCards({
-      studentId: sessionStudentId,
+    const preview = await generateInlineVocabularyPreview({
       nativeLanguage,
-      items: [
-        {
-          item_text: normalizedItemText,
-          item_type: itemType,
-          context_text: null,
-        },
-      ],
+      passageText: referenceText,
+      itemText: normalizedItemText,
+      itemType,
+      studentId: sessionStudentId,
     });
 
     const shouldCacheGeneratedCard =
-      generatedCard &&
+      preview &&
       !hasPlaceholderVocabularyContent({
-        itemText: generatedCard.item_text,
-        englishExplanation: generatedCard.english_explanation,
-        translatedExplanation: generatedCard.translated_explanation,
+        itemText: preview.item_text,
+        englishExplanation: preview.plain_english_meaning,
+        translatedExplanation: preview.translation,
       });
 
-    if (generatedCard && shouldCacheGeneratedCard) {
-      await upsertVocabularyDictionaryCacheEntries([
+    if (shouldCacheGeneratedCard) {
+      void upsertVocabularyDictionaryCacheEntries([
         {
-          itemText: generatedCard.item_text,
+          itemText: preview.item_text,
           itemType,
           translationLanguage: nativeLanguage,
-          englishExplanation: generatedCard.english_explanation,
-          translatedExplanation: generatedCard.translated_explanation,
-          exampleText: generatedCard.example_text,
+          englishExplanation: preview.plain_english_meaning,
+          translatedExplanation: preview.translation,
+          exampleText: preview.context_meaning,
           sourceQuality: "ai_generated",
         },
-      ]);
+      ]).catch((error) => {
+        console.error("inline vocabulary cache write failed", error);
+      });
     }
 
-    const preview = generatedCard
-      ? {
-          item_text: generatedCard.item_text,
-          item_type: itemType,
-          plain_english_meaning: generatedCard.english_explanation,
-          translation: generatedCard.translated_explanation,
-          context_meaning: generatedCard.english_explanation,
-        }
-      : {
-          item_text: normalizedItemText,
-          item_type: itemType,
-          plain_english_meaning: "Quick preview not ready yet.",
-          translation: "",
-          context_meaning: referenceText.slice(0, 120),
-        };
-
-    return NextResponse.json({ data: preview, source: "ai_fallback" });
+    return NextResponse.json({ data: preview, source: "inline_preview" });
   } catch (error: unknown) {
     return NextResponse.json(
       {

@@ -324,8 +324,8 @@ export default function PassageAudioControls({
     <div
       className={
         variant === "topbar"
-          ? "w-full"
-          : `surface-soft-panel ${compact ? "p-3" : "p-4"} space-y-3`
+          ? "reading-audio-strip reading-audio-strip--topbar w-full"
+          : `reading-audio-strip surface-soft-panel ${compact ? "reading-audio-strip--compact" : ""}`
       }
     >
       <audio
@@ -349,14 +349,35 @@ export default function PassageAudioControls({
         }}
       />
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="app-kicker token-text-muted">Read + Listen</div>
-          <div className="text-xs font-semibold tabular-nums token-text-secondary">
-            {formatAudioTime(segmentPosition)} / {formatAudioTime(segmentDuration)}
-          </div>
-        </div>
-
+      <div className="reading-audio-strip__content">
+        <div className="reading-audio-strip__label">Read + Listen</div>
+        <button
+          type="button"
+          onClick={() => skipBy(-15)}
+          aria-label="Back 15 seconds"
+          title="Back 15 seconds"
+          className="reading-audio-strip__button secondary-button min-h-11 w-11 px-0"
+        >
+          <RewindIcon />
+        </button>
+        <button
+          type="button"
+          onClick={() => (isPlaying ? pausePlayback() : void startPlayback())}
+          aria-label={isPlaying ? "Pause audio" : "Play audio"}
+          title={isPlaying ? "Pause audio" : "Play audio"}
+          className="reading-audio-strip__button reading-audio-strip__button--play primary-button min-h-11 min-w-0 px-3"
+        >
+          {isPlaying ? <PauseIcon /> : <PlayIcon />}
+        </button>
+        <button
+          type="button"
+          onClick={() => skipBy(15)}
+          aria-label="Forward 15 seconds"
+          title="Forward 15 seconds"
+          className="reading-audio-strip__button secondary-button min-h-11 w-11 px-0"
+        >
+          <ForwardIcon />
+        </button>
         <input
           type="range"
           min={0}
@@ -366,51 +387,23 @@ export default function PassageAudioControls({
           onChange={(event) => seekToSegmentPosition(Number(event.target.value))}
           disabled={segmentDuration <= 0}
           aria-label="Audio position"
-          className="h-6 w-full cursor-pointer accent-[var(--color-primary)] disabled:cursor-wait"
+          className="reading-audio-strip__range cursor-pointer accent-[var(--color-primary)] disabled:cursor-wait"
         />
-
-        <div className="grid grid-cols-[44px_minmax(0,1fr)_44px_auto] items-center gap-2">
-          <button
-            type="button"
-            onClick={() => skipBy(-15)}
-            aria-label="Back 15 seconds"
-            title="Back 15 seconds"
-            className="secondary-button min-h-11 w-11 px-0"
-          >
-            <RewindIcon />
-          </button>
-          <button
-            type="button"
-            onClick={() => (isPlaying ? pausePlayback() : void startPlayback())}
-            aria-label={isPlaying ? "Pause audio" : "Play audio"}
-            title={isPlaying ? "Pause audio" : "Play audio"}
-            className="primary-button min-h-11 min-w-0 gap-2 px-3"
-          >
-            {isPlaying ? <PauseIcon /> : <PlayIcon />}
-            <span>{isPlaying ? "Pause" : "Play"}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => skipBy(15)}
-            aria-label="Forward 15 seconds"
-            title="Forward 15 seconds"
-            className="secondary-button min-h-11 w-11 px-0"
-          >
-            <ForwardIcon />
-          </button>
-          <select
-            value={playbackRate}
-            onChange={(event) => setPlaybackRate(Number(event.target.value))}
-            className="surface-panel token-text-primary min-h-11 rounded-xl border border-[var(--color-border)] px-3 text-sm font-semibold"
-            aria-label="Audio speed"
-          >
-            {[0.8, 0.9, 1, 1.1, 1.2].map((rate) => (
-              <option key={rate} value={rate}>
-                {rate}x
-              </option>
-            ))}
-          </select>
+        <div className="reading-audio-strip__time">
+          {formatAudioTime(segmentPosition)} / {formatAudioTime(segmentDuration)}
         </div>
+        <select
+          value={playbackRate}
+          onChange={(event) => setPlaybackRate(Number(event.target.value))}
+          className="reading-audio-strip__speed surface-panel token-text-primary rounded-xl border border-[var(--color-border)] text-sm font-semibold"
+          aria-label="Audio speed"
+        >
+          {[0.8, 0.9, 1, 1.1, 1.2].map((rate) => (
+            <option key={rate} value={rate}>
+              {rate}x
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );

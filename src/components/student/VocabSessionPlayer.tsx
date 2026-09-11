@@ -31,11 +31,13 @@ export default function VocabSessionPlayer({
   accessCode,
   focused = false,
   completionAction = null,
+  guidedAssignmentId = null,
 }: {
   session: VocabExerciseSession;
   studentId: string;
   accessCode: string;
   focused?: boolean;
+  guidedAssignmentId?: string | null;
   completionAction?: {
     href: string;
     label: string;
@@ -251,6 +253,7 @@ export default function VocabSessionPlayer({
           studentId,
           sessionId: session.session_id,
           sessionMode: session.mode,
+          readingAssignmentId: guidedAssignmentId,
           ...params,
         });
       } catch (error) {
@@ -399,6 +402,7 @@ export default function VocabSessionPlayer({
           session_checkpoint_index: session.metadata.checkpoint_index,
           continuation_available: session.metadata.continuation_available,
           continuation_source_counts: session.metadata.continuation_source_counts,
+          guided_assignment_id: guidedAssignmentId,
         }}
         focused={focused}
         captureStudentId={studentId}

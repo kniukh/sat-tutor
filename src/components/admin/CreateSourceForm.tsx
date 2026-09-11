@@ -29,6 +29,7 @@ export function CreateSourceForm({ books }: { books: ExistingBook[] }) {
   const [bookMode, setBookMode] = useState<'new' | 'existing'>('new');
   const [existingBookId, setExistingBookId] = useState('');
   const [contentType, setContentType] = useState<'book' | 'article' | 'poem'>('book');
+  const [readingMode, setReadingMode] = useState<'sat' | 'det'>('sat');
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [rawText, setRawText] = useState('');
@@ -90,6 +91,7 @@ export function CreateSourceForm({ books }: { books: ExistingBook[] }) {
       formData.append('title', title);
       formData.append('author', author);
       formData.append('sourceType', contentType);
+      formData.append('contentMode', readingMode);
       formData.append('rawText', rawText);
       formData.append('coverMode', coverMode);
       formData.append('chaptersJson', JSON.stringify(chapters));
@@ -114,6 +116,7 @@ export function CreateSourceForm({ books }: { books: ExistingBook[] }) {
       }
 
       setTitle('');
+      setReadingMode('sat');
       setAuthor('');
       setRawText('');
       setCoverMode('auto');
@@ -151,6 +154,35 @@ export function CreateSourceForm({ books }: { books: ExistingBook[] }) {
             {value}
           </button>
         ))}
+      </div>
+
+      <div className="space-y-3 rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+        <div>
+          <div className="app-kicker">Reading mode</div>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            Choose whether this content belongs to SAT preparation or DET Reading.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(['sat', 'det'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setReadingMode(value)}
+              disabled={bookMode === 'existing'}
+              className={`rounded-[1rem] border px-4 py-3 text-sm font-semibold uppercase disabled:cursor-not-allowed disabled:opacity-60 ${
+                readingMode === value
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-[var(--color-border)] bg-white text-slate-900'
+              }`}
+            >
+              {value === 'sat' ? 'SAT Reading' : 'DET Reading'}
+            </button>
+          ))}
+        </div>
+        {bookMode === 'existing' ? (
+          <p className="text-xs text-slate-500">Existing books keep their current reading mode.</p>
+        ) : null}
       </div>
 
       {isBook && books.length > 0 ? (

@@ -21,7 +21,7 @@ export async function POST(request: Request) {
 
   const { data: source, error: sourceError } = await supabase
     .from('source_documents')
-    .select('id, source_type')
+    .select('id, source_type, content_mode')
     .eq('id', sourceDocumentId)
     .single();
 
@@ -134,6 +134,7 @@ export async function POST(request: Request) {
         };
       })(),
       source_document_id: sourceDocumentId,
+      content_mode: source.content_mode ?? 'sat',
       title: chunk.chapterTitle
         ? `${chunk.chapterTitle} — Part ${chunk.chunkIndexWithinChapter + 1}`
         : `Part ${globalIndex + 1}`,

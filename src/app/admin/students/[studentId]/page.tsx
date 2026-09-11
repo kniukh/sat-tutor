@@ -5,6 +5,7 @@ import { AdminShell } from '@/components/admin/AdminShell';
 import StudentRecentLessons from '@/components/admin/StudentRecentLessons';
 import StudentVocabularyHistory from '@/components/admin/StudentVocabularyHistory';
 import StudentWritingHistory from '@/components/admin/StudentWritingHistory';
+import AssignReadingBookForm from '@/components/admin/AssignReadingBookForm';
 
 export default async function AdminStudentDetailPage({
   params,
@@ -31,6 +32,38 @@ export default async function AdminStudentDetailPage({
     .select('*')
     .eq('student_id', student.id)
     .order('last_opened_at', { ascending: false });
+
+  const { data: availableBooks } = await supabase
+    .from('source_documents')
+    .select('id, title, content_mode')
+    .eq('source_type', 'book')
+    .order('title', { ascending: true });
+
+  const availableBookIds = (availableBooks ?? []).map((book) => book.id);
+  const { data: bookChapters } = availableBookIds.length > 0
+    ? await supabase
+        .from('source_document_clean_text')
+        .select('source_document_id, chapter_index, chapter_title')
+        .in('source_document_id', availableBookIds)
+        .order('chapter_index', { ascending: true })
+    : { data: [] as any[] };
+  const chaptersByBook = new Map<string, Array<{ chapter_index: number; chapter_title: string | null }>>();
+  for (const chapter of bookChapters ?? []) {
+    const items = chaptersByBook.get(chapter.source_document_id) ?? [];
+    items.push({ chapter_index: Number(chapter.chapter_index), chapter_title: chapter.chapter_title ?? null });
+    chaptersByBook.set(chapter.source_document_id, items);
+  }
+  const assignableBooks = (availableBooks ?? []).map((book) => ({
+    ...book,
+    chapters: chaptersByBook.get(book.id) ?? [],
+  }));
+
+  const { data: readingAssignments } = await supabase
+    .from('reading_assignments')
+    .select('id, source_document_id, chapter_index, status, vocabulary_checkpoints_completed, completed_at')
+    .eq('student_id', student.id)
+    .order('assigned_at', { ascending: false });
+  const bookTitleById = new Map((availableBooks ?? []).map((book) => [book.id, book.title]));
 
   const { data: lessonAttempts, error: lessonAttemptsError } = await supabase
     .from('lesson_attempts')
@@ -84,6 +117,33 @@ export default async function AdminStudentDetailPage({
 
       <section className="rounded-2xl border bg-white p-6">
         <h2 className="mb-4 text-xl font-semibold text-slate-900">Book Progress</h2>
+        {availableBooks && availableBooks.length > 0 ? (
+          <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-2 text-sm font-semibold text-slate-900">Assign reading chapter</div>
+            <AssignReadingBookForm studentId={student.id} books={assignableBooks} />
+          </div>
+        ) : null}
+
+        {readingAssignments && readingAssignments.length > 0 ? (
+          <div className="mb-5 space-y-2">
+            <div className="text-sm font-semibold text-slate-900">Guided chapter assignments</div>
+            {readingAssignments.map((assignment: any) => (
+              <div key={assignment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 text-sm">
+                <div>
+                  <div className="font-semibold text-slate-900">
+                    {bookTitleById.get(assignment.source_document_id) ?? 'Reading book'} · Chapter {assignment.chapter_index ?? 'all'}
+                  </div>
+                  <div className="text-slate-500">
+                    Vocabulary checkpoints: {assignment.vocabulary_checkpoints_completed ?? 0}
+                  </div>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  {assignment.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {!bookProgress || bookProgress.length === 0 ? (
           <p className="text-slate-600">No book progress yet.</p>

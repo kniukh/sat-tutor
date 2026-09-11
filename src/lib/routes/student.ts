@@ -27,6 +27,18 @@ export function studentBookLibraryPath() {
   return studentLibraryPath();
 }
 
+export function studentDetReadingPath() {
+  return "/s/det";
+}
+
+export function studentDetProgressPath() {
+  return "/s/det-progress";
+}
+
+export function studentAssignedDetPath() {
+  return "/s/book?mode=det&assigned=1";
+}
+
 export function studentBookDetailPath(sourceDocumentId: string) {
   return `/s/book/${sourceDocumentId}`;
 }

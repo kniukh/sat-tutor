@@ -184,21 +184,8 @@ export default function PassageVocabularyCapture({
           console.error("prepare-drills background error", error);
         });
 
-      void fetch("/api/vocabulary/regenerate-audio", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId, lessonId }),
-      })
-        .then((response) => response.json().catch(() => null))
-        .then((payload) => {
-          if (Array.isArray(payload?.items) && payload.items.length > 0) {
-            onSubmitted?.(payload.items);
-          }
-        })
-        .catch((error) => {
-          console.error("regenerate-audio background error", error);
-        });
+      // LessonStagePanel owns the single audio request after the review stage opens.
+      // Keeping it there prevents duplicate generation requests for the same cards.
     } catch (error) {
       console.error("submitVocabulary error", error);
       alert("Failed to submit vocabulary");

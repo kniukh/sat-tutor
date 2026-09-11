@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { loginStudentSession } from '@/lib/auth/student';
+import { normalizeStudentAccessCode } from '@/lib/auth/student-access-code';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const access_code = (body?.access_code ?? '').toString().trim();
+    const access_code = normalizeStudentAccessCode((body?.access_code ?? '').toString());
 
     if (!access_code) {
       return NextResponse.json({ error: 'Код доступа обязателен' }, { status: 400 });

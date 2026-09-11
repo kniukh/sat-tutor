@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isStudentApiAuthError, requireStudentApiStudentId } from "@/lib/auth/student-api";
 import { saveLessonReadingMetrics } from "@/services/reading/reading-metrics.service";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   try {
@@ -25,6 +26,12 @@ export async function POST(request: Request) {
     }
 
     const sessionStudentId = await requireStudentApiStudentId(studentId);
+    const metricsSupabase = await createServerSupabaseClient();
+    const { data: lesson } = await metricsSupabase
+      .from("lessons")
+      .select("content_mode")
+      .eq("id", lessonId)
+      .maybeSingle();
 
     const result = await saveLessonReadingMetrics({
       studentId: sessionStudentId,
@@ -32,6 +39,7 @@ export async function POST(request: Request) {
       readingDurationSec: Math.max(0, Math.round(readingDurationSec)),
       wordsCount: Math.max(0, Math.round(wordsCount)),
       wordsPerMinute: Math.max(0, Number(wordsPerMinute.toFixed(2))),
+      contentMode: lesson?.content_mode === "det" ? "det" : "sat",
     });
 
     return NextResponse.json({ ok: true, result });

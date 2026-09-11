@@ -169,6 +169,10 @@ function normalizeManualRows(params: {
   ];
 }
 
+function normalizeContentMode(value: unknown) {
+  return String(value ?? 'sat').trim().toLowerCase() === 'det' ? 'det' : 'sat';
+}
+
 export async function POST(request: Request) {
   const contentType = request.headers.get('content-type') ?? '';
   const supabase = await createServerSupabaseClient();
@@ -182,6 +186,7 @@ export async function POST(request: Request) {
     let coverFile: File | null = null;
     let chapters: ChapterPayload[] = [];
     let sourceId = '';
+    let contentMode = 'sat';
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
@@ -194,6 +199,7 @@ export async function POST(request: Request) {
       const chaptersJson = String(formData.get('chaptersJson') || '[]');
       chapters = JSON.parse(chaptersJson);
       sourceId = String(formData.get('sourceId') || '').trim();
+      contentMode = normalizeContentMode(formData.get('contentMode'));
     } else {
       const body = await request.json();
       title = String(body.title || '').trim();
@@ -203,12 +209,13 @@ export async function POST(request: Request) {
       coverMode = String(body.coverMode || 'none').trim();
       chapters = Array.isArray(body.chapters) ? body.chapters : [];
       sourceId = String(body.sourceId || '').trim();
+      contentMode = normalizeContentMode(body.contentMode);
     }
 
     if (sourceId) {
       const { data: existingSource, error: sourceError } = await supabase
         .from('source_documents')
-        .select('id, source_type, raw_text, metadata')
+        .select('id, source_type, content_mode, raw_text, metadata')
         .eq('id', sourceId)
         .single();
 
@@ -312,6 +319,7 @@ export async function POST(request: Request) {
         title,
         author: author || null,
         source_type: sourceType,
+        content_mode: contentMode,
         raw_text: combinedRawText,
         upload_kind: 'raw_text',
         pdf_processing_status: 'cleaned',
