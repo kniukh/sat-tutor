@@ -200,6 +200,10 @@ function inferAdaptiveBucket(candidate: AdaptiveWordCandidate, now: Date): Adapt
     return "newer_words";
   }
 
+  if (candidate.queueReason === "manual_resurface") {
+    return "weak_recent";
+  }
+
   if (
     recentIncorrectCount > 0 ||
     candidate.lifecycleState === "weak_again" ||

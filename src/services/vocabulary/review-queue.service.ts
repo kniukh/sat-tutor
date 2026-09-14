@@ -73,7 +73,11 @@ function getRecentIncorrectAttempt(recentAttempts: ExerciseAttemptRow[], now: Da
 }
 
 function isWeakAgainReason(reason: string) {
-  return reason === "weak_again_recovery" || reason === "mastery_relapse";
+  return (
+    reason === "weak_again_recovery" ||
+    reason === "mastery_relapse" ||
+    reason === "manual_resurface"
+  );
 }
 
 function isLearningReason(reason: string) {
@@ -142,6 +146,9 @@ export function buildReviewQueueItem(params: {
   const latestIncorrectAttempt = getRecentIncorrectAttempt(recentAttempts, now);
   const latestAttempt = recentAttempts[0] ?? null;
   const masteryScore = Number(wordProgress.mastery_score ?? 0);
+  const manualResurfaceRequested = Boolean(
+    wordProgress.metadata?.manual_resurface_requested_at
+  );
   const sameSessionCreditCapped = Boolean(
     (wordProgress.metadata ?? {})["same_session_credit_capped"]
   );
@@ -168,6 +175,9 @@ export function buildReviewQueueItem(params: {
   } else if (wordProgress.lifecycle_state === "weak_again") {
     basePriority = 0.98;
     reason = "weak_again_recovery";
+  } else if (manualResurfaceRequested) {
+    basePriority = 0.94;
+    reason = "manual_resurface";
   } else if (dueBySessionGap) {
     basePriority = 0.83;
     reason = "due_by_session_gap";

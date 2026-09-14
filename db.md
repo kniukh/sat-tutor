@@ -653,6 +653,19 @@ plus
 -> `vocabulary_item_details`
 -> Vocabulary Studio session shaping
 
+### Guided chapter vocabulary gate
+`reading_assignments`
+-> `reading_assignment_vocabulary` (bounded core words, max 8 per completed chunk)
+-> guided Vocabulary Drill sessions (max 5 core words per session)
+-> `introduced_at`
+-> chapter completion
+
+Current note:
+- only the bounded core set can block `Chapter Completed`; supplementary captured words remain in the normal Vocabulary lifecycle
+- a word counts as introduced after a saved drill exposure or an `Already known` action, regardless of correctness
+- duplicate surface forms are collapsed by canonical lemma, and previously practiced words are excluded from a new chapter plan
+- ordinary vocabulary practice is reconciled into the chapter plan when chapter progress is loaded
+
 Current note:
 - the bridge is still rule-based
 - lesson linkage is carried mostly through `lesson_id`, context sentence fields, and service-layer source metadata on exercises

@@ -44,6 +44,7 @@ export type ReviewPolicyDecision = {
 
 const SESSION_SRS_GAPS = [1, 2, 4, 7] as const;
 const SESSION_SRS_TIME_GAPS_HOURS = [12, 24, 72, 168] as const;
+const MASTERY_SUCCESS_SESSIONS = 3;
 
 function addHours(baseDate: Date, hours: number) {
   const date = new Date(baseDate);
@@ -114,10 +115,14 @@ function getLifecycleState(params: {
     return "weak_again" as const;
   }
 
+  if (params.isCorrect && params.previousLifecycleState === "mastered") {
+    return "mastered" as const;
+  }
+
   if (
     params.isCorrect &&
-    params.correctAttempts >= 4 &&
-    params.consecutiveCorrect >= 3 &&
+    params.correctAttempts >= MASTERY_SUCCESS_SESSIONS &&
+    params.consecutiveCorrect >= MASTERY_SUCCESS_SESSIONS &&
     params.masteryScore >= 0.82
   ) {
     return "mastered" as const;
@@ -161,7 +166,7 @@ function getSrsStage(params: {
   lifecycleState: WordLifecycleState;
   masteryScore: number;
 }) {
-  if (params.lifecycleState === "mastered" || params.masteryScore >= 0.82) {
+  if (params.lifecycleState === "mastered") {
     return 3;
   }
 

@@ -1732,7 +1732,7 @@ export default function LessonPlayer({
           title="Words Picked Up from Quiz"
           emptyTitle="No quiz words this time"
           emptyCopy="Continue to repair, or finish the lesson if there are no mistakes to fix."
-          continueLabel={mistakeItems.length > 0 ? "Continue to Quiz Repair" : "Finish Lesson"}
+          continueLabel="Continue"
           onDone={continueAfterQuizWords}
         />
       ) : null}

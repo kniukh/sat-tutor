@@ -313,6 +313,9 @@ async function syncWordProgressCaptureStats(params: {
           ? currentLastCapturedAt
           : aggregate.lastCapturedAt
         : currentLastCapturedAt ?? aggregate.lastCapturedAt ?? null;
+    const isMastered =
+      existing.lifecycle_state === "mastered" || existing.status === "mastered";
+    const resurfacedAt = new Date().toISOString();
 
     const { error: updateError } = await supabase
       .from("word_progress")
@@ -322,13 +325,29 @@ async function syncWordProgressCaptureStats(params: {
         capture_count: currentCaptureCount + aggregate.captureCount,
         first_captured_at: nextFirstCapturedAt,
         last_captured_at: nextLastCapturedAt,
-        status: existing.status === "mastered" ? "review" : existing.status ?? "learning",
-        next_review_date: getNextReviewDate(1),
+        status: isMastered ? "mastered" : existing.status ?? "learning",
+        lifecycle_state: isMastered
+          ? "mastered"
+          : existing.lifecycle_state ?? "learning",
+        next_review_date: getNextReviewDate(isMastered ? 0 : 1),
+        ...(isMastered
+          ? {
+              next_review_at: resurfacedAt,
+              next_review_session_gap: 1,
+              next_review_session_index: null,
+            }
+          : {}),
         source_lesson_id: params.lessonId ?? existing.source_lesson_id ?? null,
         updated_at: new Date().toISOString(),
         metadata: {
           ...(existing.metadata && typeof existing.metadata === "object" ? existing.metadata : {}),
           capture_normalized: true,
+          ...(isMastered
+            ? {
+                manual_resurface_requested_at: resurfacedAt,
+                manual_resurface_reason: "captured_again",
+              }
+            : {}),
         },
       })
       .eq("id", existing.id);

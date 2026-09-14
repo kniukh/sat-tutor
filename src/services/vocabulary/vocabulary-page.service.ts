@@ -46,6 +46,7 @@ import {
 import type { VocabularyDrillAnswerSetMap } from "@/types/vocabulary-answer-sets";
 import type { ExerciseAttemptRow } from "@/types/vocab-tracking";
 import { registerVocabularySessionSnapshot } from "@/services/vocabulary/vocab-session.service";
+import { getChapterVocabularyProgress } from "@/services/reading/chapter-vocabulary.service";
 
 type VocabularyPageStudent = {
   id: string;
@@ -95,6 +96,11 @@ type SourceCaptureMeta = {
 };
 
 type QueueBucketCounts = Record<ReviewQueuePriorityBucket, number>;
+
+const MAX_NEW_WORDS_PER_SESSION = 5;
+const MAX_NEW_WORDS_WITH_REVIEW_BACKLOG = 2;
+const REVIEW_BACKLOG_THRESHOLD = 12;
+const MAX_CHAPTER_CORE_WORDS_PER_SESSION = 5;
 
 type AudioPreparationSummary = {
   readyCount: number;
@@ -171,6 +177,11 @@ export type StudentVocabularyPageData = {
       matchedReadyCount: number;
       matchedNewWordCount: number;
       matchedContinuationCount: number;
+    } | null;
+    chapterVocabulary: {
+      requiredCount: number;
+      introducedCount: number;
+      pendingCount: number;
     } | null;
   };
   adaptiveSelection: AdaptiveSessionSelectionSummary | null;
@@ -758,6 +769,15 @@ export async function getStudentVocabularyPageData(
     fullName: student.full_name,
     accessCode: student.access_code,
   };
+  const guidedChapterVocabulary = options.guidedAssignmentId
+    ? await getChapterVocabularyProgress({
+        studentId: studentData.id,
+        assignmentId: options.guidedAssignmentId,
+      })
+    : null;
+  const guidedCoreWordIdSet = guidedChapterVocabulary
+    ? new Set(guidedChapterVocabulary.pendingWordIds)
+    : null;
 
   const [
     activeQueueCandidates,
@@ -819,6 +839,13 @@ export async function getStudentVocabularyPageData(
     acc[bucket] += 1;
     return acc;
   }, { ...EMPTY_BUCKET_COUNTS });
+  const activeLearningQueueCount = activeQueueCandidates.filter(
+    (candidate) => candidate.lifecycle_state !== "mastered"
+  ).length;
+  const maxNewWordsForSession =
+    activeLearningQueueCount >= REVIEW_BACKLOG_THRESHOLD
+      ? MAX_NEW_WORDS_WITH_REVIEW_BACKLOG
+      : MAX_NEW_WORDS_PER_SESSION;
 
   const queueWordIds = Array.from(
     new Set(activeQueueCandidates.map((candidate) => candidate.word_id).filter(Boolean))
@@ -1145,9 +1172,13 @@ export async function getStudentVocabularyPageData(
     }
   }
 
-  const sessionNewWordExercises = guidedLessonIds
-    ? newWordExercises.filter((exercise: any) => guidedLessonIds?.has(exercise.reviewMeta?.sourceLessonId))
-    : newWordExercises;
+  const sessionNewWordExercises = guidedCoreWordIdSet
+    ? newWordExercises.filter((exercise: any) =>
+        guidedCoreWordIdSet.has(getExerciseTargetWordId(exercise))
+      )
+    : guidedLessonIds
+      ? newWordExercises.filter((exercise: any) => guidedLessonIds?.has(exercise.reviewMeta?.sourceLessonId))
+      : newWordExercises;
 
   const adaptiveNewWordCandidates = buildAdaptiveWordCandidates({
     exercises: sessionNewWordExercises,
@@ -1189,22 +1220,30 @@ export async function getStudentVocabularyPageData(
     options.guidedLessonIntro &&
     guidedWordKeySet.size > 0 &&
     guidedLessonIntroCandidates.length < guidedWordKeySet.size;
-  const priorityCandidates =
+  const sessionNewWordLimit = options.guidedAssignmentId
+    ? MAX_CHAPTER_CORE_WORDS_PER_SESSION
+    : maxNewWordsForSession;
+  const sessionNewWordCandidates = (
     options.guidedLessonIntro && preferredLessonId
       ? guidedLessonIntroCandidates
+      : adaptiveNewWordCandidates
+  ).slice(0, sessionNewWordLimit);
+  const priorityCandidates =
+    options.guidedLessonIntro && preferredLessonId
+      ? sessionNewWordCandidates
       : selectedMode === "learn_new_words"
-        ? adaptiveNewWordCandidates
-        : [...adaptiveQueueCandidates, ...adaptiveNewWordCandidates];
+        ? sessionNewWordCandidates
+        : [...adaptiveQueueCandidates, ...sessionNewWordCandidates];
   const continuationCandidates =
     options.guidedLessonIntro && preferredLessonId
       ? []
       : selectedMode === "learn_new_words"
-        ? [...adaptiveNewWordCandidates, ...adaptiveContinuationCandidates]
-        : [...adaptiveQueueCandidates, ...adaptiveNewWordCandidates, ...adaptiveContinuationCandidates];
+        ? [...sessionNewWordCandidates, ...adaptiveContinuationCandidates]
+        : [...adaptiveQueueCandidates, ...sessionNewWordCandidates, ...adaptiveContinuationCandidates];
   const priorityTargetSize = shouldHoldForGuidedPreparation
     ? 0
-    : options.guidedLessonIntro && preferredLessonId
-      ? guidedLessonIntroCandidates.length
+      : options.guidedLessonIntro && preferredLessonId
+      ? sessionNewWordCandidates.length
       : Math.min(
           selectedMode === "learn_new_words" ? 6 : 8,
           Math.max(priorityCandidates.length, 0)
@@ -1405,6 +1444,13 @@ export async function getStudentVocabularyPageData(
               matchedContinuationCount,
             }
           : null,
+      chapterVocabulary: guidedChapterVocabulary
+        ? {
+            requiredCount: guidedChapterVocabulary.requiredCount,
+            introducedCount: guidedChapterVocabulary.introducedCount,
+            pendingCount: guidedChapterVocabulary.pendingCount,
+          }
+        : null,
     },
     adaptiveSelection: adaptiveSelection?.summary ?? null,
     drillCounts: {

@@ -46,6 +46,15 @@ export async function POST(request: Request) {
     const query = existing
       ? supabase.from('reading_assignments').update(payload).eq('id', existing.id).select().single()
       : supabase.from('reading_assignments').insert(payload).select().single();
+    if (existing) {
+      const { error: resetVocabularyError } = await supabase
+        .from('reading_assignment_vocabulary')
+        .delete()
+        .eq('assignment_id', existing.id);
+      if (resetVocabularyError) {
+        return NextResponse.json({ error: resetVocabularyError.message }, { status: 500 });
+      }
+    }
     const { data, error } = await query;
     if (error || !data) return NextResponse.json({ error: error?.message ?? 'Failed to assign book' }, { status: 500 });
     return NextResponse.json({ data });

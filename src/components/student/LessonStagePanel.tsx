@@ -1315,6 +1315,7 @@ export default function LessonStagePanel({
       <div className="space-y-4">
         <VocabularyReviewCards
           items={localVocabItems}
+          title="Vocabulary Cards"
           isHydrating={isVocabularyHydrating}
           onVisibleItemsChange={hydrateVisibleVocabularyItems}
           onRequestAudio={requestVocabularyAudio}
@@ -1323,6 +1324,8 @@ export default function LessonStagePanel({
           isAudioLoading={isVocabularyAudioLoading}
           onBackToReading={() => setStage("first_read")}
           onDone={() => void startSecondRead()}
+          backLabel="Back"
+          continueLabel="Continue"
         />
       </div>
     );
@@ -1371,10 +1374,17 @@ export default function LessonStagePanel({
                 Hover or tap a marked word to check meaning.
               </div>
               <button
+                type="button"
+                onClick={() => setStage("vocab_review")}
+                className="secondary-button min-h-14 shrink-0"
+              >
+                Back
+              </button>
+              <button
                 onClick={goToQuestions}
                 className="primary-button min-h-14 shrink-0"
               >
-                Start Quiz
+                Continue
               </button>
             </div>
           </div>

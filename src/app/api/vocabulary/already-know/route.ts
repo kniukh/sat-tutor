@@ -12,6 +12,7 @@ export async function POST(request: Request) {
       lessonId,
       sessionId,
       sessionMode,
+      readingAssignmentId,
     }: {
       studentId: string;
       wordId: string | null;
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
       lessonId?: string | null;
       sessionId?: string | null;
       sessionMode?: string | null;
+      readingAssignmentId?: string | null;
     } = body;
 
     if (!word?.trim()) {
@@ -33,6 +35,7 @@ export async function POST(request: Request) {
       lessonId: lessonId ?? null,
       sessionId: sessionId ?? null,
       sessionMode: sessionMode ?? null,
+      readingAssignmentId: readingAssignmentId ?? null,
     });
 
     return NextResponse.json({ ok: true, data: progress });

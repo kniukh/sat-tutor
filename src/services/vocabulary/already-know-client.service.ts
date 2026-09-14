@@ -5,6 +5,7 @@ export async function markVocabularyWordAlreadyKnown(params: {
   lessonId?: string | null;
   sessionId?: string | null;
   sessionMode?: string | null;
+  readingAssignmentId?: string | null;
 }) {
   const response = await fetch("/api/vocabulary/already-know", {
     method: "POST",

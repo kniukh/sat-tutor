@@ -1,4 +1,8 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  getChapterVocabularyProgress,
+  refreshChapterVocabularyCheckpoint,
+} from "@/services/reading/chapter-vocabulary.service";
 
 export type GuidedLearningAction = "reading" | "vocabulary" | "completed";
 
@@ -15,6 +19,7 @@ export type GuidedLearningState = {
   totalReadingCount: number;
   vocabularyCheckpointsCompleted: number;
   requiredVocabularyCheckpoints: number;
+  pendingVocabularyCount: number;
   progressPercent: number;
 };
 
@@ -106,6 +111,7 @@ export async function getGuidedLearningState(
       totalReadingCount: 0,
       vocabularyCheckpointsCompleted: Number(assignment.vocabulary_checkpoints_completed ?? 0),
       requiredVocabularyCheckpoints: 0,
+      pendingVocabularyCount: 0,
       progressPercent: 0,
     };
   }
@@ -138,28 +144,22 @@ export async function getGuidedLearningState(
   const completedLessonIds = new Set((attempts ?? []).map((attempt) => attempt.lesson_id));
   const completedReadingCount = uniqueOrderedLessonIds.filter((id) => completedLessonIds.has(id)).length;
   const nextLessonId = uniqueOrderedLessonIds.find((id) => !completedLessonIds.has(id)) ?? null;
-
-  const { data: vocabItems, error: vocabError } = await supabase
-    .from("vocabulary_item_details")
-    .select("id")
-    .eq("student_id", studentId)
-    .eq("is_removed", false)
-    .in("lesson_id", uniqueOrderedLessonIds.length > 0 ? uniqueOrderedLessonIds : ["00000000-0000-0000-0000-000000000000"]);
-
-  if (vocabError) throw vocabError;
-
-  const hasChapterVocabulary = (vocabItems ?? []).length > 0;
-  const vocabularyCheckpointsCompleted = Math.max(
-    0,
-    Number(assignment.vocabulary_checkpoints_completed ?? 0),
-  );
-  const requiredVocabularyCheckpoints = hasChapterVocabulary
-    ? Math.floor(completedReadingCount / 2)
-    : 0;
-  const vocabularyDue =
-    vocabularyCheckpointsCompleted < requiredVocabularyCheckpoints;
+  const chapterVocabulary = await getChapterVocabularyProgress({
+    studentId,
+    assignmentId: assignment.id,
+    completedLessons: uniqueOrderedLessonIds
+      .filter((lessonId) => completedLessonIds.has(lessonId))
+      .map((lessonId) => ({
+        lessonId,
+        chunkIndex:
+          passages?.find((passage) => passage.lesson_id === lessonId)?.chunk_index ?? null,
+      })),
+  });
+  const vocabularyCheckpointsCompleted = chapterVocabulary.introducedCount;
+  const requiredVocabularyCheckpoints = chapterVocabulary.requiredCount;
   const readingComplete =
     uniqueOrderedLessonIds.length > 0 && completedReadingCount >= uniqueOrderedLessonIds.length;
+  const vocabularyDue = readingComplete && chapterVocabulary.pendingCount > 0;
   const isComplete = readingComplete && !vocabularyDue;
 
   if (isComplete && assignment.status !== "completed") {
@@ -194,6 +194,7 @@ export async function getGuidedLearningState(
     totalReadingCount: uniqueOrderedLessonIds.length,
     vocabularyCheckpointsCompleted,
     requiredVocabularyCheckpoints,
+    pendingVocabularyCount: chapterVocabulary.pendingCount,
     progressPercent: Math.round(
       ((completedReadingCount + Math.min(vocabularyCheckpointsCompleted, requiredVocabularyCheckpoints)) /
         Math.max(uniqueOrderedLessonIds.length + requiredVocabularyCheckpoints, 1)) *
@@ -206,26 +207,5 @@ export async function completeGuidedVocabularyCheckpoint(params: {
   studentId: string;
   assignmentId: string;
 }) {
-  const supabase = await createServerSupabaseClient();
-  const { data: assignment, error } = await supabase
-    .from("reading_assignments")
-    .select("id, source_document_id, chapter_index, status, vocabulary_checkpoints_completed")
-    .eq("id", params.assignmentId)
-    .eq("student_id", params.studentId)
-    .maybeSingle<AssignmentRow>();
-
-  if (error) throw error;
-  if (!assignment || assignment.chapter_index === null || assignment.status === "archived") {
-    return;
-  }
-
-  const nextCount = Number(assignment.vocabulary_checkpoints_completed ?? 0) + 1;
-  await supabase
-    .from("reading_assignments")
-    .update({
-      vocabulary_checkpoints_completed: nextCount,
-      status: assignment.status === "assigned" ? "in_progress" : assignment.status,
-    })
-    .eq("id", assignment.id)
-    .eq("student_id", params.studentId);
+  await refreshChapterVocabularyCheckpoint(params);
 }

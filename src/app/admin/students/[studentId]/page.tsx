@@ -63,6 +63,18 @@ export default async function AdminStudentDetailPage({
     .select('id, source_document_id, chapter_index, status, vocabulary_checkpoints_completed, completed_at')
     .eq('student_id', student.id)
     .order('assigned_at', { ascending: false });
+  const { data: assignmentVocabulary } = await supabase
+    .from('reading_assignment_vocabulary')
+    .select('assignment_id, introduced_at')
+    .eq('student_id', student.id)
+    .eq('is_core', true);
+  const chapterVocabularyCounts = new Map<string, { required: number; introduced: number }>();
+  for (const row of assignmentVocabulary ?? []) {
+    const current = chapterVocabularyCounts.get(row.assignment_id) ?? { required: 0, introduced: 0 };
+    current.required += 1;
+    if (row.introduced_at) current.introduced += 1;
+    chapterVocabularyCounts.set(row.assignment_id, current);
+  }
   const bookTitleById = new Map((availableBooks ?? []).map((book) => [book.id, book.title]));
 
   const { data: lessonAttempts, error: lessonAttemptsError } = await supabase
@@ -134,7 +146,8 @@ export default async function AdminStudentDetailPage({
                     {bookTitleById.get(assignment.source_document_id) ?? 'Reading book'} · Chapter {assignment.chapter_index ?? 'all'}
                   </div>
                   <div className="text-slate-500">
-                    Vocabulary checkpoints: {assignment.vocabulary_checkpoints_completed ?? 0}
+                    Core vocabulary: {chapterVocabularyCounts.get(assignment.id)?.introduced ?? 0}/
+                    {chapterVocabularyCounts.get(assignment.id)?.required ?? 0} introduced
                   </div>
                 </div>
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">

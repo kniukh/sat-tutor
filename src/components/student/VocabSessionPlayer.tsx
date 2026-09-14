@@ -104,6 +104,7 @@ export default function VocabSessionPlayer({
             captureLessonId,
           sessionId: result.session_id,
           sessionMode: session.mode,
+          readingAssignmentId: guidedAssignmentId,
         });
 
         setProgressSignals((prev) => [

@@ -7,6 +7,7 @@ import {
   getCurrentVocabularySessionIndex,
 } from "@/services/vocabulary/vocab-session.service";
 import { resolveVocabularyLemma } from "@/services/vocabulary/vocabulary-normalization.service";
+import { markChapterVocabularyWordIntroduced } from "@/services/reading/chapter-vocabulary.service";
 
 function addHours(baseDate: Date, hours: number) {
   const date = new Date(baseDate);
@@ -21,6 +22,7 @@ export async function markWordProgressAsAlreadyKnown(params: {
   lessonId?: string | null;
   sessionId?: string | null;
   sessionMode?: string | null;
+  readingAssignmentId?: string | null;
 }) {
   const supabase = await createServerSupabaseClient();
   const targetWord = params.word.trim();
@@ -134,6 +136,8 @@ export async function markWordProgressAsAlreadyKnown(params: {
       overdue_review: false,
       same_session_credit_capped: false,
       last_queue_reason: "self_declared_known_followup",
+      manual_resurface_requested_at: null,
+      manual_resurface_reason: null,
     },
     updated_at: nowIso,
   };
@@ -186,6 +190,16 @@ export async function markWordProgressAsAlreadyKnown(params: {
 
   if (!progressRow) {
     return { progressRow: null, reviewQueueRow: null };
+  }
+
+  if (params.readingAssignmentId && (progressRow.word_id || targetWord)) {
+    await markChapterVocabularyWordIntroduced({
+      studentId: params.studentId,
+      assignmentId: params.readingAssignmentId,
+      vocabularyItemId: progressRow.word_id,
+      word: targetWord,
+      sessionId: params.sessionId,
+    });
   }
 
   const reviewQueueRow = await syncReviewQueueForWordProgress({
@@ -291,6 +305,10 @@ export async function applyExerciseAttemptToProgress(params: {
       : sameSessionCreditCapped
         ? Number(existing?.consecutive_incorrect ?? 0)
         : 0;
+  const existingManualResurfaceAt =
+    typeof existing?.metadata?.manual_resurface_requested_at === "string"
+      ? existing.metadata.manual_resurface_requested_at
+      : null;
 
   const reviewDecision = evaluateReviewPolicy({
     isCorrect: params.attempt.is_correct,
@@ -330,6 +348,10 @@ export async function applyExerciseAttemptToProgress(params: {
     overdue_review: false,
     same_session_credit_capped: sameSessionCreditCapped,
     last_queue_reason: reviewDecision.queueReason,
+    manual_resurface_requested_at: sameSessionCreditCapped ? existingManualResurfaceAt : null,
+    manual_resurface_reason: sameSessionCreditCapped
+      ? existing?.metadata?.manual_resurface_reason ?? null
+      : null,
   };
   const effectiveLifecycleState = sameSessionCreditCapped
     ? existing?.lifecycle_state ?? reviewDecision.lifecycleState
@@ -447,6 +469,20 @@ export async function applyExerciseAttemptToProgress(params: {
     sourceAttemptId: params.attempt.id,
     currentSessionIndex: session.sequence_index,
   })) as ReviewQueueRow | null;
+
+  const guidedAssignmentId =
+    typeof clientAttemptMetadata?.guided_assignment_id === "string"
+      ? clientAttemptMetadata.guided_assignment_id
+      : null;
+  if (guidedAssignmentId && (targetWordId || targetWord)) {
+    await markChapterVocabularyWordIntroduced({
+      studentId: params.studentId,
+      assignmentId: guidedAssignmentId,
+      vocabularyItemId: targetWordId,
+      word: targetWord,
+      sessionId: params.attempt.session_id,
+    });
+  }
 
   return { progressRow, reviewQueueRow, sameSessionCreditCapped, session };
 }

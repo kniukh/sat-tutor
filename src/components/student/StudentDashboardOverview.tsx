@@ -44,6 +44,7 @@ type Props = {
     totalReadingCount: number;
     vocabularyCheckpointsCompleted: number;
     requiredVocabularyCheckpoints: number;
+    pendingVocabularyCount: number;
     progressPercent: number;
   } | null;
   accessCode: string;
@@ -112,7 +113,12 @@ export default function StudentDashboardOverview({
             <p>{guidedLearning.bookTitle}</p>
             <div className="mt-5 flex items-center justify-between gap-3 text-sm font-semibold">
               <span>{guidedLearning.status === "completed" ? "Chapter complete" : `${guidedLearning.progressPercent}% complete`}</span>
-              <span className="text-slate-500">{guidedLearning.completedReadingCount}/{guidedLearning.totalReadingCount} reading</span>
+              <span className="text-right text-slate-500">
+                {guidedLearning.completedReadingCount}/{guidedLearning.totalReadingCount} reading
+                {guidedLearning.requiredVocabularyCheckpoints > 0 ? (
+                  <> · {guidedLearning.vocabularyCheckpointsCompleted}/{guidedLearning.requiredVocabularyCheckpoints} vocabulary</>
+                ) : null}
+              </span>
             </div>
             <div className="coach-progress mt-2"><span style={{ width: `${guidedLearning.status === "completed" ? 100 : guidedLearning.progressPercent}%` }} /></div>
           </div>

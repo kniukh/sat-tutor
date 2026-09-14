@@ -196,8 +196,8 @@ export default function VocabularyReviewCards({
   title = "Saved from this passage",
   emptyTitle = "Nothing saved this time",
   emptyCopy = "Continue to the second read, or go back and save a few words first.",
-  continueLabel = "Continue to Second Read",
-  backLabel = "← Back to First Read",
+  continueLabel = "Continue",
+  backLabel = "Back",
   embedded = false,
 }: Props) {
   const [pageIndex, setPageIndex] = useState(0);
@@ -287,6 +287,29 @@ export default function VocabularyReviewCards({
     const start = pageIndex * CARDS_PER_PAGE;
     return effectiveItems.slice(start, start + CARDS_PER_PAGE);
   }, [effectiveItems, pageIndex]);
+
+  const visibleRangeStart = effectiveItems.length > 0 ? pageIndex * CARDS_PER_PAGE + 1 : 0;
+  const visibleRangeEnd = Math.min((pageIndex + 1) * CARDS_PER_PAGE, effectiveItems.length);
+  const canGoBack = pageIndex > 0 || Boolean(onBackToReading);
+  const canContinue = pageIndex < totalPages - 1 || Boolean(onDone);
+
+  function handleBack() {
+    if (pageIndex > 0) {
+      setPageIndex((current) => Math.max(0, current - 1));
+      return;
+    }
+
+    onBackToReading?.();
+  }
+
+  function handleContinue() {
+    if (pageIndex < totalPages - 1) {
+      setPageIndex((current) => Math.min(totalPages - 1, current + 1));
+      return;
+    }
+
+    onDone?.();
+  }
 
   useEffect(() => {
     onVisibleItemsChange?.(visibleItems);
@@ -574,9 +597,9 @@ export default function VocabularyReviewCards({
       <audio ref={audioRef} hidden playsInline preload="none" />
       <div className="space-y-1">
         <h2 className="token-text-primary text-2xl font-semibold">{title}</h2>
-        {totalPages > 1 ? (
+        {effectiveItems.length > 0 ? (
           <div className="token-text-muted text-sm leading-6">
-            {`Page ${pageIndex + 1} of ${totalPages}`}
+            {`Words ${visibleRangeStart}-${visibleRangeEnd} of ${effectiveItems.length}`}
           </div>
         ) : null}
         {isHydrating ? (
@@ -683,7 +706,7 @@ export default function VocabularyReviewCards({
 
       {(totalPages > 1 || (!embedded && showFooterActions)) ? (
         <div className={`${embedded ? "" : "mt-auto "}flex flex-col gap-3 ${embedded ? "" : "border-t border-[var(--color-border)] pt-4"}`}>
-          {totalPages > 1 ? (
+          {embedded && totalPages > 1 ? (
             <div className="flex gap-3">
               <button
                 type="button"
@@ -708,16 +731,22 @@ export default function VocabularyReviewCards({
 
           {!embedded && showFooterActions ? (
             <div className="flex flex-col gap-3 sm:flex-row">
-              {onBackToReading ? (
-                <button onClick={onBackToReading} className="app-button app-button-muted sm:flex-1">
-                  {backLabel}
-                </button>
-              ) : null}
-              {onDone ? (
-                <button onClick={onDone} className="primary-button sm:flex-1">
-                  {continueLabel}
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={handleBack}
+                disabled={!canGoBack}
+                className="app-button app-button-muted sm:flex-1 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {backLabel}
+              </button>
+              <button
+                type="button"
+                onClick={handleContinue}
+                disabled={!canContinue}
+                className="primary-button sm:flex-1 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {continueLabel}
+              </button>
             </div>
           ) : null}
         </div>
