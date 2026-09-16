@@ -21,6 +21,7 @@ import {
   normalizeAnswerOptionCompare,
   normalizeAnswerOptionLabel,
 } from "@/services/vocabulary/answer-option-formatting";
+import { isPlaceholderVocabularyDefinition } from "@/services/vocabulary/vocabulary-placeholder-content";
 
 export type MeaningDrillItem = {
   wordProgressId: string;
@@ -162,7 +163,27 @@ function getCompleteSentenceForCloze(item: ClozeDrillItem) {
 
 function isConciseDrillLabel(text: string | null | undefined, maxTokens = 10, maxLength = 90) {
   const normalized = text?.trim().replace(/\s+/g, " ") ?? "";
-  return Boolean(normalized) && countTokens(normalized) <= maxTokens && normalized.length <= maxLength;
+  return (
+    Boolean(normalized) &&
+    !isPlaceholderVocabularyDefinition({
+      itemText: "",
+      englishExplanation: normalized,
+    }) &&
+    !/^meaning of (this )?(word|phrase)\b/i.test(normalized) &&
+    countTokens(normalized) <= maxTokens &&
+    normalized.length <= maxLength
+  );
+}
+
+function isSafeDrillOptionLabel(text: string | null | undefined) {
+  const normalized = text?.trim().replace(/\s+/g, " ") ?? "";
+
+  return (
+    Boolean(normalized) &&
+    !/^meaning of (this )?(word|phrase)\b/i.test(normalized) &&
+    !/^quick preview not ready/i.test(normalized) &&
+    !/^translation of (this )?(word|phrase)\b/i.test(normalized)
+  );
 }
 
 function getLegacyPlainMeaning(item: MeaningDrillItem | ClozeDrillItem) {
@@ -366,7 +387,11 @@ function buildNormalizedChoiceOptions(params: {
   const correctLabel = normalizeAnswerOptionLabel(params.correctAnswer);
   const correctCompareKey = normalizeAnswerOptionCompare(correctLabel);
   const distractorLabels = dedupeNormalizedAnswerOptions(params.distractors)
-    .filter((label) => normalizeAnswerOptionCompare(label) !== correctCompareKey)
+    .filter(
+      (label) =>
+        normalizeAnswerOptionCompare(label) !== correctCompareKey &&
+        isSafeDrillOptionLabel(label)
+    )
     .slice(0, 3);
 
   return shuffle([
@@ -688,7 +713,8 @@ function rankCandidatesByNormalization(
   return dedupeNormalizedAnswerOptions(candidates)
     .filter(
       (candidate) =>
-        normalizeAnswerOptionCompare(candidate) !== normalizedCorrectCompareKey
+        normalizeAnswerOptionCompare(candidate) !== normalizedCorrectCompareKey &&
+        isSafeDrillOptionLabel(candidate)
     )
     .map((candidate) => {
       const candidateNormalization = inferNormalization(candidate);
@@ -907,32 +933,6 @@ function dedupeListenPairItems(
   return deduped;
 }
 
-function buildTranslationOptions(
-  item: MeaningDrillItem | ClozeDrillItem,
-  allItems: Array<MeaningDrillItem | ClozeDrillItem>,
-  optionPrefix: string
-) {
-  const correctTranslation = normalizeAnswerOptionLabel(
-    getPreferredNativeTranslation(item) ?? getPlainMeaning(item)
-  );
-  const correctCompareKey = normalizeAnswerOptionCompare(correctTranslation);
-  const translatedDistractors = dedupeNormalizedAnswerOptions(
-    allItems
-      .filter((candidate) => candidate.vocabularyItemId !== item.vocabularyItemId)
-      .map((candidate) => getPreferredNativeTranslation(candidate))
-  )
-    .filter((candidate) => normalizeAnswerOptionCompare(candidate) !== correctCompareKey)
-    .slice(0, 3);
-
-  return shuffle([
-    { id: "correct", label: correctTranslation },
-    ...translatedDistractors.map((label, index) => ({
-      id: `${optionPrefix}-${index}`,
-      label,
-    })),
-  ]);
-}
-
 function buildLexicalOptions(
   item: MeaningDrillItem | ClozeDrillItem,
   allItems: Array<MeaningDrillItem | ClozeDrillItem>,
@@ -957,19 +957,6 @@ function buildLexicalOptions(
 
 function buildExplanationPrefix(itemType: MeaningDrillItem["itemType"]) {
   return itemType === "phrase" ? "Best paraphrase" : "Best meaning";
-}
-
-function chunkItems<T>(items: T[], chunkSize: number, minimumSize = 3) {
-  const chunks: T[][] = [];
-
-  for (let index = 0; index < items.length; index += chunkSize) {
-    const chunk = items.slice(index, index + chunkSize);
-    if (chunk.length >= minimumSize) {
-      chunks.push(chunk);
-    }
-  }
-
-  return chunks;
 }
 
 function chunkItemsBalanced<T>(items: T[], preferredSize = 6, maxSize = 8, minimumSize = 4) {

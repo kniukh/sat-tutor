@@ -133,13 +133,6 @@ function defaultTargetSize(mode: VocabSessionMode, poolSize: number) {
   return Math.min(desired, poolSize);
 }
 
-function getAvailableTypeOrder(exercises: SupportedVocabExercise[], mode: VocabSessionMode) {
-  const availableTypes = new Set(exercises.map((exercise) => exercise.type));
-  return SESSION_PREFERRED_TYPE_ORDER_BY_MODE[mode].filter((type) =>
-    availableTypes.has(type)
-  );
-}
-
 function desiredDifficultyForIndex(
   index: number,
   total: number,
@@ -271,47 +264,18 @@ type SessionRotationRecipe = {
 const SESSION_ROTATION_RECIPES: SessionRotationRecipe[] = [
   {
     id: "recognition_audio",
-    anchorTypeSlots: [
-      "meaning_match",
-      "translation_match",
-      "listen_match",
-      "spelling_from_audio",
-      "context_meaning",
-      "fill_blank",
-      "synonym",
-      "collocation",
-    ],
-    reinforcementTypeSlots: [
-      "context_meaning",
-      "spelling_from_audio",
-      "synonym",
-      "fill_blank",
-    ],
+    anchorTypeSlots: ["meaning_match", "translation_match", "pair_match", "listen_match"],
+    reinforcementTypeSlots: ["translation_match", "meaning_match", "listen_match"],
   },
   {
     id: "context_sat",
-    anchorTypeSlots: [
-      "context_meaning",
-      "fill_blank",
-      "synonym",
-      "collocation",
-      "spelling_from_audio",
-      "translation_match",
-      "listen_match",
-    ],
-    reinforcementTypeSlots: ["collocation", "synonym"],
+    anchorTypeSlots: ["meaning_match", "pair_match", "translation_match", "listen_match"],
+    reinforcementTypeSlots: ["translation_match", "listen_match", "meaning_match"],
   },
   {
     id: "production_precision",
-    anchorTypeSlots: [
-      "fill_blank",
-      "collocation",
-      "listen_match",
-      "synonym",
-      "spelling_from_audio",
-      "context_meaning",
-    ],
-    reinforcementTypeSlots: ["spelling_from_audio", "context_meaning"],
+    anchorTypeSlots: ["translation_match", "meaning_match", "pair_match", "listen_match"],
+    reinforcementTypeSlots: ["meaning_match", "translation_match", "listen_match"],
   },
 ];
 

@@ -2,6 +2,10 @@ import type {
   VocabularyDrillAnswerSetKey,
   VocabularyDrillAnswerSetMap,
 } from "@/types/vocabulary-answer-sets";
+import {
+  isPlaceholderVocabularyDefinition,
+  isPlaceholderVocabularyTranslation,
+} from "@/services/vocabulary/vocabulary-placeholder-content";
 
 export type VocabularyGoldContentFields = {
   coreMeaning: string | null;
@@ -127,8 +131,13 @@ function deriveCoreMeaning(input: ResolveSafeVocabularyDrillContentInput) {
   ];
 
   return (
-    sanitizeTextArray(candidates, 1)[0] ??
-    null
+    sanitizeTextArray(candidates, 8).find(
+      (candidate) =>
+        !isPlaceholderVocabularyDefinition({
+          itemText: input.itemText,
+          englishExplanation: candidate,
+        })
+    ) ?? null
   );
 }
 
@@ -149,7 +158,13 @@ function deriveTranslationWord(input: ResolveSafeVocabularyDrillContentInput) {
   return (
     sanitizeTextArray(
       [
-        countTokens(input.translationWord) <= 3 ? input.translationWord : null,
+        countTokens(input.translationWord) <= 3 &&
+        !isPlaceholderVocabularyTranslation({
+          itemText: input.itemText,
+          translatedExplanation: input.translationWord,
+        })
+          ? input.translationWord
+          : null,
         getStrongStoredTranslationWord(input),
       ],
       1
@@ -161,8 +176,18 @@ function deriveTranslationMeaning(input: ResolveSafeVocabularyDrillContentInput)
   return (
     sanitizeTextArray(
       [
-        input.translationMeaning,
-        input.translatedExplanation,
+        !isPlaceholderVocabularyTranslation({
+          itemText: input.itemText,
+          translatedExplanation: input.translationMeaning,
+        })
+          ? input.translationMeaning
+          : null,
+        !isPlaceholderVocabularyTranslation({
+          itemText: input.itemText,
+          translatedExplanation: input.translatedExplanation,
+        })
+          ? input.translatedExplanation
+          : null,
       ],
       1
     )[0] ?? null

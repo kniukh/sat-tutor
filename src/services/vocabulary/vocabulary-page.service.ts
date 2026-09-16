@@ -10,14 +10,9 @@ import {
   type AdaptiveWordCandidate,
 } from "@/services/vocabulary/adaptive-session-selection.service";
 import {
-  adaptContextMeaningDrillsToExercises,
-  adaptClozeDrillsToExercises,
-  adaptCollocationDrillsToExercises,
   adaptListenMatchDrillsToExercises,
   adaptMeaningDrillsToExercises,
   adaptPairMatchDrillsToExercises,
-  adaptSpellingFromAudioDrillsToExercises,
-  adaptSynonymDrillsToExercises,
 } from "@/services/vocabulary/exercise-adapters";
 import {
   classifyReviewQueueCandidate,
@@ -36,8 +31,10 @@ import {
 } from "@/services/vocabulary/drill-answer-sets.service";
 import { hydrateVocabularyDetailsWithGlobalContent } from "@/services/vocabulary/drill-content-engine.service";
 import { resolveSafeVocabularyDrillContent } from "@/services/vocabulary/resolved-vocabulary-drill-content.service";
+import { isPlaceholderVocabularyDefinition } from "@/services/vocabulary/vocabulary-placeholder-content";
 import { getStudentGamificationSnapshot } from "@/services/gamification/gamification.service";
 import {
+  getExercisePairs,
   getExerciseTargetWordId,
   type VocabExerciseSourceType,
   type VocabularySessionPhase,
@@ -315,9 +312,69 @@ function inferSourceType(lessonType: string | null | undefined): VocabExerciseSo
 function hasPracticeReadyVocabularyDetail(detail: any) {
   if (!detail?.id) return false;
   if (detail.is_understood === true) return false;
-  if (!detail.english_explanation) return false;
-  if (!Array.isArray(detail.distractors) || detail.distractors.length < 3) return false;
-  return true;
+
+  const meaningCandidates = [
+    detail.core_meaning,
+    detail.definition,
+    detail.english_explanation,
+    parseVocabularyDrillAnswerSets(detail.drill_answer_sets).context_meaning
+      ?.drill_correct_answer,
+  ];
+
+  return meaningCandidates.some((candidate) => {
+    const normalized = typeof candidate === "string" ? candidate.trim() : "";
+    return (
+      normalized.length >= 4 &&
+      normalized.length <= 180 &&
+      !isPlaceholderVocabularyDefinition({
+        itemText: detail.item_text,
+        englishExplanation: normalized,
+      }) &&
+      !/^meaning of (this )?(word|phrase)\b/i.test(normalized)
+    );
+  });
+}
+
+function hasRenderableVocabularyExercise(exercise: SupportedVocabExercise) {
+  if (
+    exercise.type !== "meaning_match" &&
+    exercise.type !== "translation_match" &&
+    exercise.type !== "pair_match" &&
+    exercise.type !== "listen_match"
+  ) {
+    return false;
+  }
+
+  const pairs = getExercisePairs(exercise);
+  if (exercise.type === "pair_match" || pairs.length > 1) {
+    return (
+      pairs.length >= 4 &&
+      pairs.every(
+        (pair) =>
+          Boolean(pair.left?.trim()) &&
+          Boolean(pair.right?.trim()) &&
+          (exercise.type !== "listen_match" || Boolean(pair.left_audio_url))
+      )
+    );
+  }
+
+  if (!Array.isArray(exercise.options) || exercise.options.length < 4) {
+    return false;
+  }
+
+  const correctOption = exercise.options.find((option) => option.id === "correct");
+  if (!correctOption?.label?.trim()) {
+    return false;
+  }
+
+  if (
+    /^meaning of (this )?(word|phrase)\b/i.test(correctOption.label.trim()) ||
+    /^quick preview not ready/i.test(correctOption.label.trim())
+  ) {
+    return false;
+  }
+
+  return exercise.type !== "listen_match" || exercise.audio_status === "ready";
 }
 
 function toDrillItem(
@@ -542,42 +599,31 @@ function attachContinuationReviewMeta<TExercise extends SupportedVocabExercise>(
 function buildExercisePoolFromDrillItems(drillItems: DrillItem[]) {
   const wordDrills = drillItems.filter((item) => item.itemType === "word");
   const phraseDrills = drillItems.filter((item) => item.itemType === "phrase");
-  const contextMeaningDrills = drillItems.filter((item) => item.contextSentence);
-  const synonymDrills = drillItems;
-  const collocationDrills = drillItems.filter(
-    (item) => Boolean(item.exampleText || item.contextSentence)
-  );
   const pairMatchDrills = drillItems.filter(
     (item) => item.itemType === "word" || Boolean(item.exampleText || item.contextSentence)
   );
   const listenMatchDrills = drillItems.filter(
-    (item) => Boolean(item.audioUrl) && item.audioStatus !== "failed" && item.audioStatus !== "missing"
+    (item) => Boolean(item.audioUrl) && item.audioStatus === "ready"
   );
-  const spellingFromAudioDrills = listenMatchDrills;
+  const exercises = [
+    ...adaptMeaningDrillsToExercises([...wordDrills, ...phraseDrills]),
+    ...adaptListenMatchDrillsToExercises(listenMatchDrills),
+    ...adaptPairMatchDrillsToExercises(pairMatchDrills),
+  ].filter(hasRenderableVocabularyExercise);
 
   return {
     wordDrills,
     phraseDrills,
-    clozeDrills: contextMeaningDrills,
-    contextMeaningDrills,
-    synonymDrills,
-    collocationDrills,
+    clozeDrills: [],
+    contextMeaningDrills: [],
+    synonymDrills: [],
+    collocationDrills: [],
     pairMatchDrills,
     sentenceBuilderDrills: [],
     errorDetectionDrills: [],
     listenMatchDrills,
-    spellingFromAudioDrills,
-    exercises: [
-      ...adaptMeaningDrillsToExercises(wordDrills),
-      ...adaptMeaningDrillsToExercises(phraseDrills),
-      ...adaptListenMatchDrillsToExercises(listenMatchDrills),
-      ...adaptSpellingFromAudioDrillsToExercises(spellingFromAudioDrills),
-      ...adaptClozeDrillsToExercises(contextMeaningDrills),
-      ...adaptContextMeaningDrillsToExercises(contextMeaningDrills),
-      ...adaptSynonymDrillsToExercises(synonymDrills),
-      ...adaptCollocationDrillsToExercises(collocationDrills),
-      ...adaptPairMatchDrillsToExercises(pairMatchDrills),
-    ],
+    spellingFromAudioDrills: [],
+    exercises,
   };
 }
 
